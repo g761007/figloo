@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Figloo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --text: #1f2937;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --panel: #f9fafb;
+        --ok: #16a34a;
+        --warn: #d97706;
+        --bad: #dc2626;
+        --accent: #2563eb;
+        --button: #2563eb;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root { --text: #e5e7eb; --muted: #9ca3af; --line: #374151; --panel: #111827; --accent: #60a5fa; }
+      }
+      body { box-sizing: border-box; width: 360px; margin: 0; padding: 12px 14px; font: 13px/1.45 system-ui, sans-serif; color: var(--text); }
+      header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+      header img { width: 20px; height: 20px; }
+      h1 { font-size: 15px; margin: 0; }
+      section { padding: 8px 0; border-top: 1px solid var(--line); }
+      p { margin: 2px 0; }
+      .file { font-weight: 600; overflow-wrap: anywhere; }
+      .muted { color: var(--muted); }
+      .readiness.ready, .agent.connected { color: var(--ok); }
+      .readiness.degraded, .readiness.loading, .agent.connecting, .agent.disconnected { color: var(--warn); }
+      .readiness.incompatible, .agent.unpaired { color: var(--bad); }
+      .path { color: var(--muted); overflow-wrap: anywhere; }
+      .crumb:not(:last-child)::after { content: " › "; }
+      h2.layer { font-size: 14px; margin: 4px 0; overflow-wrap: anywhere; }
+      .type { margin-left: 6px; padding: 0 5px; border-radius: 4px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-size: 11px; font-weight: 400; }
+      ul.children { margin: 4px 0 0; padding-left: 18px; max-height: 180px; overflow-y: auto; }
+      ul.children li { overflow-wrap: anywhere; }
+      .copy { width: 100%; padding: 6px; font: inherit; font-weight: 600; color: #fff; background: var(--button); border: 0; border-radius: 6px; cursor: pointer; }
+      .preview { width: 100%; box-sizing: border-box; margin-top: 6px; font: 11px/1.4 ui-monospace, monospace; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; resize: vertical; }
+      footer { border-top: 1px solid var(--line); padding-top: 8px; }
+      .link { padding: 0; font: inherit; color: var(--accent); background: none; border: 0; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <header><img src="icons/color-32.png" alt="" /><h1>Figloo</h1></header>
+    <main id="app"><p class="muted">Reading the Figma tab…</p></main>
+    <footer><button type="button" class="link" id="settings">Settings</button></footer>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

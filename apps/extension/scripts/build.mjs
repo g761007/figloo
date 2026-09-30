@@ -2,7 +2,7 @@ import { cpSync } from "node:fs";
 import { build } from "esbuild";
 
 await build({
-  entryPoints: ["src/background.ts", "src/options.ts"],
+  entryPoints: ["src/background.ts", "src/options.ts", "src/popup.ts"],
   bundle: true,
   minify: true,
   format: "esm",

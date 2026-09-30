@@ -12,6 +12,7 @@
     "128": "icons/color-128.png"
   },
   "action": {
+    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/gray-16.png",
       "32": "icons/gray-32.png"

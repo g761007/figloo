@@ -74,6 +74,7 @@
 | Arc 按鈕名稱實測 | 依序選取 6 個頂層圖層，屬性面板標題都換成新圖層，但沒有設定的圖層，按鈕都保留舊名稱 |
 | Arc 注入程式，攔下 Export 點擊 | 六種情境全部通過：icon 的 SVG、PNG 2x 與不指定格式，frame 使用設計師的 PNG 2x、沿用相同的 PNG 2x，以及在 PNG 2x 旁加 SVG 臨時設定。每次結束都選回原本的 frame，設計師的 PNG 2x 不變，沒有留下展開的圖層，icon 也沒有殘留設定 |
 | Arc 完整鏈路（MCP、bridge、service worker、content script） | 重新載入 extension 後，四次匯出都是 `source: "direct"`：icon 的 SVG 5,606 B 以文字回傳，約 1.2 秒；icon 的 PNG 2x 為 32×32，以圖片回傳並存檔，約 1.2 秒；frame 依設計師的 PNG 2x 匯出 786×1704、1.9 MB，超過內嵌上限所以只存檔，約 3.2 秒；frame 在 PNG 2x 旁加 SVG 臨時設定，從 ZIP 取出 18 MB 的 SVG，約 4.2 秒。每次都選回原本的 frame，設計師的 PNG 2x 不變，下載資料夾沒有新增檔案 |
+| 使用者的 Claude Code 工作階段 | Agent 依 popup 複製的提示，匯出標籤 `label-global-rank` 的 PNG 1x 與 2x，兩個檔案都直接回傳；沒有指定 `saveTo`，所以專案沒有新增檔案 |
 | Arc 原始 ZIP | 只經 bridge 要求同樣的匯出，取得 15 MB 的 `Sample App.zip`；Figloo 解出的項目名稱與大小，和 Python `zipfile` 讀到的一致 |
 
 ## 測試中發生的問題

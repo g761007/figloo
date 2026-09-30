@@ -72,6 +72,10 @@ The icon shows, for the tab you are looking at, whether Figloo can use it. Hover
 | Gray | Not a Figma design file, or the file is still loading. |
 | Gray with a red `!` | A Figma design page Figloo cannot read. |
 
+Click the icon to open the popup. It shows the file, the page, and whether Figloo and the coding agent are ready. When one layer is selected in Figma, it also shows the layer's path from the page and its direct children. Reading the children can briefly expand that layer in the layers panel; Figloo collapses it again.
+
+"Copy prompt for the agent" copies text to paste into your coding agent before you describe the task. It names the file, the tab, and the selected layer, and tells the agent which Figloo tools to start with. Without a selection, the prompt asks the agent to explore the file on its own. The popup shows the prompt before you copy it.
+
 The artwork lives in `apps/extension/scripts/render-icons.mjs`. After changing it, regenerate the committed PNGs:
 
 ```sh

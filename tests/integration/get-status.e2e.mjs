@@ -245,6 +245,43 @@ try {
   assert(!hookLeft.marker && hookLeft.native, `the export hook is removed from the page after a failed export (got ${JSON.stringify(hookLeft)})`);
   log("inspect_nodes and export_asset explain that a guest cannot select; the export hook was removed");
 
+  // The toolbar popup for the guest tab: its status, the missing selection, and a prompt that lets
+  // the agent explore the file. Opened as a page, since the toolbar button cannot be clicked here.
+  const popup = await context.newPage();
+  await popup.goto(`chrome-extension://${extensionId}/popup.html?tabId=${figmaTabId}`);
+  await popup.waitForSelector("section.prompt textarea", { timeout: 30_000 });
+  const shown = await popup.evaluate(() => ({
+    file: document.querySelector(".status .file")?.textContent ?? "",
+    readiness: document.querySelector(".readiness")?.textContent ?? "",
+    agent: document.querySelector(".agent")?.textContent ?? "",
+    hint: document.querySelector(".hint")?.textContent ?? "",
+    prompt: document.querySelector("textarea.preview")?.value ?? "",
+  }));
+  assert(shown.file.length > 0 && shown.prompt.includes(`File: ${shown.file} (tab ${figmaTabId})`), `the popup names the file and its tab (got ${JSON.stringify(shown)})`);
+  assert(/guest session cannot select layers/.test(shown.readiness), `the popup shows the guest limitation (got ${shown.readiness})`);
+  assert(shown.agent === "Agent: connected", `the popup shows the agent connection (got ${shown.agent})`);
+  assert(/No layer is selected/.test(shown.hint) && shown.prompt.includes(`Call list_pages and explore_page with tabId ${figmaTabId}`), `without a selection the popup offers a prompt to explore the file (got ${JSON.stringify(shown)})`);
+  await popup.click("button.copy");
+  const copyOutcome = await popup
+    .waitForFunction(() => (document.querySelector("button.copy")?.textContent === "Copied" ? "copied" : /press Cmd\+C/.test(document.body.textContent ?? "") ? "selected for a manual copy" : null), null, { timeout: 5_000 })
+    .then((handle) => handle.jsonValue());
+  // Reading the clipboard needs a permission extension pages lack here, so paste it into a field instead.
+  let clipboard = null;
+  if (copyOutcome === "copied") {
+    await popup.evaluate(() => {
+      const field = document.createElement("textarea");
+      field.id = "paste-check";
+      document.body.append(field);
+      field.focus();
+    });
+    await popup.keyboard.press("ControlOrMeta+V");
+    clipboard = await popup.evaluate(() => document.querySelector("#paste-check").value);
+  }
+  assert(copyOutcome !== "copied" || clipboard === shown.prompt, `the clipboard holds the prompt (got ${JSON.stringify(clipboard)})`);
+  log(`popup for the guest tab: "${shown.readiness}"; copy: ${copyOutcome}${clipboard === null ? "" : "; pasting gives back the prompt"}`);
+  await popup.close();
+  await figma.bringToFront();
+
   // Chrome keeps per-tab state across reloads, so scramble it first; the extension must restore it
   // on its own after the reload (get_status is not called here).
   await worker.evaluate(async (tabId) => {

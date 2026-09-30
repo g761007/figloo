@@ -1,4 +1,5 @@
 import {
+  AnchorResultSchema,
   CaptureParamsSchema,
   CapturePlanSchema,
   ExplorePageParamsSchema,
@@ -7,6 +8,8 @@ import {
   ExportRequestSchema,
   InspectParamsSchema,
   ListNeighborsParamsSchema,
+  ListPagesResultSchema,
+  NeighborsResultSchema,
   PROTOCOL_VERSION,
   ProbeResultSchema,
   ServerMessageSchema,
@@ -20,6 +23,7 @@ import { DEFAULT_TITLE, actionAppearance, agentLine, applyAppearance } from "./a
 import { cropCapture } from "./capture.js";
 import { installExportCapture, removeExportCapture } from "./export-capture.js";
 import { parseFigmaUrl } from "./figma-url.js";
+import { POPUP_CHILDREN, type PopupSnapshot } from "./popup-model.js";
 import { deriveReadiness } from "./readiness.js";
 import { DEFAULT_PORT, type ConnectionState } from "./state.js";
 
@@ -508,7 +512,50 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && (changes.token || changes.port)) reconnectNow();
 });
 
-chrome.runtime.onMessage.addListener((message: { type?: string } | undefined, _sender, sendResponse) => {
+/** Ancestors read for the popup's path, the most one request returns. */
+const POPUP_ANCESTORS = 50;
+
+/**
+ * What the toolbar popup shows for a tab: the tab's readiness, the agent connection, and the
+ * selected layer with its path and children. Reads go through the tab's queue like agent requests.
+ */
+async function popupSnapshot(tabId: number | undefined): Promise<PopupSnapshot> {
+  const snapshot: PopupSnapshot = { connection: { ...state }, tab: null, page: null, selection: null, selectionError: null };
+  const tab = tabId === undefined ? null : await chrome.tabs.get(tabId).catch(() => null);
+  if (tab?.id === undefined || !parseFigmaUrl(tab.url ?? "").isDesignFile) return snapshot;
+  const id = tab.id;
+  snapshot.tab = await probeTab(tab);
+  if (snapshot.tab.readiness !== "READY" && snapshot.tab.readiness !== "DEGRADED") return snapshot;
+  const pages = await runInTab(id, "list_pages", undefined);
+  if (pages.ok) snapshot.page = ListPagesResultSchema.parse(pages.result).pages.find((page) => page.current)?.name ?? null;
+  const anchored = await runInTab(id, "get_anchor", undefined);
+  if (!anchored.ok) {
+    snapshot.selectionError = anchored.error ?? { code: "INTERNAL", message: "the Figma tab did not report its selection" };
+    return snapshot;
+  }
+  const { identity, anchor } = AnchorResultSchema.parse(anchored.result);
+  const list = async (relation: "ancestors" | "children", limit: number) => {
+    const reply = await runInTab(id, "list_neighbors", { expect: identity, ref: anchor.ref, relation, from: 1, limit });
+    return reply.ok ? NeighborsResultSchema.parse(reply.result) : null;
+  };
+  const ancestors = await list("ancestors", POPUP_ANCESTORS);
+  const children = anchor.hasChildren ? await list("children", POPUP_CHILDREN) : null;
+  snapshot.selection = {
+    anchor,
+    ancestors: ancestors?.nodes ?? [],
+    children: children?.nodes ?? [],
+    childrenTotal: anchor.hasChildren ? (children?.total ?? null) : 0,
+    childrenHasMore: children?.hasMore ?? false,
+  };
+  return snapshot;
+}
+
+chrome.runtime.onMessage.addListener((message: { type?: string; tabId?: number } | undefined, _sender, sendResponse) => {
+  if (message?.type === "figloo:popup") {
+    popupSnapshot(message.tabId).then(sendResponse, (error: unknown) => sendResponse({ error: error instanceof Error ? error.message : String(error) }));
+    // Keeps the message channel open for the asynchronous reply.
+    return true;
+  }
   if (message?.type === "figloo:status") {
     sendResponse(state);
     return;
