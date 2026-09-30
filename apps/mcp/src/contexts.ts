@@ -6,7 +6,8 @@ export interface ExplorationContext {
   id: string;
   tabId: number;
   identity: PageIdentity;
-  anchorRef: string;
+  /** null for contexts opened from a page rather than from the user's selection. */
+  anchorRef: string | null;
   /** Only refs returned in this context may be explored further, which keeps exploration local. */
   knownRefs: Set<string>;
   lastUsedAt: number;
@@ -20,14 +21,14 @@ export class ContextStore {
 
   constructor(private readonly now: () => number = Date.now) {}
 
-  create(tabId: number, identity: PageIdentity, anchorRef: string): ExplorationContext {
+  create(tabId: number, identity: PageIdentity, anchorRef: string | null): ExplorationContext {
     this.sweep();
     const context: ExplorationContext = {
       id: `ctx_${randomUUID().replaceAll("-", "").slice(0, 12)}`,
       tabId,
       identity,
       anchorRef,
-      knownRefs: new Set([anchorRef]),
+      knownRefs: new Set(anchorRef ? [anchorRef] : []),
       lastUsedAt: this.now(),
     };
     this.contexts.set(context.id, context);

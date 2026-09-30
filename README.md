@@ -4,7 +4,7 @@ Figloo is a Chrome extension plus a local MCP server that lets a coding agent de
 
 ## Status
 
-M2 (local exploration) done. The extension pairs with the local MCP server over a loopback WebSocket and reports which Figma design tabs are open. An agent can start from the layer the user selected and walk to its parent, ancestors, siblings, and children, one bounded page at a time. Reading layer properties (`inspect_nodes`) comes in M3. See [docs/plans/2026-09-30-figloo-mvp-plan.md](docs/plans/2026-09-30-figloo-mvp-plan.md) for the roadmap and [docs/compatibility/](docs/compatibility/) for what was verified on real Figma pages.
+M3 (properties, screenshots, and page entry points) implemented; verification in a signed-in browser is in progress. An agent can list the pages of a Figma file, open a page or start from the user's selection, walk the layer tree one bounded page at a time, read what Figma's inspection panel shows for a layer, and take screenshots. Figloo targets engineers with view access to a file; it never edits the design. See [docs/plans/2026-09-30-figloo-mvp-plan.md](docs/plans/2026-09-30-figloo-mvp-plan.md) for the roadmap and [docs/compatibility/](docs/compatibility/) for what was verified on real Figma pages.
 
 ## Requirements
 
@@ -29,6 +29,8 @@ pnpm build
 2. Select `apps/extension/dist`.
 
 The extension ID is pinned by the `key` field in `apps/extension/static/manifest.json`, so it is the same on every machine (`offikfnknfkgijgianpfcghbccmkcjnb`). The local server only accepts connections from that ID.
+
+The extension asks for access to all sites (`<all_urls>`) because Chrome only lets an extension screenshot a tab without a click on its icon when it has that permission. Its content script still runs only on Figma design files.
 
 ### 2. Register the MCP server with your agent
 
@@ -77,13 +79,17 @@ pnpm --filter @figloo/extension icons
 | Tool | Description |
 |---|---|
 | `get_status` | Reports the bridge state, whether the extension is connected, and every open Figma design tab with its readiness (`LOADING`, `READY`, `DEGRADED`, `INCOMPATIBLE`), access level (`edit`, `view`, `guest`, `unknown`), UI locale, whether the tab is visible, and which UI surfaces the content script found. Includes a `hint` when something needs attention. |
-| `get_anchor` | Takes a `tabId` and returns the single layer the user selected in that tab, plus a `contextId` pinned to that tab and page load. |
-| `get_neighbors` | Lists the `parent`, `ancestors`, `siblings`, or `children` of a layer returned in the same context. Pages hold at most 50 layers (20 by default); follow `nextCursor` for more. |
+| `list_pages` | Lists the pages of the Figma file in a tab and which one is shown. |
+| `explore_page` | Opens a page (switching if needed) and lists the layers directly on it, with a `contextId`. |
+| `get_anchor` | Returns the single layer the user selected in a tab, plus a `contextId`. |
+| `get_neighbors` | Lists the `parent`, `ancestors`, `siblings`, or `children` of a layer returned in the same context. Pages hold at most 50 layers (20 by default); follow `nextCursor` for more. `children` also takes `depth` (up to 3) for a breadth-first subtree. |
+| `inspect_nodes` | Reads Figma's inspection panel for up to 5 layers: size and sizing mode, position, auto layout flow, padding, gap, corner radius, fills, borders, shadows, text content, typography per style run, and component properties. Values are exactly as Figma shows them. |
+| `capture` | Screenshots a layer, zoomed to fit, or the whole page. Returns a JPEG of at most 1568 px on its long edge. |
 | `release_context` | Forgets a context and its layer refs. |
 
-A typical request such as "implement this card" goes: `get_status`, then `get_anchor` on the selected button, `get_neighbors` with `ancestors` to find the card, then `children` of the card and of the parts that matter. Nothing outside those relations is read, and each call reports how many UI operations it used.
+A typical request goes: `get_status`, then `list_pages` and `explore_page` (or `get_anchor` when the user selected something), `capture` to see a page or frame, `get_neighbors` to find the parts that matter, and `inspect_nodes` for their exact values. Each call is bounded and reports how many UI operations it used.
 
-Figma applies layer expansion only while its tab is visible. Reading the selection, ancestors, siblings, and already expanded layers works from a background tab, but listing the children of a collapsed layer returns `TAB_IN_BACKGROUND` until the Figma tab is on screen. Keeping Figma beside the agent window is enough.
+Figma applies selection, expansion, zoom, and page changes only while its tab is visible. Reading pages, the selection, and already expanded layers works from a background tab; `inspect_nodes`, `capture`, page switches, and expanding collapsed layers return `TAB_IN_BACKGROUND` until the Figma tab is on screen. Keeping Figma beside the agent window is enough. `inspect_nodes` and `capture` select layers one after another, and `capture` zooms the view; the user's selection is put back afterwards, the zoom is not.
 
 ## Development
 

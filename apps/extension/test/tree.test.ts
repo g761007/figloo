@@ -216,3 +216,44 @@ describe("LayerTree robustness", () => {
     expect(found?.rowIndex).toBe(oldIndex + 2);
   });
 });
+
+describe("LayerTree subtree", () => {
+  it("lists children breadth first down to the requested depth and collapses what it opened", async () => {
+    const source = new FakeLayers(cardScreen(3));
+    const before = source.expandedIds();
+    const tree = makeTree(source);
+    const list = source.flat().find((row) => row.id === "list")!;
+
+    const page = await tree.subtreePage(list, 2, 50);
+    expect(ids(page.rows)).toEqual([
+      "c1", "c2", "c3", "c4", "c5",
+      "c1-title", "c1-image", "c1-button",
+      "c2-title", "c2-image", "c2-button",
+      "c3-title", "c3-image", "c3-button",
+      "c4-title", "c4-image", "c4-button",
+      "c5-title", "c5-image", "c5-button",
+    ]);
+    expect(page).toMatchObject({ hasMore: false, stopReason: "complete", total: 20 });
+
+    await tree.restore();
+    expect(source.expandedIds()).toEqual(before);
+  });
+
+  it("reports a cut-off tree when the layer limit runs out before a layer's children are listed", async () => {
+    const source = new FakeLayers(cardScreen(3));
+    const list = source.flat().find((row) => row.id === "list")!;
+
+    const page = await makeTree(source).subtreePage(list, 2, 8);
+    expect(page.rows).toHaveLength(8);
+    expect(page).toMatchObject({ hasMore: true, nextFrom: null, stopReason: "limit", total: null });
+  });
+
+  it("does not call a tree cut off when only the depth limit stops it", async () => {
+    const source = new FakeLayers(cardScreen(3));
+    const list = source.flat().find((row) => row.id === "list")!;
+
+    const page = await makeTree(source).subtreePage(list, 1, 50);
+    expect(ids(page.rows)).toEqual(["c1", "c2", "c3", "c4", "c5"]);
+    expect(page).toMatchObject({ hasMore: false, stopReason: "complete" });
+  });
+});

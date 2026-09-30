@@ -119,7 +119,7 @@ export const BridgeErrorCodeSchema = z.enum([
 ]);
 export type BridgeErrorCode = z.infer<typeof BridgeErrorCodeSchema>;
 
-export const BridgeOpSchema = z.enum(["refresh_tabs", "get_anchor", "list_neighbors"]);
+export const BridgeOpSchema = z.enum(["refresh_tabs", "get_anchor", "list_neighbors", "list_pages", "explore_page", "inspect_nodes", "capture"]);
 export type BridgeOp = z.infer<typeof BridgeOpSchema>;
 
 // Messages sent by the extension to the local bridge.
@@ -251,6 +251,9 @@ export type StopReason = z.infer<typeof StopReasonSchema>;
 /** Neighbor lists are paged by position: sibling or child position, or ancestor distance (1 = parent). */
 export const MAX_NEIGHBOR_LIMIT = 50;
 export const DEFAULT_NEIGHBOR_LIMIT = 20;
+export const MAX_NEIGHBOR_DEPTH = 3;
+/** Plan budget: detailed reads cover at most five layers per call. */
+export const MAX_INSPECT_REFS = 5;
 
 export const ListNeighborsParamsSchema = z.object({
   expect: PageIdentitySchema,
@@ -260,6 +263,8 @@ export const ListNeighborsParamsSchema = z.object({
   limit: z.number().int().positive().max(MAX_NEIGHBOR_LIMIT),
   /** Ref of the last layer returned by the previous page; lets the tab resume without rescanning. */
   after: z.string().optional(),
+  /** For children only: levels below the ref to include, breadth first, within the same limit. */
+  depth: z.number().int().min(1).max(MAX_NEIGHBOR_DEPTH).optional(),
 });
 export type ListNeighborsParams = z.infer<typeof ListNeighborsParamsSchema>;
 
@@ -328,3 +333,144 @@ export const TabOpResponseSchema = z.object({
   error: z.object({ code: z.union([BridgeErrorCodeSchema, ErrorCodeSchema]), message: z.string() }).optional(),
 });
 export type TabOpResponse = z.infer<typeof TabOpResponseSchema>;
+
+/** A page of the Figma file, as the pages list shows it. */
+export const FigmaPageSchema = z.object({ name: z.string(), current: z.boolean() });
+export type FigmaPage = z.infer<typeof FigmaPageSchema>;
+
+export const ListPagesResultSchema = z.object({ fileKey: z.string(), pages: z.array(FigmaPageSchema) });
+export type ListPagesResult = z.infer<typeof ListPagesResultSchema>;
+
+export const ExplorePageParamsSchema = z.object({
+  /** Page to open; the current page when omitted. Switching needs the tab to be visible. */
+  page: z.string().optional(),
+  limit: z.number().int().positive().max(MAX_NEIGHBOR_LIMIT),
+});
+export type ExplorePageParams = z.infer<typeof ExplorePageParamsSchema>;
+
+/** Result of the `explore_page` op: the layers directly on the page. */
+export const ExplorePageResultSchema = NeighborsResultSchema;
+export type ExplorePageResult = NeighborsResult;
+
+/** Groups of the view-only inspection panel an agent can ask for. */
+export const InspectGroupSchema = z.enum(["layout", "appearance", "typography", "component"]);
+export type InspectGroup = z.infer<typeof InspectGroupSchema>;
+
+export const InspectParamsSchema = z.object({
+  expect: PageIdentitySchema,
+  refs: z.array(z.string()).min(1).max(MAX_INSPECT_REFS),
+  groups: z.array(InspectGroupSchema).min(1).optional(),
+});
+export type InspectParams = z.infer<typeof InspectParamsSchema>;
+
+/** One value as the inspection panel shows it, for example group "Padding", name "Top", value "24px". */
+export const InspectedPropertySchema = z.object({
+  group: z.string().nullable(),
+  name: z.string(),
+  value: z.string(),
+});
+
+export const InspectedColorSchema = z.object({
+  /** Hex such as "#08458A", or the name of a color style when the panel shows one. */
+  value: z.string(),
+  opacity: z.string().nullable(),
+});
+
+/** One block of the inspection panel, in panel order. */
+export const InspectedSectionSchema = z.object({
+  /** Panel identifier, for example "properties", "colors", "borders", "shadows", "typography1", "content". */
+  kind: z.string(),
+  group: z.union([InspectGroupSchema, z.literal("other")]),
+  title: z.string().nullable(),
+  properties: z.array(InspectedPropertySchema),
+  colors: z.array(InspectedColorSchema),
+  /** Text content for "content", the parent component name for "selection_hierarchy". */
+  text: z.string().nullable(),
+});
+export type InspectedSection = z.infer<typeof InspectedSectionSchema>;
+
+export const InspectedNodeSchema = z.object({
+  ref: z.string(),
+  name: z.string(),
+  type: z.string().nullable(),
+  sections: z.array(InspectedSectionSchema),
+  /** Requested groups the panel did not show for this layer; Figma hides what does not apply. */
+  notShown: z.array(InspectGroupSchema),
+});
+export type InspectedNode = z.infer<typeof InspectedNodeSchema>;
+
+export const InspectResultSchema = z.object({
+  identity: PageIdentitySchema,
+  nodes: z.array(InspectedNodeSchema),
+  userSelectionRestored: z.boolean(),
+  uiOps: z.number().int().nonnegative(),
+  elapsedMs: z.number().nonnegative(),
+});
+export type InspectResult = z.infer<typeof InspectResultSchema>;
+
+export const CaptureParamsSchema = z.object({
+  expect: PageIdentitySchema,
+  /** Layer to capture; the whole page when null. */
+  ref: z.string().nullable(),
+});
+export type CaptureParams = z.infer<typeof CaptureParamsSchema>;
+
+/** A rectangle in CSS pixels of the tab's viewport. */
+export const RectSchema = z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive() });
+export type Rect = z.infer<typeof RectSchema>;
+
+/** Returned by the tab after it moved the view for a capture; the worker then captures and crops. */
+export const CapturePlanSchema = z.object({
+  identity: PageIdentitySchema,
+  token: z.string(),
+  crop: RectSchema,
+  /** "layer" when the crop follows the layer's bounds, "canvas" when it is the visible canvas. */
+  cropSource: z.enum(["layer", "canvas"]),
+  viewport: z.object({ width: z.number().positive(), height: z.number().positive() }),
+  zoom: z.string().nullable(),
+});
+export type CapturePlan = z.infer<typeof CapturePlanSchema>;
+
+export const CaptureResultSchema = z.object({
+  identity: PageIdentitySchema,
+  image: z.object({ data: z.string(), mimeType: z.literal("image/jpeg"), width: z.number().int(), height: z.number().int() }),
+  cropSource: z.enum(["layer", "canvas"]),
+  zoom: z.string().nullable(),
+  userSelectionRestored: z.boolean(),
+  elapsedMs: z.number().nonnegative(),
+});
+export type CaptureResult = z.infer<typeof CaptureResultSchema>;
+
+/** What `explore_page` returns to the coding agent. */
+export const ExplorePageOutputSchema = z.object({
+  contextId: z.string(),
+  tabId: z.number().int(),
+  fileKey: z.string(),
+  page: z.string().nullable(),
+  nodes: z.array(LayerNodeSchema),
+  total: z.number().int().nonnegative().nullable(),
+  hasMore: z.boolean(),
+  /** Continue with get_neighbors(ref = nodes[0].ref, relation = "siblings", cursor = nextCursor). */
+  nextCursor: z.string().nullable(),
+});
+export type ExplorePageOutput = z.infer<typeof ExplorePageOutputSchema>;
+
+export const InspectNodesOutputSchema = z.object({
+  contextId: z.string(),
+  nodes: z.array(InspectedNodeSchema),
+  userSelectionRestored: z.boolean(),
+  uiOps: z.number().int().nonnegative(),
+  elapsedMs: z.number().nonnegative(),
+});
+export type InspectNodesOutput = z.infer<typeof InspectNodesOutputSchema>;
+
+export const CaptureOutputSchema = z.object({
+  contextId: z.string(),
+  ref: z.string().nullable(),
+  width: z.number().int(),
+  height: z.number().int(),
+  cropSource: z.enum(["layer", "canvas"]),
+  zoom: z.string().nullable(),
+  userSelectionRestored: z.boolean(),
+});
+export type CaptureOutput = z.infer<typeof CaptureOutputSchema>;

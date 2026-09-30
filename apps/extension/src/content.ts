@@ -1,4 +1,4 @@
-import type { ListNeighborsParams } from "@figloo/protocol";
+import type { CaptureParams, ExplorePageParams, InspectParams, ListNeighborsParams } from "@figloo/protocol";
 import { Explorer, OpError } from "./adapter/ops.js";
 import { probeFigmaPage } from "./probe.js";
 import { deriveReadiness } from "./readiness.js";
@@ -44,9 +44,19 @@ async function runOp(message: OpMessage): Promise<unknown> {
     switch (message.op) {
       case "get_anchor":
         return { ok: true, result: await explorer.getAnchor() };
+      // The service worker validated the params; keeping zod out of this script keeps it small.
       case "list_neighbors":
-        // The service worker validated the params; keeping zod out of this script keeps it small.
         return { ok: true, result: await explorer.listNeighbors(message.params as ListNeighborsParams) };
+      case "list_pages":
+        return { ok: true, result: explorer.listPages() };
+      case "explore_page":
+        return { ok: true, result: await explorer.explorePage(message.params as ExplorePageParams) };
+      case "inspect_nodes":
+        return { ok: true, result: await explorer.inspectNodes(message.params as InspectParams) };
+      case "prepare_capture":
+        return { ok: true, result: await explorer.prepareCapture(message.params as CaptureParams) };
+      case "finish_capture":
+        return { ok: true, result: await explorer.finishCapture((message.params as { token: string }).token) };
       default:
         return { ok: false, error: { code: "BAD_MESSAGE", message: `unsupported op ${message.op}` } };
     }

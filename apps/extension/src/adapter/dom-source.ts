@@ -1,3 +1,4 @@
+import type { Rect } from "@figloo/protocol";
 import { layersPanel, readRenderedRows, rowElement, type Row } from "./row.js";
 import type { Align, RowSource } from "./tree.js";
 
@@ -17,6 +18,8 @@ export class TabInBackground extends Error {
 
 /** The live Figma layers panel. Operates it only through scrolling and expand carets. */
 export class DomRowSource implements RowSource {
+  /** Selections and key presses, which the tree's own UI operation count does not see. */
+  actions = 0;
   private readonly initialScrollTop: number | null;
 
   constructor(private readonly doc: Document) {
@@ -59,6 +62,57 @@ export class DomRowSource implements RowSource {
     return this.rows();
   }
 
+  /** Selects a layer the way a click in the layers panel does, and waits until Figma shows it selected. */
+  async select(row: Row): Promise<boolean> {
+    if (this.doc.hidden) throw new TabInBackground();
+    const cell = rowElement(this.doc, row.id)?.querySelector('[role="gridcell"]:not([aria-hidden="true"])');
+    if (!cell) return false;
+    this.actions += 1;
+    synthesizeClick(cell);
+    return this.waitFor(() => this.rows().find((r) => r.id === row.id)?.selected === true);
+  }
+
+  /** Sends a shortcut to the canvas keyboard target, for example Shift+2 to zoom to the selection. */
+  pressKey(key: string, code: string, keyCode: number, shiftKey = false): void {
+    if (this.doc.hidden) throw new TabInBackground();
+    const target = this.doc.querySelector<HTMLElement>("input.focus-target");
+    if (!target) return;
+    this.actions += 1;
+    target.focus();
+    const init = { key, code, keyCode, which: keyCode, shiftKey, bubbles: true, cancelable: true, composed: true };
+    target.dispatchEvent(new KeyboardEvent("keydown", init));
+    target.dispatchEvent(new KeyboardEvent("keyup", init));
+  }
+
+  /** The part of the canvas no panel covers, in viewport CSS pixels. */
+  canvasRect(): Rect | null {
+    const canvas = this.doc.querySelector("canvas")?.getBoundingClientRect();
+    if (!canvas || canvas.width <= 0 || canvas.height <= 0) return null;
+    let left = canvas.left;
+    let right = canvas.right;
+    const leftPanel = this.doc.querySelector('[data-testid="leftPanelContainer.resizablePanel"]')?.getBoundingClientRect();
+    if (leftPanel && leftPanel.width > 0 && leftPanel.right > left && leftPanel.left <= left + 1) left = leftPanel.right;
+    const rightPanel = this.doc.querySelector('[data-testid="propertiesPanelContainer.resizablePanel"]')?.getBoundingClientRect();
+    if (rightPanel && rightPanel.width > 0 && rightPanel.left < right && rightPanel.right >= right - 1) right = rightPanel.left;
+    return right > left ? { x: left, y: canvas.top, width: right - left, height: canvas.height } : null;
+  }
+
+  /** Screen bounds of a layer from the screen reader mirror, which covers the selection's neighborhood. */
+  mirrorRect(id: string): Rect | null {
+    const el = this.doc.querySelector(`[role="main"] [data-nodeid="${id}"]`);
+    const rect = el?.getBoundingClientRect();
+    return rect && rect.width > 0 && rect.height > 0 ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
+  }
+
+  zoomLabel(): string | null {
+    const label = this.doc.querySelector('button[aria-label$="zoom and view options"]')?.getAttribute("aria-label");
+    return label ? label.split(",")[0]!.trim() : null;
+  }
+
+  async settle(condition: () => boolean, timeoutMs = RENDER_TIMEOUT_MS): Promise<boolean> {
+    return this.waitFor(condition, timeoutMs);
+  }
+
   restoreScroll(): void {
     const scroller = this.scroller();
     if (scroller && this.initialScrollTop !== null) this.scrollTo(scroller, this.initialScrollTop);
@@ -86,8 +140,8 @@ export class DomRowSource implements RowSource {
     return height > 0 ? height : DEFAULT_ROW_HEIGHT;
   }
 
-  private async waitFor(condition: () => boolean): Promise<boolean> {
-    const deadline = Date.now() + RENDER_TIMEOUT_MS;
+  private async waitFor(condition: () => boolean, timeoutMs = RENDER_TIMEOUT_MS): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
     while (!condition()) {
       if (Date.now() >= deadline) return false;
       // Timers are throttled in hidden tabs but message tasks are not; a visible tab gets short sleeps.

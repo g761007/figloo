@@ -81,6 +81,13 @@ describe("Explorer on captured Figma markup", () => {
     }
   });
 
+  it("explains that a guest cannot read properties instead of waiting for a panel that never comes", async () => {
+    const explorer = new Explorer("page-1", document, window);
+    const { identity } = await explorer.getAnchor();
+    // The captured page has no right sidebar, just like a guest session.
+    await expect(explorer.inspectNodes({ expect: identity, refs: ["1335:5269"] })).rejects.toMatchObject({ code: "UI_NOT_READY", message: expect.stringMatching(/guest/) });
+  });
+
   it("lists the siblings of the anchor from the rendered rows", async () => {
     const explorer = new Explorer("page-1", document, window);
     const { identity } = await explorer.getAnchor();

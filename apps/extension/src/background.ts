@@ -1,4 +1,8 @@
 import {
+  CaptureParamsSchema,
+  CapturePlanSchema,
+  ExplorePageParamsSchema,
+  InspectParamsSchema,
   ListNeighborsParamsSchema,
   PROTOCOL_VERSION,
   ProbeResultSchema,
@@ -10,6 +14,7 @@ import {
   type TabStatus,
 } from "@figloo/protocol";
 import { DEFAULT_TITLE, actionAppearance, agentLine, applyAppearance } from "./action.js";
+import { cropCapture } from "./capture.js";
 import { parseFigmaUrl } from "./figma-url.js";
 import { deriveReadiness } from "./readiness.js";
 import { DEFAULT_PORT, type ConnectionState } from "./state.js";
@@ -165,7 +170,11 @@ async function handleRequest(id: string, op: string, tabId?: number, params?: Re
         send({ type: "response", id, ok: true, result: { tabs: await refreshAllTabs() } });
         return;
       case "get_anchor":
-      case "list_neighbors": {
+      case "list_neighbors":
+      case "list_pages":
+      case "explore_page":
+      case "inspect_nodes":
+      case "capture": {
         const reply = await runInTab(tabId, op, params);
         send(reply.ok ? { type: "response", id, ok: true, result: reply.result } : { type: "response", id, ok: false, error: reply.error });
         return;
@@ -186,23 +195,64 @@ async function runInTab(tabId: number | undefined, op: string, params: unknown):
   if (tabId === undefined || !tab || !parseFigmaUrl(tab.url ?? "").isDesignFile) {
     return { ok: false, error: { code: "TAB_NOT_FOUND", message: `tab ${tabId ?? "(none)"} is not an open Figma design file` } };
   }
-  if (op === "list_neighbors" && !ListNeighborsParamsSchema.safeParse(params).success) {
-    return { ok: false, error: { code: "BAD_MESSAGE", message: "list_neighbors params do not match the protocol schema" } };
+  const schema = PARAM_SCHEMAS[op];
+  if (schema && !schema.safeParse(params).success) {
+    return { ok: false, error: { code: "BAD_MESSAGE", message: `${op} params do not match the protocol schema` } };
   }
   const previous = tabQueues.get(tabId) ?? Promise.resolve();
-  const current = previous.then(async (): Promise<TabOpResponse> => {
-    try {
-      return TabOpResponseSchema.parse(await chrome.tabs.sendMessage(tabId, { type: "figloo:op", op, params }));
-    } catch {
-      return { ok: false, error: { code: "UI_NOT_READY", message: "the Figloo content script is not running in this tab; reload the tab" } };
-    }
-  });
+  const current = previous.then((): Promise<TabOpResponse> => (op === "capture" ? captureTab(tabId, params) : sendToTab(tabId, op, params)));
   const settled = current.catch(() => undefined);
   tabQueues.set(tabId, settled);
   void settled.then(() => {
     if (tabQueues.get(tabId) === settled) tabQueues.delete(tabId);
   });
   return current;
+}
+
+const PARAM_SCHEMAS: Record<string, { safeParse(value: unknown): { success: boolean } }> = {
+  list_neighbors: ListNeighborsParamsSchema,
+  explore_page: ExplorePageParamsSchema,
+  inspect_nodes: InspectParamsSchema,
+  capture: CaptureParamsSchema,
+};
+
+async function sendToTab(tabId: number, op: string, params: unknown): Promise<TabOpResponse> {
+  try {
+    return TabOpResponseSchema.parse(await chrome.tabs.sendMessage(tabId, { type: "figloo:op", op, params }));
+  } catch {
+    return { ok: false, error: { code: "UI_NOT_READY", message: "the Figloo content script is not running in this tab; reload the tab" } };
+  }
+}
+
+/**
+ * The tab moves its view to the target and clears the selection; the worker captures what is on
+ * screen, crops it to the target, and the tab then puts the user's selection back.
+ */
+async function captureTab(tabId: number, params: unknown): Promise<TabOpResponse> {
+  const started = Date.now();
+  // Read the tab again: it may have changed while this request waited in the queue.
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  const window = tab ? await chrome.windows.get(tab.windowId).catch(() => null) : null;
+  if (!tab || !tab.active || !window || window.state === "minimized") {
+    return { ok: false, error: { code: "TAB_IN_BACKGROUND", message: "the Figma tab must be the visible tab of its window to capture it" } };
+  }
+  const prepared = await sendToTab(tabId, "prepare_capture", params);
+  if (!prepared.ok) return prepared;
+  const plan = CapturePlanSchema.parse(prepared.result);
+  let finished: TabOpResponse = { ok: true, result: { userSelectionRestored: false } };
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+    const image = await cropCapture(dataUrl, plan.crop, plan.viewport);
+    finished = await sendToTab(tabId, "finish_capture", { token: plan.token });
+    const restored = finished.ok && (finished.result as { userSelectionRestored?: boolean } | undefined)?.userSelectionRestored === true;
+    return {
+      ok: true,
+      result: { identity: plan.identity, image: { ...image, mimeType: "image/jpeg" }, cropSource: plan.cropSource, zoom: plan.zoom, userSelectionRestored: restored, elapsedMs: Date.now() - started },
+    };
+  } catch (error) {
+    await sendToTab(tabId, "finish_capture", { token: plan.token });
+    return { ok: false, error: { code: "INTERNAL", message: `capture failed: ${error instanceof Error ? error.message : String(error)}` } };
+  }
 }
 
 function startHeartbeat(intervalMs: number): void {

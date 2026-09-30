@@ -214,6 +214,31 @@ try {
   assert(neighborsError?.code === "CONTEXT_NOT_FOUND", `get_neighbors without a context (got ${JSON.stringify(neighborsError)})`);
   log("get_anchor and get_neighbors report missing selection, tab, and context through the extension");
 
+  // M3 through every hop, as far as a guest can go: pages, a page context, a subtree, and a page capture.
+  const pagesResult = await client.callTool({ name: "list_pages", arguments: { tabId: figmaTabId } });
+  const pageList = pagesResult.structuredContent?.pages ?? [];
+  assert(!pagesResult.isError && pageList.length > 1 && pageList.filter((p) => p.current).length === 1, `list_pages returns the file's pages (got ${JSON.stringify(pagesResult.structuredContent)})`);
+  const explored = await client.callTool({ name: "explore_page", arguments: { tabId: figmaTabId } });
+  assert(!explored.isError, `explore_page on the shown page (got ${JSON.stringify(explored.content)})`);
+  const pageContext = explored.structuredContent;
+  assert(pageContext.nodes.length > 0 && pageContext.nodes.every((n) => n.depth === 0), "explore_page lists the layers directly on the page");
+  const withChildren = pageContext.nodes.find((n) => n.hasChildren);
+  const tree = await client.callTool({ name: "get_neighbors", arguments: { contextId: pageContext.contextId, ref: withChildren.ref, relation: "children", depth: 2, limit: 30 } });
+  assert(!tree.isError, `children with depth 2 (got ${JSON.stringify(tree.content)})`);
+  const treeNodes = tree.structuredContent.nodes;
+  const firstLevel = new Set(treeNodes.filter((n) => n.parentRef === withChildren.ref).map((n) => n.ref));
+  assert(treeNodes.every((n) => n.parentRef === withChildren.ref || firstLevel.has(n.parentRef)), "every layer in the subtree hangs off the ref or its children");
+  log(`subtree of ${withChildren.ref}: ${treeNodes.length} layers, ${firstLevel.size} direct children, hasMore=${tree.structuredContent.hasMore}`);
+  const shot = await client.callTool({ name: "capture", arguments: { contextId: pageContext.contextId } });
+  assert(!shot.isError, `capture of the whole page (got ${JSON.stringify(shot.content)})`);
+  const image = shot.content.find((c) => c.type === "image");
+  const jpeg = Buffer.from(image.data, "base64");
+  assert(image.mimeType === "image/jpeg" && jpeg[0] === 0xff && jpeg[1] === 0xd8, "capture returns a JPEG image");
+  assert(shot.structuredContent.width <= 1568 && shot.structuredContent.height <= 1568, "the capture fits within 1568 px");
+  log(`page capture: ${shot.structuredContent.width}x${shot.structuredContent.height}, ${jpeg.length} bytes, crop=${shot.structuredContent.cropSource}`);
+  const inspectError = toolErrorOf(await client.callTool({ name: "inspect_nodes", arguments: { contextId: pageContext.contextId, refs: [withChildren.ref] } }));
+  assert(inspectError?.code === "UI_NOT_READY" && /guest/.test(inspectError.message), `inspect_nodes explains that a guest cannot select (got ${JSON.stringify(inspectError)})`);
+
   // Chrome keeps per-tab state across reloads, so scramble it first; the extension must restore it
   // on its own after the reload (get_status is not called here).
   await worker.evaluate(async (tabId) => {

@@ -24,7 +24,7 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://www.figma.com/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js",

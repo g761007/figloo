@@ -1,7 +1,15 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, describe, expect, it } from "vitest";
-import { GetAnchorOutputSchema, GetNeighborsOutputSchema, type LayerNode, type RequestMessage } from "@figloo/protocol";
+import {
+  CaptureOutputSchema,
+  ExplorePageOutputSchema,
+  GetAnchorOutputSchema,
+  GetNeighborsOutputSchema,
+  InspectNodesOutputSchema,
+  type LayerNode,
+  type RequestMessage,
+} from "@figloo/protocol";
 import type { Bridge } from "../src/bridge.js";
 import { MAX_OUTPUT_BYTES } from "../src/exploration.js";
 import { createServer } from "../src/server.js";
@@ -191,5 +199,110 @@ describe("release_context", () => {
     expect((await call("release_context", { contextId })).structuredContent).toEqual({ released: true });
     expect(errorOf(await call("get_neighbors", { contextId, ref: "3:3", relation: "parent" })).code).toBe("CONTEXT_NOT_FOUND");
     expect((await call("release_context", { contextId })).structuredContent).toEqual({ released: false });
+  });
+});
+
+const topLevel = (count: number) => Array.from({ length: count }, (_, i) => node(`10:${i + 1}`, { depth: 0, position: i + 1, siblingCount: count, parentRef: null, hasChildren: true, childCount: null }));
+
+describe("page entry point", () => {
+  it("lists the file's pages", async () => {
+    const { requests, call } = await setup(() => ({ ok: true, result: { fileKey: "abc", pages: [{ name: "Home", current: true }, { name: "Specs", current: false }] } }));
+    const result = await call("list_pages", { tabId: 7 });
+    expect(result.structuredContent).toEqual({ tabId: 7, fileKey: "abc", pages: [{ name: "Home", current: true }, { name: "Specs", current: false }] });
+    expect(requests[0]).toMatchObject({ op: "list_pages", tabId: 7 });
+  });
+
+  it("opens a context from a page, without a selection, whose layers can be explored further", async () => {
+    const { requests, call } = await setup((request) => {
+      if (request.op === "explore_page") {
+        return { ok: true, result: { identity: { ...identity, page: "Specs" }, nodes: topLevel(50), total: 60, from: 1, nextFrom: 51, hasMore: true, stopReason: "limit", uiOps: 3, elapsedMs: 30 } };
+      }
+      return { ok: true, result: { identity: { ...identity, page: "Specs" }, nodes: [], total: 0, from: 1, nextFrom: null, hasMore: false, stopReason: "complete", uiOps: 0, elapsedMs: 1 } };
+    });
+    const output = ExplorePageOutputSchema.parse((await call("explore_page", { tabId: 7, page: "Specs" })).structuredContent);
+    expect(output).toMatchObject({ page: "Specs", total: 60, hasMore: true });
+    expect(requests[0]).toMatchObject({ op: "explore_page", params: { page: "Specs", limit: 50 } });
+
+    const children = await call("get_neighbors", { contextId: output.contextId, ref: "10:5", relation: "children" });
+    expect(children.isError).toBeFalsy();
+    const next = await call("get_neighbors", { contextId: output.contextId, ref: "10:1", relation: "siblings", cursor: output.nextCursor });
+    expect(next.isError).toBeFalsy();
+    expect(requests.at(-1)).toMatchObject({ op: "list_neighbors", params: { ref: "10:1", relation: "siblings", from: 51, after: "10:50", expect: { page: "Specs" } } });
+  });
+});
+
+describe("inspect_nodes", () => {
+  const inspected = { ref: "3:3", name: "Button", type: "Instance", sections: [{ kind: "properties", group: "layout", title: "Layout", properties: [{ group: null, name: "Width", value: "16px" }], colors: [], text: null }], notShown: ["typography"] };
+
+  it("reads only layers this context returned and passes the requested groups", async () => {
+    const { requests, call, errorOf } = await setup((request) =>
+      request.op === "get_anchor" ? { ok: true, result: anchorResult } : { ok: true, result: { identity, nodes: [inspected], userSelectionRestored: true, uiOps: 2, elapsedMs: 300 } },
+    );
+    const { contextId } = GetAnchorOutputSchema.parse((await call("get_anchor", { tabId: 7 })).structuredContent);
+
+    expect(errorOf(await call("inspect_nodes", { contextId, refs: ["3:3", "9:9"] })).code).toBe("UNKNOWN_REF");
+    expect(requests.filter((request) => request.op === "inspect_nodes")).toHaveLength(0);
+
+    const output = InspectNodesOutputSchema.parse((await call("inspect_nodes", { contextId, refs: ["3:3"], groups: ["layout", "typography"] })).structuredContent);
+    expect(output.nodes[0]).toMatchObject({ ref: "3:3", notShown: ["typography"] });
+    expect(output.userSelectionRestored).toBe(true);
+    expect(requests.at(-1)).toMatchObject({ op: "inspect_nodes", tabId: 7, params: { expect: identity, refs: ["3:3"], groups: ["layout", "typography"] } });
+  });
+
+  it("caps a call at five layers", async () => {
+    const { call } = await setup(() => ({ ok: true, result: anchorResult }));
+    const { contextId } = GetAnchorOutputSchema.parse((await call("get_anchor", { tabId: 7 })).structuredContent);
+    const result = await call("inspect_nodes", { contextId, refs: ["1", "2", "3", "4", "5", "6"] });
+    expect(result.isError).toBe(true);
+  });
+
+  it("tells the agent to ask for the Figma tab to be brought forward", async () => {
+    const { call, errorOf } = await setup((request) =>
+      request.op === "get_anchor" ? { ok: true, result: anchorResult } : { ok: false, error: { code: "TAB_IN_BACKGROUND", message: "the Figma tab is in the background" } },
+    );
+    const { contextId } = GetAnchorOutputSchema.parse((await call("get_anchor", { tabId: 7 })).structuredContent);
+    const error = errorOf(await call("inspect_nodes", { contextId, refs: ["3:3"] }));
+    expect(error.code).toBe("TAB_IN_BACKGROUND");
+    expect(error.hint).toMatch(/bring the Figma tab to the front/);
+  });
+});
+
+describe("capture", () => {
+  const captured = { identity, image: { data: Buffer.from("jpeg bytes").toString("base64"), mimeType: "image/jpeg", width: 364, height: 789 }, cropSource: "layer", zoom: "93%", userSelectionRestored: true, elapsedMs: 900 };
+
+  it("returns the image to the agent along with how it was cropped", async () => {
+    const { requests, call } = await setup((request) => (request.op === "get_anchor" ? { ok: true, result: anchorResult } : { ok: true, result: captured }));
+    const { contextId } = GetAnchorOutputSchema.parse((await call("get_anchor", { tabId: 7 })).structuredContent);
+
+    const result = await call("capture", { contextId, ref: "3:3" });
+    const content = result.content as { type: string; data?: string; mimeType?: string }[];
+    expect(content[0]).toEqual({ type: "image", data: captured.image.data, mimeType: "image/jpeg" });
+    expect(CaptureOutputSchema.parse(result.structuredContent)).toMatchObject({ ref: "3:3", width: 364, height: 789, cropSource: "layer", userSelectionRestored: true });
+    expect(requests.at(-1)).toMatchObject({ op: "capture", params: { expect: identity, ref: "3:3" } });
+
+    await call("capture", { contextId });
+    expect(requests.at(-1)).toMatchObject({ op: "capture", params: { ref: null } });
+  });
+
+  it("refuses refs the context did not return", async () => {
+    const { call, errorOf } = await setup(() => ({ ok: true, result: anchorResult }));
+    const { contextId } = GetAnchorOutputSchema.parse((await call("get_anchor", { tabId: 7 })).structuredContent);
+    expect(errorOf(await call("capture", { contextId, ref: "9:9" })).code).toBe("UNKNOWN_REF");
+  });
+});
+
+describe("get_neighbors depth", () => {
+  it("passes depth for children and refuses it for other relations", async () => {
+    const { requests, call, errorOf } = await setup((request) =>
+      request.op === "get_anchor"
+        ? { ok: true, result: anchorResult }
+        : { ok: true, result: { identity, nodes: [], total: 0, from: 1, nextFrom: null, hasMore: false, stopReason: "complete", uiOps: 0, elapsedMs: 1 } },
+    );
+    const { contextId } = GetAnchorOutputSchema.parse((await call("get_anchor", { tabId: 7 })).structuredContent);
+
+    await call("get_neighbors", { contextId, ref: "3:3", relation: "children", depth: 3 });
+    expect(requests.at(-1)).toMatchObject({ params: { relation: "children", depth: 3 } });
+    expect(errorOf(await call("get_neighbors", { contextId, ref: "3:3", relation: "siblings", depth: 2 })).code).toBe("INVALID_ARGUMENT");
+    expect((await call("get_neighbors", { contextId, ref: "3:3", relation: "children", depth: 4 })).isError).toBe(true);
   });
 });

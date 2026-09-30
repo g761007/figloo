@@ -237,10 +237,42 @@ export class LayerTree {
     return this.childrenPage(parent, from, limit, after);
   }
 
+  /** Layers directly on the page, in layers panel order. */
+  async topLevelPage(from: number, limit: number, after?: string): Promise<Page> {
+    return this.childrenPage(PAGE_ROOT, from, limit, after);
+  }
+
+  /**
+   * Children down to `depth` levels, breadth first, within `limit` layers in total. A cut-off tree
+   * cannot be resumed from a single position, so it reports hasMore without a next position.
+   */
+  async subtreePage(root: Row, depth: number, limit: number): Promise<Page> {
+    const rows: Row[] = [];
+    const cut = (stopReason: StopReason): Page => ({ rows, total: null, from: 1, nextFrom: null, hasMore: true, stopReason });
+    let frontier: Row[] = [root];
+    for (let level = 1; level <= depth; level += 1) {
+      const next: Row[] = [];
+      for (const parent of frontier) {
+        if (!parent.hasChildren) continue;
+        // A layer whose children would go unlisted means the tree is cut short.
+        if (rows.length >= limit) return cut("limit");
+        const page = await this.childrenPage(parent, 1, limit - rows.length);
+        rows.push(...page.rows);
+        next.push(...page.rows);
+        if (page.stopReason !== "complete" && page.stopReason !== "limit") return cut(page.stopReason);
+        if (page.hasMore) return cut("limit");
+      }
+      frontier = next;
+    }
+    return { rows, total: rows.length, from: 1, nextFrom: null, hasMore: false, stopReason: "complete" };
+  }
+
   async childrenPage(parentRow: Parent | Row, from: number, limit: number, after?: string): Promise<Page> {
     if ("hasChildren" in parentRow && !parentRow.hasChildren) {
       return { rows: [], total: 0, from, nextFrom: null, hasMore: false, stopReason: "complete" };
     }
+    // A row read earlier may have moved since; rows below an expanded layer shift down.
+    if ("setSize" in parentRow) parentRow = this.rendered(parentRow.id) ?? (await this.find(parentRow.id)) ?? parentRow;
     const rows: Row[] = [];
     let total: number | null = null;
     let ended = false;
