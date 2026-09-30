@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Figloo",
+  "version": "0.0.1",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": ["https://www.figma.com/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.figma.com/design/*", "https://www.figma.com/file/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "options_page": "options.html"
+}
