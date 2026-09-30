@@ -1,12 +1,16 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { PROTOCOL_VERSION, RefreshTabsResultSchema, StatusReportSchema, type StatusReport } from "@figloo/protocol";
 import type { Bridge } from "./bridge.js";
+import { ContextStore } from "./contexts.js";
+import { registerExplorationTools } from "./exploration.js";
 import { overallStatus, statusHint } from "./status.js";
 
 export interface ServerDeps {
   bridge: Bridge;
   version: string;
   refreshTimeoutMs?: number;
+  contexts?: ContextStore;
+  log?: (message: string) => void;
 }
 
 export function createServer(deps: ServerDeps): McpServer {
@@ -24,6 +28,12 @@ export function createServer(deps: ServerDeps): McpServer {
       return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }], structuredContent: report };
     },
   );
+
+  registerExplorationTools(server, {
+    bridge: deps.bridge,
+    contexts: deps.contexts ?? new ContextStore(),
+    log: deps.log ?? ((message) => console.error(`[figloo] ${message}`)),
+  });
 
   return server;
 }

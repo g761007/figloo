@@ -23,6 +23,7 @@ export function probeFigmaPage(doc: Document, win: Window): ProbeResult {
     },
     layerRowCount: doc.querySelectorAll('[data-testid$="-layers-panel-row"]').length,
     selectedCount: parseSelectedCount(focusTarget?.getAttribute("aria-label") ?? null),
+    visible: !doc.hidden,
   };
 }
 

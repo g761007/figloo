@@ -9,6 +9,7 @@ import {
   protocolCompatible,
   type BridgeErrorCode,
   type BridgeOp,
+  type ErrorCode,
   type ServerMessage,
   type TabStatus,
 } from "@figloo/protocol";
@@ -31,7 +32,7 @@ export interface ExtensionInfo {
 
 export class BridgeError extends Error {
   constructor(
-    readonly code: BridgeErrorCode,
+    readonly code: BridgeErrorCode | ErrorCode,
     message: string,
   ) {
     super(message);

@@ -9,10 +9,11 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "test:integration": "node tests/integration/get-status.e2e.mjs"
+    "test:integration": "node tests/integration/get-status.e2e.mjs && node tests/integration/explore.e2e.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.31.0",
+    "esbuild": "^0.28.2",
     "playwright": "^1.63.0"
   }
 }

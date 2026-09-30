@@ -4,7 +4,7 @@ Figloo is a Chrome extension plus a local MCP server that lets a coding agent de
 
 ## Status
 
-M1 (connection loop) in progress. The extension pairs with the local MCP server over a loopback WebSocket, reconnects on its own, and reports which Figma design tabs are open and what each one can read. The `get_status` tool is real; the exploration tools (`get_anchor`, `get_neighbors`, `inspect_nodes`) are not implemented yet. See [docs/plans/2026-09-30-figloo-mvp-plan.md](docs/plans/2026-09-30-figloo-mvp-plan.md) for the roadmap and [docs/compatibility/](docs/compatibility/) for what was verified on real Figma pages.
+M2 (local exploration) done. The extension pairs with the local MCP server over a loopback WebSocket and reports which Figma design tabs are open. An agent can start from the layer the user selected and walk to its parent, ancestors, siblings, and children, one bounded page at a time. Reading layer properties (`inspect_nodes`) comes in M3. See [docs/plans/2026-09-30-figloo-mvp-plan.md](docs/plans/2026-09-30-figloo-mvp-plan.md) for the roadmap and [docs/compatibility/](docs/compatibility/) for what was verified on real Figma pages.
 
 ## Requirements
 
@@ -76,7 +76,14 @@ pnpm --filter @figloo/extension icons
 
 | Tool | Description |
 |---|---|
-| `get_status` | Reports the bridge state, whether the extension is connected, and every open Figma design tab with its readiness (`LOADING`, `READY`, `DEGRADED`, `INCOMPATIBLE`), access level (`edit`, `view`, `guest`, `unknown`), UI locale, and which UI surfaces the content script found. Includes a `hint` when something needs attention. |
+| `get_status` | Reports the bridge state, whether the extension is connected, and every open Figma design tab with its readiness (`LOADING`, `READY`, `DEGRADED`, `INCOMPATIBLE`), access level (`edit`, `view`, `guest`, `unknown`), UI locale, whether the tab is visible, and which UI surfaces the content script found. Includes a `hint` when something needs attention. |
+| `get_anchor` | Takes a `tabId` and returns the single layer the user selected in that tab, plus a `contextId` pinned to that tab and page load. |
+| `get_neighbors` | Lists the `parent`, `ancestors`, `siblings`, or `children` of a layer returned in the same context. Pages hold at most 50 layers (20 by default); follow `nextCursor` for more. |
+| `release_context` | Forgets a context and its layer refs. |
+
+A typical request such as "implement this card" goes: `get_status`, then `get_anchor` on the selected button, `get_neighbors` with `ancestors` to find the card, then `children` of the card and of the parts that matter. Nothing outside those relations is read, and each call reports how many UI operations it used.
+
+Figma applies layer expansion only while its tab is visible. Reading the selection, ancestors, siblings, and already expanded layers works from a background tab, but listing the children of a collapsed layer returns `TAB_IN_BACKGROUND` until the Figma tab is on screen. Keeping Figma beside the agent window is enough.
 
 ## Development
 
@@ -84,7 +91,7 @@ pnpm --filter @figloo/extension icons
 pnpm build             # pnpm -r build
 pnpm typecheck         # pnpm -r typecheck
 pnpm test              # pnpm -r test (vitest in every package)
-pnpm test:integration  # real Chrome + real MCP process + real Figma tab, see below
+pnpm test:integration  # real Chromium + real MCP process + real Figma tabs, see below
 ```
 
 The integration test (`tests/integration/get-status.e2e.mjs`) launches Playwright's Chromium with the built extension, pairs it through the options page, opens a public Figma file as a guest, and checks `get_status` before and after restarting the MCP process. It needs network access, a built workspace, and the browser download:
@@ -93,7 +100,7 @@ The integration test (`tests/integration/get-status.e2e.mjs`) launches Playwrigh
 pnpm exec playwright install chromium
 ```
 
-Branded Google Chrome 137 and newer ignore `--load-extension`, which is why the test does not use the installed Chrome. Set `FIGLOO_E2E_HEADED=1` to watch it, and `FIGLOO_E2E_FIGMA_URL` to use another file.
+Branded Google Chrome 137 and newer ignore `--load-extension`, which is why the test does not use the installed Chrome. A second script, `tests/integration/explore.e2e.mjs`, injects the layer navigation code into a visible guest Figma tab and checks expanding, listing, paging, climbing past same-named layers, and restoring the panel. Set `FIGLOO_E2E_HEADED=1` to watch them, and `FIGLOO_E2E_FIGMA_URL` to use another file.
 
 ## Repository layout
 

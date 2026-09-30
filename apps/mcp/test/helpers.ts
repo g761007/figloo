@@ -76,6 +76,7 @@ export function sampleTab(overrides: Partial<TabStatus> = {}): TabStatus {
     uiLocale: "en",
     capabilities: { layersPanel: true, focusTarget: true, propertiesPanel: true, mirrorDom: false, uiCollapsed: false },
     layerRowCount: 42,
+    visible: true,
     probedAt: 1,
     detail: null,
     ...overrides,

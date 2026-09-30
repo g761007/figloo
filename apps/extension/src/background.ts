@@ -1,9 +1,12 @@
 import {
+  ListNeighborsParamsSchema,
   PROTOCOL_VERSION,
   ProbeResultSchema,
   ServerMessageSchema,
+  TabOpResponseSchema,
   type ExtensionMessage,
   type ProbeResult,
+  type TabOpResponse,
   type TabStatus,
 } from "@figloo/protocol";
 import { DEFAULT_TITLE, actionAppearance, agentLine, applyAppearance } from "./action.js";
@@ -148,25 +151,58 @@ async function handleServerMessage(raw: string): Promise<void> {
     case "pong":
       return;
     case "request":
-      await handleRequest(message.id, message.op);
+      await handleRequest(message.id, message.op, message.tabId, message.params);
       return;
     default:
       return;
   }
 }
 
-async function handleRequest(id: string, op: string): Promise<void> {
+async function handleRequest(id: string, op: string, tabId?: number, params?: Record<string, unknown>): Promise<void> {
   try {
     switch (op) {
       case "refresh_tabs":
         send({ type: "response", id, ok: true, result: { tabs: await refreshAllTabs() } });
         return;
+      case "get_anchor":
+      case "list_neighbors": {
+        const reply = await runInTab(tabId, op, params);
+        send(reply.ok ? { type: "response", id, ok: true, result: reply.result } : { type: "response", id, ok: false, error: reply.error });
+        return;
+      }
       default:
         send({ type: "response", id, ok: false, error: { code: "BAD_MESSAGE", message: `unsupported op ${op}` } });
     }
   } catch (error) {
     send({ type: "response", id, ok: false, error: { code: "INTERNAL", message: error instanceof Error ? error.message : String(error) } });
   }
+}
+
+const tabQueues = new Map<number, Promise<unknown>>();
+
+/** Forwards an op to the tab's content script; each tab runs one UI operation sequence at a time. */
+async function runInTab(tabId: number | undefined, op: string, params: unknown): Promise<TabOpResponse> {
+  const tab = tabId === undefined ? null : await chrome.tabs.get(tabId).catch(() => null);
+  if (tabId === undefined || !tab || !parseFigmaUrl(tab.url ?? "").isDesignFile) {
+    return { ok: false, error: { code: "TAB_NOT_FOUND", message: `tab ${tabId ?? "(none)"} is not an open Figma design file` } };
+  }
+  if (op === "list_neighbors" && !ListNeighborsParamsSchema.safeParse(params).success) {
+    return { ok: false, error: { code: "BAD_MESSAGE", message: "list_neighbors params do not match the protocol schema" } };
+  }
+  const previous = tabQueues.get(tabId) ?? Promise.resolve();
+  const current = previous.then(async (): Promise<TabOpResponse> => {
+    try {
+      return TabOpResponseSchema.parse(await chrome.tabs.sendMessage(tabId, { type: "figloo:op", op, params }));
+    } catch {
+      return { ok: false, error: { code: "UI_NOT_READY", message: "the Figloo content script is not running in this tab; reload the tab" } };
+    }
+  });
+  const settled = current.catch(() => undefined);
+  tabQueues.set(tabId, settled);
+  void settled.then(() => {
+    if (tabQueues.get(tabId) === settled) tabQueues.delete(tabId);
+  });
+  return current;
 }
 
 function startHeartbeat(intervalMs: number): void {
@@ -210,6 +246,7 @@ async function probeTab(tab: chrome.tabs.Tab): Promise<TabStatus> {
     uiLocale: probe?.uiLocale ?? null,
     capabilities: probe?.capabilities ?? { layersPanel: false, focusTarget: false, propertiesPanel: false, mirrorDom: false, uiCollapsed: false },
     layerRowCount: probe?.layerRowCount ?? 0,
+    visible: probe?.visible ?? null,
     probedAt: probe ? Date.now() : null,
     detail,
   };

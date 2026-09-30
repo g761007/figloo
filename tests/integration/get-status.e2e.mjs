@@ -49,6 +49,12 @@ async function startMcp(configDir, port) {
   return client;
 }
 
+/** The error body of a tool result that failed, or null when it succeeded. */
+function toolErrorOf(result) {
+  if (!result.isError) return null;
+  return JSON.parse(result.content[0].text).error;
+}
+
 async function getStatus(client) {
   const result = await client.callTool({ name: "get_status" });
   return result.structuredContent;
@@ -198,6 +204,15 @@ try {
   assert(status.status === "DEGRADED", `overall status follows the tab (got ${status.status})`);
   action = await actionState(worker, figmaTabId);
   assert(action.badge === "!" && action.title.includes("guest session"), `tooltip follows the new limitation (got ${JSON.stringify(action.title)})`);
+
+  // M2 through every hop: a guest cannot select, so get_anchor must say so instead of guessing an anchor.
+  let anchorError = toolErrorOf(await client.callTool({ name: "get_anchor", arguments: { tabId: figmaTabId } }));
+  assert(anchorError?.code === "NO_SELECTION" && /select one layer/.test(anchorError.hint), `get_anchor without a selection (got ${JSON.stringify(anchorError)})`);
+  anchorError = toolErrorOf(await client.callTool({ name: "get_anchor", arguments: { tabId: optionsTabId } }));
+  assert(anchorError?.code === "TAB_NOT_FOUND", `get_anchor on a tab without a design file (got ${JSON.stringify(anchorError)})`);
+  const neighborsError = toolErrorOf(await client.callTool({ name: "get_neighbors", arguments: { contextId: "ctx_missing", ref: "1:1", relation: "parent" } }));
+  assert(neighborsError?.code === "CONTEXT_NOT_FOUND", `get_neighbors without a context (got ${JSON.stringify(neighborsError)})`);
+  log("get_anchor and get_neighbors report missing selection, tab, and context through the extension");
 
   // Chrome keeps per-tab state across reloads, so scramble it first; the extension must restore it
   // on its own after the reload (get_status is not called here).

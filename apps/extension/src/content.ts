@@ -1,3 +1,5 @@
+import type { ListNeighborsParams } from "@figloo/protocol";
+import { Explorer, OpError } from "./adapter/ops.js";
 import { probeFigmaPage } from "./probe.js";
 import { deriveReadiness } from "./readiness.js";
 
@@ -16,8 +18,42 @@ window.__figlooStop?.();
 
 let lastReadiness = "";
 
-function onMessage(message: { type?: string } | undefined, _sender: chrome.runtime.MessageSender, sendResponse: (response: unknown) => void): void {
-  if (message?.type === "figloo:probe") sendResponse(probeFigmaPage(document, window));
+/** A new ID per page load: contexts created before a reload or re-injection must not match. */
+const explorer = new Explorer(crypto.randomUUID(), document, window);
+
+interface OpMessage {
+  type: "figloo:op";
+  op: string;
+  params?: unknown;
+}
+
+function onMessage(message: { type?: string } | undefined, _sender: chrome.runtime.MessageSender, sendResponse: (response: unknown) => void): boolean | undefined {
+  if (message?.type === "figloo:probe") {
+    sendResponse(probeFigmaPage(document, window));
+    return undefined;
+  }
+  if (message?.type === "figloo:op") {
+    void runOp(message as OpMessage).then(sendResponse);
+    return true; // Responds asynchronously.
+  }
+  return undefined;
+}
+
+async function runOp(message: OpMessage): Promise<unknown> {
+  try {
+    switch (message.op) {
+      case "get_anchor":
+        return { ok: true, result: await explorer.getAnchor() };
+      case "list_neighbors":
+        // The service worker validated the params; keeping zod out of this script keeps it small.
+        return { ok: true, result: await explorer.listNeighbors(message.params as ListNeighborsParams) };
+      default:
+        return { ok: false, error: { code: "BAD_MESSAGE", message: `unsupported op ${message.op}` } };
+    }
+  } catch (error) {
+    if (error instanceof OpError) return { ok: false, error: { code: error.code, message: error.message } };
+    return { ok: false, error: { code: "INTERNAL", message: error instanceof Error ? error.message : String(error) } };
+  }
 }
 
 /** Tells the service worker when this page's readiness changes, so the toolbar icon can follow. */

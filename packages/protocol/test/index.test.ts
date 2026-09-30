@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   ConnectionStatusSchema,
   ExtensionMessageSchema,
+  LayerNodeSchema,
+  ListNeighborsParamsSchema,
+  MAX_NEIGHBOR_LIMIT,
   PROTOCOL_VERSION,
   ServerMessageSchema,
   TabStatusSchema,
@@ -44,6 +47,7 @@ describe("bridge messages", () => {
     uiLocale: "en",
     capabilities: { layersPanel: true, focusTarget: true, propertiesPanel: false, mirrorDom: false, uiCollapsed: false },
     layerRowCount: 42,
+    visible: true,
     probedAt: 1,
     detail: null,
   };
@@ -71,5 +75,38 @@ describe("bridge messages", () => {
 
   it("rejects a tab status with an unknown readiness", () => {
     expect(TabStatusSchema.safeParse({ ...tab, readiness: "CONNECTED" }).success).toBe(false);
+  });
+});
+
+describe("exploration schemas", () => {
+  const node = {
+    ref: "338:4231",
+    name: "Button",
+    nameTruncated: false,
+    type: "Instance",
+    depth: 3,
+    position: 2,
+    siblingCount: 4,
+    parentRef: "338:4200",
+    hasChildren: true,
+    childCount: null,
+    insideInstance: false,
+    link: "https://www.figma.com/design/abc/Name?node-id=338-4231",
+  };
+
+  it("accepts an op error code in a bridge response", () => {
+    const parsed = ExtensionMessageSchema.parse({ type: "response", id: "r", ok: false, error: { code: "NO_SELECTION", message: "select a layer" } });
+    expect(parsed.type).toBe("response");
+  });
+
+  it("caps list_neighbors at the plan's per-call limit", () => {
+    const params = { expect: { pageId: "p", fileKey: "abc", page: null }, ref: "1:2", relation: "children", from: 1 };
+    expect(ListNeighborsParamsSchema.safeParse({ ...params, limit: MAX_NEIGHBOR_LIMIT }).success).toBe(true);
+    expect(ListNeighborsParamsSchema.safeParse({ ...params, limit: MAX_NEIGHBOR_LIMIT + 1 }).success).toBe(false);
+  });
+
+  it("rejects a layer summary without a position among its siblings", () => {
+    expect(LayerNodeSchema.safeParse(node).success).toBe(true);
+    expect(LayerNodeSchema.safeParse({ ...node, position: 0 }).success).toBe(false);
   });
 });

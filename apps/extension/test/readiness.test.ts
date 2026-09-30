@@ -12,6 +12,7 @@ const probe = (overrides: Partial<ProbeResult> = {}): ProbeResult => ({
   capabilities: { layersPanel: true, focusTarget: true, propertiesPanel: true, mirrorDom: false, uiCollapsed: false },
   layerRowCount: 10,
   selectedCount: 0,
+  visible: true,
   ...overrides,
 });
 

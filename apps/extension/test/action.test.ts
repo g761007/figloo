@@ -15,6 +15,7 @@ const tab = (overrides: Partial<TabStatus> = {}): TabStatus => ({
   uiLocale: "en",
   capabilities: { layersPanel: true, focusTarget: true, propertiesPanel: true, mirrorDom: false, uiCollapsed: false },
   layerRowCount: 10,
+  visible: true,
   probedAt: 1,
   detail: null,
   ...overrides,
