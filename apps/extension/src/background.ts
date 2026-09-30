@@ -1,3 +1,359 @@
-chrome.runtime.onInstalled.addListener((details) => {
-  console.log("Figloo installed:", details.reason);
+import {
+  PROTOCOL_VERSION,
+  ProbeResultSchema,
+  ServerMessageSchema,
+  type ExtensionMessage,
+  type ProbeResult,
+  type TabStatus,
+} from "@figloo/protocol";
+import { DEFAULT_TITLE, actionAppearance, agentLine, applyAppearance } from "./action.js";
+import { parseFigmaUrl } from "./figma-url.js";
+import { deriveReadiness } from "./readiness.js";
+import { DEFAULT_PORT, type ConnectionState } from "./state.js";
+
+const FIGMA_DESIGN_URLS = ["https://www.figma.com/design/*", "https://www.figma.com/file/*"];
+const RECONNECT_ALARM = "figloo-reconnect";
+const BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000];
+const REJECTED_RETRY_MS = 60_000;
+const PROBE_TIMEOUT_MS = 3_000;
+const REFRESH_DEBOUNCE_MS = 500;
+
+interface Settings {
+  token: string;
+  port: number;
+}
+
+const state: ConnectionState = { phase: "disconnected", port: null, connectedAt: null, lastError: null, attempts: 0, tabCount: 0 };
+let socket: WebSocket | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+const tabs = new Map<number, TabStatus>();
+const unreachableProbes = new Map<number, number>();
+let connectPending = false;
+
+async function loadSettings(): Promise<Settings | null> {
+  const stored = await chrome.storage.local.get(["token", "port"]);
+  const token = typeof stored.token === "string" ? stored.token.trim() : "";
+  if (!token) return null;
+  return { token, port: Number(stored.port) || DEFAULT_PORT };
+}
+
+async function connect(): Promise<void> {
+  // Startup, alarm, and storage events can all call this in the same tick; open one socket only.
+  if (connectPending || (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING))) return;
+  connectPending = true;
+  const settings = await loadSettings().finally(() => {
+    connectPending = false;
+  });
+  if (!settings) {
+    setPhase("unpaired");
+    state.lastError = "no pairing token saved; open the Figloo options page";
+    return;
+  }
+  setPhase("connecting");
+  state.port = settings.port;
+  const ws = new WebSocket(`ws://127.0.0.1:${settings.port}/`);
+  socket = ws;
+
+  ws.addEventListener("open", () => {
+    send({
+      type: "hello",
+      protocolVersion: PROTOCOL_VERSION,
+      token: settings.token,
+      extensionVersion: chrome.runtime.getManifest().version,
+      userAgent: navigator.userAgent,
+    });
+  });
+  ws.addEventListener("message", (event) => {
+    if (socket === ws) void handleServerMessage(String(event.data));
+  });
+  ws.addEventListener("error", () => {
+    state.lastError = `cannot reach ws://127.0.0.1:${settings.port}; is figloo-mcp running?`;
+  });
+  ws.addEventListener("close", (event) => {
+    // A socket that was replaced or closed on purpose must not touch the current connection's state.
+    if (socket !== ws) return;
+    socket = null;
+    stopHeartbeat();
+    const wasConnected = state.phase === "connected";
+    setPhase("disconnected");
+    state.connectedAt = null;
+    if (event.code >= 4000 && event.reason) state.lastError = `${event.code} ${event.reason}`;
+    // Unauthorized or incompatible: retry slowly so a bad token does not hammer the bridge.
+    if (event.code === 4001 || event.code === 4003) {
+      scheduleReconnect(REJECTED_RETRY_MS);
+      return;
+    }
+    scheduleReconnect(wasConnected ? BACKOFF_MS[0] : nextBackoff());
+  });
+}
+
+function nextBackoff(): number {
+  const delay = BACKOFF_MS[Math.min(state.attempts, BACKOFF_MS.length - 1)];
+  state.attempts += 1;
+  return delay;
+}
+
+function scheduleReconnect(delayMs: number): void {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    void connect();
+  }, delayMs);
+}
+
+function reconnectNow(): void {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+  state.attempts = 0;
+  if (socket) {
+    const ws = socket;
+    socket = null;
+    ws.close(1000, "reconnect requested");
+  }
+  void connect();
+}
+
+function send(message: ExtensionMessage): void {
+  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+}
+
+async function handleServerMessage(raw: string): Promise<void> {
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  const parsed = ServerMessageSchema.safeParse(json);
+  if (!parsed.success) return;
+  const message = parsed.data;
+  switch (message.type) {
+    case "welcome":
+      setPhase("connected");
+      state.connectedAt = Date.now();
+      state.attempts = 0;
+      state.lastError = null;
+      startHeartbeat(message.heartbeatIntervalMs);
+      await refreshAllTabs();
+      pushTabs();
+      return;
+    case "error":
+      state.lastError = `${message.code}: ${message.message}`;
+      return;
+    case "ping":
+      send({ type: "pong", t: message.t });
+      return;
+    case "pong":
+      return;
+    case "request":
+      await handleRequest(message.id, message.op);
+      return;
+    default:
+      return;
+  }
+}
+
+async function handleRequest(id: string, op: string): Promise<void> {
+  try {
+    switch (op) {
+      case "refresh_tabs":
+        send({ type: "response", id, ok: true, result: { tabs: await refreshAllTabs() } });
+        return;
+      default:
+        send({ type: "response", id, ok: false, error: { code: "BAD_MESSAGE", message: `unsupported op ${op}` } });
+    }
+  } catch (error) {
+    send({ type: "response", id, ok: false, error: { code: "INTERNAL", message: error instanceof Error ? error.message : String(error) } });
+  }
+}
+
+function startHeartbeat(intervalMs: number): void {
+  stopHeartbeat();
+  // Regular traffic also keeps the service worker alive (Chrome 116+ extends its lifetime on WebSocket activity).
+  heartbeatTimer = setInterval(() => send({ type: "ping", t: Date.now() }), intervalMs);
+}
+
+function stopHeartbeat(): void {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+}
+
+async function listDesignTabs(): Promise<chrome.tabs.Tab[]> {
+  return chrome.tabs.query({ url: FIGMA_DESIGN_URLS });
+}
+
+async function probeTab(tab: chrome.tabs.Tab): Promise<TabStatus> {
+  const tabId = tab.id ?? -1;
+  const url = tab.url ?? "";
+  const parsed = parseFigmaUrl(url);
+  let probe: ProbeResult | null = null;
+  try {
+    const response: unknown = await withTimeout(chrome.tabs.sendMessage(tabId, { type: "figloo:probe" }), PROBE_TIMEOUT_MS);
+    probe = ProbeResultSchema.parse(response);
+    unreachableProbes.delete(tabId);
+  } catch {
+    unreachableProbes.set(tabId, (unreachableProbes.get(tabId) ?? 0) + 1);
+  }
+  const { readiness, detail } = deriveReadiness(probe, unreachableProbes.get(tabId) ?? 0);
+  return {
+    tabId,
+    windowId: tab.windowId,
+    url,
+    title: tab.title ?? "",
+    fileKey: parsed.fileKey,
+    fileName: probe?.fileName ?? parsed.fileName,
+    nodeIdFromUrl: parsed.nodeId,
+    readiness,
+    access: probe?.access ?? "unknown",
+    uiLocale: probe?.uiLocale ?? null,
+    capabilities: probe?.capabilities ?? { layersPanel: false, focusTarget: false, propertiesPanel: false, mirrorDom: false, uiCollapsed: false },
+    layerRowCount: probe?.layerRowCount ?? 0,
+    probedAt: probe ? Date.now() : null,
+    detail,
+  };
+}
+
+async function refreshAllTabs(): Promise<TabStatus[]> {
+  const list = (await listDesignTabs()).filter((tab) => tab.id !== undefined);
+  const statuses = await Promise.all(list.map(probeTab));
+  const previous = [...tabs.keys()];
+  tabs.clear();
+  for (const status of statuses) tabs.set(status.tabId, status);
+  state.tabCount = statuses.length;
+  // Chrome keeps per-tab icons across navigations until the tab closes, so reset tabs that left.
+  for (const tabId of previous) if (!tabs.has(tabId)) applyAction(tabId, null);
+  for (const status of statuses) applyAction(status.tabId, status);
+  return statuses;
+}
+
+function setPhase(phase: ConnectionState["phase"]): void {
+  const agentChanged = agentLine(phase) !== agentLine(state.phase);
+  state.phase = phase;
+  // Every tracked tab's tooltip mentions the agent connection, so refresh them when that changes.
+  if (agentChanged) for (const status of tabs.values()) applyAction(status.tabId, status);
+}
+
+/** Shows on the toolbar icon whether Figloo can use the page in this tab; null restores the default. */
+function applyAction(tabId: number, status: TabStatus | null): void {
+  applyAppearance(tabId, actionAppearance(status, state.phase)).catch((error: unknown) => {
+    // The tab may have closed in the meantime; anything else is worth seeing in the worker console.
+    if (!/No tab with id/.test(String(error))) console.warn("Figloo: cannot update the toolbar icon", error);
+  });
+}
+
+function forgetTab(tabId: number): void {
+  const tracked = tabs.delete(tabId);
+  unreachableProbes.delete(tabId);
+  applyAction(tabId, null);
+  if (!tracked) return;
+  state.tabCount = tabs.size;
+  pushTabs();
+}
+
+function pushTabs(): void {
+  send({ type: "tabs", tabs: [...tabs.values()] });
+}
+
+function scheduleRefresh(): void {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    void refreshAllTabs().then(pushTabs);
+  }, REFRESH_DEBOUNCE_MS);
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function injectIntoOpenTabs(): Promise<void> {
+  const list = await listDesignTabs();
+  await Promise.all(
+    list.map(async (tab) => {
+      if (tab.id === undefined) return;
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
+      } catch {
+        // Discarded or restricted tabs cannot be injected; they will be probed again after a reload.
+      }
+    }),
+  );
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== "complete" && changeInfo.url === undefined) return;
+  if (parseFigmaUrl(tab.url ?? "").isDesignFile) {
+    scheduleRefresh();
+    return;
+  }
+  // Chrome keeps per-tab icons across navigations until the tab closes, so a tab that left its
+  // design file is reset here. This worker may have restarted since it changed the icon, so for
+  // untracked tabs Chrome's own per-tab title tells whether anything needs resetting.
+  if (tabs.has(tabId)) {
+    forgetTab(tabId);
+    return;
+  }
+  chrome.action
+    .getTitle({ tabId })
+    .then((title) => {
+      if (title !== DEFAULT_TITLE) applyAction(tabId, null);
+    })
+    .catch(() => {});
 });
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (!tabs.delete(tabId)) return;
+  unreachableProbes.delete(tabId);
+  state.tabCount = tabs.size;
+  pushTabs();
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  void injectIntoOpenTabs().then(scheduleRefresh);
+  void chrome.alarms.create(RECONNECT_ALARM, { periodInMinutes: 1 });
+  void connect();
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  void connect();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === RECONNECT_ALARM && state.phase !== "connected") void connect();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && (changes.token || changes.port)) reconnectNow();
+});
+
+chrome.runtime.onMessage.addListener((message: { type?: string } | undefined, _sender, sendResponse) => {
+  if (message?.type === "figloo:status") {
+    sendResponse(state);
+    return;
+  }
+  if (message?.type === "figloo:reconnect") {
+    reconnectNow();
+    sendResponse({ ok: true });
+    return;
+  }
+  if (message?.type === "figloo:page-changed") {
+    scheduleRefresh();
+    sendResponse({ ok: true });
+  }
+});
+
+void connect();

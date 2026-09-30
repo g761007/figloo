@@ -5,11 +5,17 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "typecheck": "tsc --noEmit"
+    "icons": "node scripts/render-icons.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@figloo/protocol": "workspace:*"
   },
   "devDependencies": {
     "@types/chrome": "^0.3.4",
     "esbuild": "^0.28.2",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
   }
 }

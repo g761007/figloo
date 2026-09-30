@@ -3,12 +3,24 @@
   <head>
     <meta charset="utf-8" />
     <title>Figloo Options</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; max-width: 480px; margin: 2rem auto; padding: 0 1rem; }
+      label { display: block; margin-top: 1rem; }
+      input { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; }
+      button { margin: 1rem 0.5rem 0 0; }
+      #status { margin-top: 1.5rem; padding: 0.75rem; background: #f3f3f3; border-radius: 6px; white-space: pre-wrap; font-family: ui-monospace, monospace; }
+    </style>
   </head>
   <body>
     <h1>Figloo</h1>
+    <p>Run <code>figloo-mcp pair</code> in a terminal and paste the values it prints.</p>
     <form id="pairing-form">
-      <!-- Pairing fields are added once the local bridge exists. -->
+      <label>Pairing token <input id="token" name="token" autocomplete="off" required /></label>
+      <label>Bridge port <input id="port" name="port" type="number" min="1" max="65535" required /></label>
+      <button type="submit">Save and connect</button>
+      <button type="button" id="reconnect">Reconnect now</button>
     </form>
+    <div id="status">Loading status…</div>
     <script type="module" src="options.js"></script>
   </body>
 </html>

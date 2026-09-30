@@ -4,6 +4,7 @@ import { build } from "esbuild";
 await build({
   entryPoints: ["src/background.ts", "src/options.ts"],
   bundle: true,
+  minify: true,
   format: "esm",
   target: "chrome116",
   outdir: "dist",
@@ -12,6 +13,7 @@ await build({
 await build({
   entryPoints: ["src/content.ts"],
   bundle: true,
+  minify: true,
   format: "iife",
   target: "chrome116",
   outdir: "dist",

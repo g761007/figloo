@@ -2,17 +2,44 @@
   "manifest_version": 3,
   "name": "Figloo",
   "version": "0.0.1",
+  "description": "Lets a local coding agent explore the Figma design around your current selection.",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "alarms"],
-  "host_permissions": ["https://www.figma.com/*"],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzW0fEhusqt+dsSWc31tmZI1T8RI5EQWxXsoepTVjLtkxyKQky9rJ/oroDOn2yu+TjtDu2Il7WM7ufEaYYmnckCIirvTCj44p75QuIxSjmYWFuPXSRhVJDX+WHkfY11aznMQ0YDFUrk4LphIwqU75AdMNUCf4RhELeqHyB6HuUrMuKU0eewV/5MdMgBo78Yy6ZDP6Zl9a5Q+WQ9HcUMGqZ/mwt+pC55J6JIsJFR8ZMrR+AUq8kZSaTNwmcNgdzJc0hd9x8/Vvwye48p4s6BhwaPsMHx4S/7P7x4VqFI8VHOaGxVwPcxbT9c/Xo5g4KUtDmQ6P3rxGvBAKe0PWr17DnQIDAQAB",
+  "icons": {
+    "16": "icons/color-16.png",
+    "32": "icons/color-32.png",
+    "48": "icons/color-48.png",
+    "128": "icons/color-128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/gray-16.png",
+      "32": "icons/gray-32.png"
+    },
+    "default_title": "Figloo: no Figma design file in this tab"
+  },
+  "permissions": [
+    "storage",
+    "alarms",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.figma.com/*"
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["https://www.figma.com/design/*", "https://www.figma.com/file/*"],
-      "js": ["content.js"]
+      "matches": [
+        "https://www.figma.com/design/*",
+        "https://www.figma.com/file/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "options_page": "options.html"

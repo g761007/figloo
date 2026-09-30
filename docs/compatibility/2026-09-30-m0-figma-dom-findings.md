@@ -12,7 +12,7 @@
 | A | Claude Code 內建瀏覽器，UA Chrome/152 | 未登入（訪客） | 檢視 | 瀏覽器工具的真實點擊，加上頁面內 JS 派發合成事件 |
 | B | Arc 1.166.0，UA Chrome/154 | 已登入 | 檢視（工具列顯示 Ask to edit／Request sent） | AppleScript `execute javascript`，只能派發未信任事件，等同 content script |
 
-共同條件：Figma UI 語言 `en`，`data-product-locale` 屬性存在。未測組合：登入編輯模式、Google Chrome 147、非英文 UI、正式 extension 的 isolated world。
+共同條件：Figma UI 語言 `en`，`data-product-locale` 屬性存在。未測組合：登入編輯模式、Google Chrome 本機版本（本日自動更新為 154，M1 只在 Playwright Chromium 153 驗證）、非英文 UI。正式 extension 的 content script 已在 M1 驗證，見 2026-09-30-m1-connection.md。
 
 ## 1. 圖層面板
 
