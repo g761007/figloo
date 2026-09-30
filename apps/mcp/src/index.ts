@@ -5,7 +5,9 @@ import { Bridge } from "./bridge.js";
 import { configPath, loadOrCreateConfig } from "./config.js";
 import { createServer } from "./server.js";
 
-const VERSION: string = createRequire(import.meta.url)("../package.json").version;
+/** Set by `pnpm package`, whose single-file bundle has no package.json next to it. */
+declare const __FIGLOO_VERSION__: string | undefined;
+const VERSION: string = typeof __FIGLOO_VERSION__ === "string" ? __FIGLOO_VERSION__ : createRequire(import.meta.url)("../package.json").version;
 const command = process.argv[2] ?? "serve";
 const config = loadOrCreateConfig();
 

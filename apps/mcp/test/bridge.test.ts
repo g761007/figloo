@@ -82,6 +82,24 @@ describe("Bridge session", () => {
     await expect(bridge.request("refresh_tabs", undefined, 50)).rejects.toMatchObject({ code: "TIMEOUT" });
   });
 
+  it("ignores a late answer to a timed-out request and a repeated answer to a newer one", async () => {
+    const bridge = track(await startBridge());
+    const ext = await pairFakeExtension(bridge.port);
+    const requests: string[] = [];
+    ext.ws.on("message", (data) => {
+      const message = JSON.parse(data.toString()) as { type: string; id: string };
+      if (message.type === "request") requests.push(message.id);
+    });
+    await expect(bridge.request("refresh_tabs", undefined, 50)).rejects.toMatchObject({ code: "TIMEOUT" });
+    const newer = bridge.request("refresh_tabs", undefined, 1_000);
+    await new Promise((r) => setTimeout(r, 20));
+    const [timedOut, current] = requests;
+    ext.send({ type: "response", id: timedOut!, ok: true, result: { tabs: ["late"] } } as never);
+    ext.send({ type: "response", id: current!, ok: true, result: { tabs: ["first"] } } as never);
+    ext.send({ type: "response", id: current!, ok: true, result: { tabs: ["repeated"] } } as never);
+    await expect(newer).resolves.toEqual({ tabs: ["first"] });
+  });
+
   it("rejects requests while no extension is connected", async () => {
     const bridge = track(await startBridge());
     await expect(bridge.request("refresh_tabs")).rejects.toBeInstanceOf(BridgeError);

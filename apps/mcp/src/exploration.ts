@@ -37,7 +37,7 @@ const OP_TIMEOUT_MS = 20_000;
 /** Plan budget for one tool result. */
 export const MAX_OUTPUT_BYTES = 32 * 1024;
 
-const HINTS: Record<string, string> = {
+export const HINTS: Record<string, string> = {
   NO_SELECTION: "Ask the user to select one layer in Figma, then call get_anchor again.",
   MULTIPLE_SELECTION: "Ask the user to select a single layer in Figma, then call get_anchor again.",
   NOT_CONNECTED: "Call get_status for setup steps.",

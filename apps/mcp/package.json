@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "docs:tools": "UPDATE_TOOL_DOCS=1 vitest run test/tool-docs.test.ts"
   },
   "dependencies": {
     "@figloo/protocol": "workspace:*",

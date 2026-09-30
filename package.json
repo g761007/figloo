@@ -9,6 +9,8 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
+    "package": "pnpm build && node scripts/package.mjs",
+    "test:release": "node scripts/check-release.mjs",
     "test:integration": "node tests/integration/get-status.e2e.mjs && node tests/integration/explore.e2e.mjs"
   },
   "devDependencies": {

@@ -11,8 +11,9 @@ import { chromium } from "playwright";
 import { EXTENSION_ID } from "../../packages/protocol/dist/index.js";
 
 const ROOT = resolve(import.meta.dirname, "../..");
-const EXTENSION_DIR = join(ROOT, "apps/extension/dist");
-const MCP_ENTRY = join(ROOT, "apps/mcp/dist/index.js");
+// `pnpm test:release` points these at the unzipped extension and the bundled server in release/.
+const EXTENSION_DIR = process.env.FIGLOO_E2E_EXTENSION_DIR ?? join(ROOT, "apps/extension/dist");
+const MCP_ENTRY = process.env.FIGLOO_E2E_MCP_ENTRY ?? join(ROOT, "apps/mcp/dist/index.js");
 const FIGMA_URL =
   process.env.FIGLOO_E2E_FIGMA_URL ??
   "https://www.figma.com/design/AbCdEfGhIjKlMnOpQrStUv/Sample-App?node-id=338-4231&p=f&t=abc-0";
