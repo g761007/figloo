@@ -1,4 +1,4 @@
-import type { CaptureParams, ExplorePageParams, InspectParams, ListNeighborsParams } from "@figloo/protocol";
+import type { CaptureParams, ExplorePageParams, ExportParams, InspectParams, ListNeighborsParams } from "@figloo/protocol";
 import { Explorer, OpError } from "./adapter/ops.js";
 import { probeFigmaPage } from "./probe.js";
 import { deriveReadiness } from "./readiness.js";
@@ -57,6 +57,12 @@ async function runOp(message: OpMessage): Promise<unknown> {
         return { ok: true, result: await explorer.prepareCapture(message.params as CaptureParams) };
       case "finish_capture":
         return { ok: true, result: await explorer.finishCapture((message.params as { token: string }).token) };
+      case "prepare_export":
+        return { ok: true, result: await explorer.prepareExport(message.params as ExportParams) };
+      case "finish_export": {
+        const { token, expected, waitMs } = message.params as { token: string; expected: number; waitMs: number };
+        return { ok: true, result: await explorer.finishExport(token, expected, waitMs) };
+      }
       default:
         return { ok: false, error: { code: "BAD_MESSAGE", message: `unsupported op ${message.op}` } };
     }

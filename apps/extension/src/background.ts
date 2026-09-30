@@ -2,6 +2,9 @@ import {
   CaptureParamsSchema,
   CapturePlanSchema,
   ExplorePageParamsSchema,
+  ExportFinishSchema,
+  ExportPlanSchema,
+  ExportRequestSchema,
   InspectParamsSchema,
   ListNeighborsParamsSchema,
   PROTOCOL_VERSION,
@@ -15,6 +18,7 @@ import {
 } from "@figloo/protocol";
 import { DEFAULT_TITLE, actionAppearance, agentLine, applyAppearance } from "./action.js";
 import { cropCapture } from "./capture.js";
+import { installExportCapture, removeExportCapture } from "./export-capture.js";
 import { parseFigmaUrl } from "./figma-url.js";
 import { deriveReadiness } from "./readiness.js";
 import { DEFAULT_PORT, type ConnectionState } from "./state.js";
@@ -174,7 +178,8 @@ async function handleRequest(id: string, op: string, tabId?: number, params?: Re
       case "list_pages":
       case "explore_page":
       case "inspect_nodes":
-      case "capture": {
+      case "capture":
+      case "export_asset": {
         const reply = await runInTab(tabId, op, params);
         send(reply.ok ? { type: "response", id, ok: true, result: reply.result } : { type: "response", id, ok: false, error: reply.error });
         return;
@@ -200,7 +205,9 @@ async function runInTab(tabId: number | undefined, op: string, params: unknown):
     return { ok: false, error: { code: "BAD_MESSAGE", message: `${op} params do not match the protocol schema` } };
   }
   const previous = tabQueues.get(tabId) ?? Promise.resolve();
-  const current = previous.then((): Promise<TabOpResponse> => (op === "capture" ? captureTab(tabId, params) : sendToTab(tabId, op, params)));
+  const current = previous.then((): Promise<TabOpResponse> =>
+    op === "capture" ? captureTab(tabId, params) : op === "export_asset" ? exportTab(tabId, params) : sendToTab(tabId, op, params),
+  );
   const settled = current.catch(() => undefined);
   tabQueues.set(tabId, settled);
   void settled.then(() => {
@@ -214,7 +221,81 @@ const PARAM_SCHEMAS: Record<string, { safeParse(value: unknown): { success: bool
   explore_page: ExplorePageParamsSchema,
   inspect_nodes: InspectParamsSchema,
   capture: CaptureParamsSchema,
+  export_asset: ExportRequestSchema,
 };
+
+/** How long the page hook waits for Figma to hand over the exported files. */
+const EXPORT_CAPTURE_WAIT_MS = 8_000;
+/** How long a browser download may take before the export is reported as pending. */
+const EXPORT_DOWNLOAD_WAIT_MS = 30_000;
+
+/**
+ * Exports a layer. First choice: a short-lived hook in the page's main world receives the files
+ * Figma produces, so nothing reaches the download folder. Fallback: when nothing was captured, the
+ * browser's own download of the file is used and its path is reported.
+ */
+async function exportTab(tabId: number, params: unknown): Promise<TabOpResponse> {
+  const started = Date.now();
+  const token = crypto.randomUUID();
+  const downloads: number[] = [];
+  const onCreated = (item: chrome.downloads.DownloadItem) => {
+    const fromFigma = item.url.startsWith("blob:https://www.figma.com/") || item.url.startsWith("data:") || (item.referrer ?? "").startsWith("https://www.figma.com/");
+    if (fromFigma && Date.parse(item.startTime) >= started - 1_000) downloads.push(item.id);
+  };
+  chrome.downloads.onCreated.addListener(onCreated);
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: installExportCapture, args: [token, EXPORT_CAPTURE_WAIT_MS + 20_000] });
+    const prepared = await sendToTab(tabId, "prepare_export", { ...(params as object), token });
+    if (!prepared.ok) return prepared;
+    const plan = ExportPlanSchema.parse(prepared.result);
+    const finished = await sendToTab(tabId, "finish_export", { token, expected: plan.settings.length, waitMs: EXPORT_CAPTURE_WAIT_MS });
+    if (!finished.ok) return finished;
+    const { files, userSelectionRestored } = ExportFinishSchema.parse(finished.result);
+    // The MCP server opens any ZIP and keeps only plan.onlyFormat, so every file goes along as is.
+    const base = { identity: plan.identity, onlyFormat: plan.onlyFormat, usedExistingSettings: !plan.temporary, userSelectionRestored };
+    if (files.length > 0) {
+      return { ok: true, result: { ...base, source: "direct", files: files.map((f) => ({ ...f, downloadPath: null })), elapsedMs: Date.now() - started } };
+    }
+    for (let waited = 0; downloads.length === 0 && waited < 3_000; waited += 200) await delay(200);
+    if (downloads.length === 0) {
+      return { ok: false, error: { code: "EXPORT_BLOCKED", message: "Figma produced no file that Figloo could receive, and the browser started no download" } };
+    }
+    const items = await Promise.all(downloads.map((id) => waitForDownload(id, EXPORT_DOWNLOAD_WAIT_MS)));
+    if (items.some((item) => !item || item.state === "in_progress")) {
+      return { ok: false, error: { code: "EXPORT_PENDING", message: "the browser is still waiting to save the export, possibly for a confirmation" } };
+    }
+    const saved = items.filter((item): item is chrome.downloads.DownloadItem => item?.state === "complete" && item.filename.length > 0);
+    if (saved.length === 0) return { ok: false, error: { code: "EXPORT_BLOCKED", message: "the browser did not complete the export download" } };
+    return {
+      ok: true,
+      result: {
+        ...base,
+        source: "download",
+        files: saved.map((item) => ({ name: item.filename.split("/").pop() ?? item.filename, mimeType: item.mime, data: null, downloadPath: item.filename })),
+        elapsedMs: Date.now() - started,
+      },
+    };
+  } catch (error) {
+    await sendToTab(tabId, "finish_export", { token, expected: 0, waitMs: 0 });
+    return { ok: false, error: { code: "INTERNAL", message: `export failed: ${error instanceof Error ? error.message : String(error)}` } };
+  } finally {
+    chrome.downloads.onCreated.removeListener(onCreated);
+    await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: removeExportCapture, args: [token] }).catch(() => undefined);
+  }
+}
+
+async function waitForDownload(id: number, timeoutMs: number): Promise<chrome.downloads.DownloadItem | undefined> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const [item] = await chrome.downloads.search({ id });
+    if (!item || item.state !== "in_progress" || Date.now() >= deadline) return item;
+    await delay(200);
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function sendToTab(tabId: number, op: string, params: unknown): Promise<TabOpResponse> {
   try {

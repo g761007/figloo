@@ -238,6 +238,12 @@ try {
   log(`page capture: ${shot.structuredContent.width}x${shot.structuredContent.height}, ${jpeg.length} bytes, crop=${shot.structuredContent.cropSource}`);
   const inspectError = toolErrorOf(await client.callTool({ name: "inspect_nodes", arguments: { contextId: pageContext.contextId, refs: [withChildren.ref] } }));
   assert(inspectError?.code === "UI_NOT_READY" && /guest/.test(inspectError.message), `inspect_nodes explains that a guest cannot select (got ${JSON.stringify(inspectError)})`);
+  const exportError = toolErrorOf(await client.callTool({ name: "export_asset", arguments: { contextId: pageContext.contextId, ref: withChildren.ref, format: "svg" } }));
+  assert(exportError?.code === "UI_NOT_READY" && /guest/.test(exportError.message), `export_asset explains that a guest cannot select (got ${JSON.stringify(exportError)})`);
+  // The download hook runs in Figma's own page; it must be gone even when the export fails.
+  const hookLeft = await figma.evaluate(() => ({ marker: "__figlooExportCapture" in window, native: URL.createObjectURL.toString().includes("[native code]") && HTMLAnchorElement.prototype.click.toString().includes("[native code]") }));
+  assert(!hookLeft.marker && hookLeft.native, `the export hook is removed from the page after a failed export (got ${JSON.stringify(hookLeft)})`);
+  log("inspect_nodes and export_asset explain that a guest cannot select; the export hook was removed");
 
   // Chrome keeps per-tab state across reloads, so scramble it first; the extension must restore it
   // on its own after the reload (get_status is not called here).

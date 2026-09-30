@@ -11,6 +11,7 @@ export interface ServerDeps {
   refreshTimeoutMs?: number;
   contexts?: ContextStore;
   log?: (message: string) => void;
+  root?: string;
 }
 
 export function createServer(deps: ServerDeps): McpServer {
@@ -33,6 +34,7 @@ export function createServer(deps: ServerDeps): McpServer {
     bridge: deps.bridge,
     contexts: deps.contexts ?? new ContextStore(),
     log: deps.log ?? ((message) => console.error(`[figloo] ${message}`)),
+    ...(deps.root ? { root: deps.root } : {}),
   });
 
   return server;

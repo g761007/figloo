@@ -53,6 +53,8 @@ export const ErrorCodeSchema = z.enum([
   "INVALID_CURSOR",
   "BUDGET_EXCEEDED",
   "TAB_IN_BACKGROUND",
+  "EXPORT_BLOCKED",
+  "EXPORT_PENDING",
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 
@@ -119,7 +121,7 @@ export const BridgeErrorCodeSchema = z.enum([
 ]);
 export type BridgeErrorCode = z.infer<typeof BridgeErrorCodeSchema>;
 
-export const BridgeOpSchema = z.enum(["refresh_tabs", "get_anchor", "list_neighbors", "list_pages", "explore_page", "inspect_nodes", "capture"]);
+export const BridgeOpSchema = z.enum(["refresh_tabs", "get_anchor", "list_neighbors", "list_pages", "explore_page", "inspect_nodes", "capture", "export_asset"]);
 export type BridgeOp = z.infer<typeof BridgeOpSchema>;
 
 // Messages sent by the extension to the local bridge.
@@ -474,3 +476,89 @@ export const CaptureOutputSchema = z.object({
   userSelectionRestored: z.boolean(),
 });
 export type CaptureOutput = z.infer<typeof CaptureOutputSchema>;
+
+/** Formats and scale presets the export section of Figma's inspection panel offers. */
+export const ExportFormatSchema = z.enum(["svg", "png", "jpg", "pdf"]);
+export type ExportFormat = z.infer<typeof ExportFormatSchema>;
+export const ExportScaleSchema = z.enum(["0.5x", "0.75x", "1x", "1.5x", "2x", "3x", "4x"]);
+export type ExportScale = z.infer<typeof ExportScaleSchema>;
+
+export const ExportParamsSchema = z.object({
+  expect: PageIdentitySchema,
+  ref: z.string(),
+  /** When omitted, the layer's own export settings are used, or SVG when it has none. */
+  format: ExportFormatSchema.optional(),
+  /** PNG and JPG only; 1x when omitted. */
+  scale: ExportScaleSchema.optional(),
+  /** Identifies this export's captured files; set by the service worker. */
+  token: z.string(),
+});
+export type ExportParams = z.infer<typeof ExportParamsSchema>;
+
+/** What the MCP server asks for; the service worker adds the token. */
+export const ExportRequestSchema = ExportParamsSchema.omit({ token: true });
+export type ExportRequest = z.infer<typeof ExportRequestSchema>;
+
+export const ExportSettingSchema = z.object({ format: z.string(), scale: z.string().nullable() });
+
+/** What the tab did before Figma produced the files. */
+export const ExportPlanSchema = z.object({
+  identity: PageIdentitySchema,
+  name: z.string(),
+  settings: z.array(ExportSettingSchema),
+  /** True when Figloo added a setting for this export; it is removed again afterwards. */
+  temporary: z.boolean(),
+  /** Only files in this format are returned when a temporary setting was added next to existing ones. */
+  onlyFormat: ExportFormatSchema.nullable(),
+});
+export type ExportPlan = z.infer<typeof ExportPlanSchema>;
+
+/** A file Figma exported, captured before it reached the download folder. */
+export const CapturedFileSchema = z.object({ name: z.string(), mimeType: z.string(), data: z.string() });
+export type CapturedFile = z.infer<typeof CapturedFileSchema>;
+
+export const ExportFinishSchema = z.object({ files: z.array(CapturedFileSchema), userSelectionRestored: z.boolean() });
+
+export const ExportResultSchema = z.object({
+  identity: PageIdentitySchema,
+  /** "direct": captured in the page and never saved by the browser; "download": read from the browser's download. */
+  source: z.enum(["direct", "download"]),
+  files: z.array(
+    z.object({
+      name: z.string(),
+      mimeType: z.string(),
+      /** Base64 contents when captured directly. */
+      data: z.string().nullable(),
+      /** Where the browser saved the file on the download path. */
+      downloadPath: z.string().nullable(),
+    }),
+  ),
+  /** Keep only files in this format, once any ZIP Figma packed them into is opened. */
+  onlyFormat: ExportFormatSchema.nullable(),
+  usedExistingSettings: z.boolean(),
+  userSelectionRestored: z.boolean(),
+  elapsedMs: z.number().nonnegative(),
+});
+export type ExportResult = z.infer<typeof ExportResultSchema>;
+
+export const ExportOutputSchema = z.object({
+  contextId: z.string(),
+  ref: z.string(),
+  source: z.enum(["direct", "download"]),
+  files: z.array(
+    z.object({
+      name: z.string(),
+      mimeType: z.string(),
+      bytes: z.number().int().nonnegative(),
+      /** Where Figloo wrote the file when saveTo was given. */
+      savedTo: z.string().nullable(),
+      /** Where the browser saved the file, or the ZIP it came in, on the download path. */
+      downloadPath: z.string().nullable(),
+      /** SVG markup, when the file is an SVG small enough to return inline. */
+      svg: z.string().nullable(),
+    }),
+  ),
+  usedExistingSettings: z.boolean(),
+  userSelectionRestored: z.boolean(),
+});
+export type ExportOutput = z.infer<typeof ExportOutputSchema>;

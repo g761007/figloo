@@ -32,6 +32,10 @@ The extension ID is pinned by the `key` field in `apps/extension/static/manifest
 
 The extension asks for access to all sites (`<all_urls>`) because Chrome only lets an extension screenshot a tab without a click on its icon when it has that permission. Its content script still runs only on Figma design files.
 
+`export_asset` receives Figma's exported file inside the page: for the length of one export, the extension wraps the functions Figma uses to start a download, takes the file, and puts the originals back, so the browser saves nothing. The `downloads` permission is only for the fallback: when the file cannot be taken in the page, the extension watches for the browser's own download of that export and reports where it was saved.
+
+After updating Figloo, run `pnpm build` and click the reload button on the extension's card, so the browser loads the new files and any new permission.
+
 ### 2. Register the MCP server with your agent
 
 Example configuration (replace the path with your checkout):
@@ -85,11 +89,12 @@ pnpm --filter @figloo/extension icons
 | `get_neighbors` | Lists the `parent`, `ancestors`, `siblings`, or `children` of a layer returned in the same context. Pages hold at most 50 layers (20 by default); follow `nextCursor` for more. `children` also takes `depth` (up to 3) for a breadth-first subtree. |
 | `inspect_nodes` | Reads Figma's inspection panel for up to 5 layers: size and sizing mode, position, auto layout flow, padding, gap, corner radius, fills, borders, shadows, text content, typography per style run, and component properties. Values are exactly as Figma shows them. |
 | `capture` | Screenshots a layer, zoomed to fit, or the whole page. Returns a JPEG of at most 1568 px on its long edge. |
+| `export_asset` | Exports a layer the way Figma's Export button does, as SVG, PNG, JPG, or PDF, so the agent can pick the format and scale the project needs, for example SVG for web or PDF and PNG at 1x, 2x, and 3x for iOS. Returns SVG markup inline and PNG or JPG of at most 1568 px as an image. With `saveTo`, also writes the files to that path inside the project directory (`CLAUDE_PROJECT_DIR`, which Claude Code sets, or else the server's working directory); existing files are only replaced with `overwrite: true`. Figma names files after the layer without a scale suffix, so save each scale under its own file name. Without `format`, the layer's own export settings are used when it has some, and a layer without settings exports as SVG. With `format`, a temporary setting in that format and `scale` (1x by default) is added and removed again, unless the layer already has that exact setting. The layer's own settings are never changed. ZIP archives Figma packs several files into are opened. |
 | `release_context` | Forgets a context and its layer refs. |
 
-A typical request goes: `get_status`, then `list_pages` and `explore_page` (or `get_anchor` when the user selected something), `capture` to see a page or frame, `get_neighbors` to find the parts that matter, and `inspect_nodes` for their exact values. Each call is bounded and reports how many UI operations it used.
+A typical request goes: `get_status`, then `list_pages` and `explore_page` (or `get_anchor` when the user selected something), `capture` to see a page or frame, `get_neighbors` to find the parts that matter, `inspect_nodes` for their exact values, and `export_asset` for icons and images. Each call is bounded and reports how many UI operations it used.
 
-Figma applies selection, expansion, zoom, and page changes only while its tab is visible. Reading pages, the selection, and already expanded layers works from a background tab; `inspect_nodes`, `capture`, page switches, and expanding collapsed layers return `TAB_IN_BACKGROUND` until the Figma tab is on screen. Keeping Figma beside the agent window is enough. `inspect_nodes` and `capture` select layers one after another, and `capture` zooms the view; the user's selection is put back afterwards, the zoom is not.
+Figma applies selection, expansion, zoom, and page changes only while its tab is visible. Reading pages, the selection, and already expanded layers works from a background tab; `inspect_nodes`, `capture`, `export_asset`, page switches, and expanding collapsed layers return `TAB_IN_BACKGROUND` until the Figma tab is on screen. Keeping Figma beside the agent window is enough. `inspect_nodes`, `capture`, and `export_asset` select layers one after another, and `capture` zooms the view; the user's selection is put back afterwards, the zoom is not.
 
 ## Development
 
@@ -116,7 +121,7 @@ apps/mcp/            Local MCP server over stdio plus the WebSocket bridge: @fig
 packages/protocol/   Shared zod schemas, types, and constants: @figloo/protocol
 docs/plans/          Planning documents
 docs/compatibility/  What was verified on real Figma pages, and known limits
-tests/fixtures/      Regression fixtures (placeholder)
+tests/fixtures/      Captured Figma markup and export files for regression tests
 tests/integration/   End-to-end test against real Chrome and Figma
 ```
 
@@ -127,3 +132,5 @@ tests/integration/   End-to-end test against real Chrome and Figma
 - A tab is `DEGRADED` with "guest session": you are not signed in to Figma in that browser profile, so layers cannot be selected.
 - A tab is `DEGRADED` with "Figma UI is minimized": the layers panel is not rendered while the UI is hidden. Press Cmd+\ or click the expand button next to the file name.
 - A tab stays `LOADING` or becomes `INCOMPATIBLE` right after installing the extension: reload the Figma tab so the content script is injected.
+- `export_asset` returns `EXPORT_BLOCKED`: Figma handed over no file and the browser started no download. If the browser blocked repeated downloads from figma.com, allow them in the site settings and retry.
+- `export_asset` returns `EXPORT_PENDING`: the browser is waiting to save the fallback download, usually behind a Save dialog. Confirm it, or turn off asking where to save each file.

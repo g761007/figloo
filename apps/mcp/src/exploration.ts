@@ -30,6 +30,7 @@ import {
 import { BridgeError, type Bridge } from "./bridge.js";
 import type { ContextStore } from "./contexts.js";
 import { decodeCursor, encodeCursor } from "./cursor.js";
+import { registerExportTool } from "./export-asset.js";
 
 /** The tab gets 15 s for UI work; the rest covers messaging. */
 const OP_TIMEOUT_MS = 20_000;
@@ -66,11 +67,11 @@ class ToolFailure extends Error {
   }
 }
 
-function toolError(error: unknown) {
-  const code = error instanceof BridgeError || error instanceof ToolFailure ? error.code : "INTERNAL";
+function toolError(error: unknown, extraHints: Record<string, string> = {}) {
+  const code = error instanceof BridgeError || error instanceof ToolFailure ? error.code : typeof (error as { code?: unknown })?.code === "string" ? (error as { code: string }).code : "INTERNAL";
   const message = error instanceof Error ? error.message : String(error);
-  const body = { error: { code, message, hint: HINTS[code] ?? null } };
-  return { isError: true, content: [{ type: "text" as const, text: JSON.stringify(body) }] };
+  const body = { error: { code, message, hint: extraHints[code] ?? HINTS[code] ?? null } };
+  return { isError: true as const, content: [{ type: "text" as const, text: JSON.stringify(body) }] };
 }
 
 function toolResult<T extends object>(output: T) {
@@ -81,6 +82,8 @@ export interface ExplorationDeps {
   bridge: Bridge;
   contexts: ContextStore;
   log: (message: string) => void;
+  /** Directory export_asset may write into; defaults to the working directory. */
+  root?: string;
 }
 
 export function registerExplorationTools(server: McpServer, deps: ExplorationDeps): void {
@@ -343,6 +346,8 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
       }
     },
   );
+
+  registerExportTool(server, deps, toolError);
 
   server.registerTool(
     "release_context",

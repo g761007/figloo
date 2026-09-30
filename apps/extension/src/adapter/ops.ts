@@ -1,6 +1,9 @@
 import type {
   AnchorResult,
+  CapturedFile,
   CaptureParams,
+  ExportParams,
+  ExportPlan,
   CapturePlan,
   ErrorCode,
   ExplorePageParams,
@@ -19,6 +22,7 @@ import type {
 import { parseFigmaUrl } from "../figma-url.js";
 import { parseSelectedCount } from "../probe.js";
 import { DomRowSource, TabInBackground, synthesizeClick } from "./dom-source.js";
+import { addTemporarySetting, exportButton, exportRows, exportSection, exportSettings, exportsLayer, removeTemporarySetting } from "./export.js";
 import { inspectionHeader, inspectionRoot, inspectionSignature, readInspection } from "./inspect.js";
 import { layersPanel, readRenderedRows, type Row } from "./row.js";
 import { LayerTree, StopExploration, type IndexEntry, type Page } from "./tree.js";
@@ -41,6 +45,21 @@ const TOAST_TIMEOUT_MS = 4_000;
 const BACKGROUND_MESSAGE = "the Figma tab is in the background, where Figma does not apply selection, zoom, or page changes";
 
 type UserSelection = { kind: "none" } | { kind: "layer"; id: string } | { kind: "multiple" };
+
+interface PendingExport {
+  token: string;
+  files: CapturedFile[];
+  onMessage: (event: MessageEvent) => void;
+  before: UserSelection;
+  /** What the layer's own settings export, such as "PNG 2x", before Figloo added its temporary one. */
+  original: string[];
+  temporary: boolean;
+  user: UserWatch;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+/** An export that never finishes cleans up on its own after this long. */
+const PENDING_EXPORT_TIMEOUT_MS = 30_000;
 
 interface PendingCapture {
   token: string;
@@ -88,6 +107,7 @@ export class Explorer {
   private readonly index = new Map<string, IndexEntry>();
   private running = false;
   private pendingCapture: PendingCapture | null = null;
+  private pendingExport: PendingExport | null = null;
 
   constructor(
     private readonly pageId: string,
@@ -284,6 +304,117 @@ export class Explorer {
     for (let i = 0; i < 30 && tab.getAttribute("aria-selected") !== "true"; i += 1) await sleep(50);
   }
 
+  /**
+   * Exports a layer through the inspection panel's Export button. Without an explicit format and with
+   * settings of its own, the layer exports as the designer set it up; otherwise a temporary setting is
+   * added and removed again in finishExport. Files captured in the page arrive as window messages.
+   */
+  async prepareExport(params: ExportParams): Promise<ExportPlan> {
+    const identity = this.checkExpected(params.expect);
+    if (this.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
+    await this.showPropertiesTab();
+    if (this.pendingExport) await this.finishExport(this.pendingExport.token, 0, 0);
+    const files: CapturedFile[] = [];
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { __figlooExport?: string; name?: unknown; type?: unknown; data?: unknown } | null;
+      if (event.source !== this.win || !data || data.__figlooExport !== params.token || !(data.data instanceof ArrayBuffer)) return;
+      files.push({ name: String(data.name || "export"), mimeType: String(data.type || "application/octet-stream"), data: toBase64(data.data) });
+    };
+    this.win.addEventListener("message", onMessage);
+    let before: UserSelection = { kind: "none" };
+    let original: string[] = [];
+    let temporary = false;
+    try {
+      const { value } = await this.run(async (tree, source) => {
+        before = await this.userSelection(tree);
+        try {
+          const row = await tree.find(params.ref);
+          if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${params.ref} is no longer in the layers panel`);
+          const previous = inspectionSignature(this.doc);
+          if (!(await source.select(row))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${params.ref}; guest sessions cannot select layers`);
+          await this.waitForPanel(row, previous, source);
+          // Right after a selection change the section can still list the previous layer's settings.
+          // A layer without settings keeps the previous button label, so settings count as this
+          // layer's only under a button that names it.
+          await source.settle(() => {
+            const shown = exportSection(this.doc);
+            return shown !== null && (exportRows(shown).length === 0 || exportsLayer(shown, row.name));
+          });
+          const section = exportSection(this.doc);
+          if (!section) throw new OpError("UI_NOT_READY", "the inspection panel does not show an export section for this layer");
+          original = exportSettings(section);
+          if (original.length > 0 && !exportsLayer(section, row.name)) throw new OpError("UI_NOT_READY", `the export section did not switch to layer ${params.ref}`);
+          // The requested format, or SVG for a layer without settings; a matching setting is reused.
+          const format = params.format ?? (original.length === 0 ? "svg" : undefined);
+          const scale = params.scale ?? "1x";
+          if (format !== undefined && !original.includes(`${format.toUpperCase()} ${scale}`)) {
+            temporary = true;
+            const failure = await addTemporarySetting(section, original, format, scale);
+            if (failure) throw new OpError("UI_NOT_READY", failure);
+          }
+          const settings = exportRows(section).map(({ format, scale }) => ({ format: format ?? "unknown", scale }));
+          // Once the layer has a setting the button names it; a stale label would export another layer.
+          if (!(await source.settle(() => exportsLayer(section, row.name)))) {
+            throw new OpError("UI_NOT_READY", `the Export button does not name layer ${params.ref}, so Figloo did not click it`);
+          }
+          const button = exportButton(section);
+          if (!button) throw new OpError("UI_NOT_READY", "the inspection panel has no Export button for this layer");
+          source.actions += 1;
+          synthesizeClick(button);
+          return { name: row.name.slice(0, MAX_NAME_LENGTH), settings, temporary, onlyFormat: params.format !== undefined && original.length > 0 ? params.format : null };
+        } catch (error) {
+          // Leave the layer as it was: drop a half-configured temporary setting and reselect.
+          if (temporary) await this.removeTemporaryRow(original);
+          await this.restoreSelection(tree, source, before).catch(() => false);
+          throw error;
+        }
+      });
+      this.pendingExport = {
+        token: params.token,
+        files,
+        onMessage,
+        before,
+        original,
+        temporary,
+        user: watchForUser(this.win),
+        timer: setTimeout(() => void this.finishExport(params.token, 0, 0), PENDING_EXPORT_TIMEOUT_MS),
+      };
+      return { identity, ...value };
+    } catch (error) {
+      this.win.removeEventListener("message", onMessage);
+      throw error;
+    }
+  }
+
+  /** Waits up to `waitMs` for `expected` captured files, then removes the temporary setting and reselects. */
+  async finishExport(token: string, expected: number, waitMs: number): Promise<{ files: CapturedFile[]; userSelectionRestored: boolean }> {
+    const pending = this.pendingExport;
+    if (!pending || pending.token !== token) return { files: [], userSelectionRestored: false };
+    const deadline = Date.now() + waitMs;
+    // Figma may pack several files into one ZIP, which then holds all of them.
+    const zipped = () => pending.files.some((file) => file.mimeType === "application/zip" || /\.zip$/i.test(file.name));
+    while (pending.files.length < expected && !zipped() && Date.now() < deadline && !pending.user.interrupted()) await sleep(100);
+    this.pendingExport = null;
+    clearTimeout(pending.timer);
+    this.win.removeEventListener("message", pending.onMessage);
+    pending.user.dispose();
+    if (pending.user.interrupted()) return { files: pending.files, userSelectionRestored: false };
+    let restored = false;
+    await this.run(
+      async () => undefined,
+      async (tree, source) => {
+        if (pending.temporary) await this.removeTemporaryRow(pending.original);
+        restored = await this.restoreSelection(tree, source, pending.before);
+      },
+    );
+    return { files: pending.files, userSelectionRestored: restored };
+  }
+
+  private async removeTemporaryRow(original: string[]): Promise<void> {
+    const section = exportSection(this.doc);
+    if (section) await removeTemporarySetting(section, original);
+  }
+
   /** What the user had selected before Figloo changes the selection. */
   private async userSelection(tree: LayerTree): Promise<UserSelection> {
     const count = parseSelectedCount(this.doc.querySelector("input.focus-target")?.getAttribute("aria-label") ?? null);
@@ -464,6 +595,13 @@ function centered(canvas: Rect, size: { width: number; height: number }, margin:
     width: size.width + 2 * margin,
     height: size.height + 2 * margin,
   };
+}
+
+function toBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
 }
 
 function inflate(rect: Rect, by: number): Rect {
