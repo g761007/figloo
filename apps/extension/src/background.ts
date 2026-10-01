@@ -9,19 +9,24 @@ import {
   InspectParamsSchema,
   ListNeighborsParamsSchema,
   ListPagesResultSchema,
+  MAX_SNAPSHOT_LAYERS,
   NeighborsResultSchema,
   PROTOCOL_VERSION,
   ProbeResultSchema,
+  SNAPSHOT_TIME_BUDGET_MS,
   ServerMessageSchema,
+  SnapshotParamsSchema,
+  SnapshotReadResultSchema,
   TabOpResponseSchema,
   VisualNeighborsParamsSchema,
+  type CaptureResult,
   type ExtensionMessage,
   type ProbeResult,
   type TabOpResponse,
   type TabStatus,
 } from "@figloo/protocol";
 import { DEFAULT_TITLE, actionAppearance, agentLine, applyAppearance } from "./action.js";
-import { cropCapture } from "./capture.js";
+import { cropCapture, placeInImage } from "./capture.js";
 import { installExportCapture, removeExportCapture } from "./export-capture.js";
 import { parseFigmaUrl } from "./figma-url.js";
 import { POPUP_CHILDREN, type PopupSnapshot } from "./popup-model.js";
@@ -185,7 +190,8 @@ async function handleRequest(id: string, op: string, tabId?: number, params?: Re
       case "inspect_nodes":
       case "capture":
       case "export_asset":
-      case "visual_neighbors": {
+      case "visual_neighbors":
+      case "snapshot_layer": {
         const reply = await runInTab(tabId, op, params);
         send(reply.ok ? { type: "response", id, ok: true, result: reply.result } : { type: "response", id, ok: false, error: reply.error });
         return;
@@ -199,6 +205,8 @@ async function handleRequest(id: string, op: string, tabId?: number, params?: Re
 }
 
 const tabQueues = new Map<number, Promise<unknown>>();
+/** Tabs with a snapshot queued or running; a snapshot takes minutes, so other ops do not wait behind it. */
+const snapshotting = new Set<number>();
 
 /** Forwards an op to the tab's content script; each tab runs one UI operation sequence at a time. */
 async function runInTab(tabId: number | undefined, op: string, params: unknown): Promise<TabOpResponse> {
@@ -210,13 +218,24 @@ async function runInTab(tabId: number | undefined, op: string, params: unknown):
   if (schema && !schema.safeParse(params).success) {
     return { ok: false, error: { code: "BAD_MESSAGE", message: `${op} params do not match the protocol schema` } };
   }
+  if (snapshotting.has(tabId)) {
+    return { ok: false, error: { code: "BUSY", message: "Figloo is reading a snapshot in this tab, which takes up to three minutes" } };
+  }
+  if (op === "snapshot_layer") snapshotting.add(tabId);
   const previous = tabQueues.get(tabId) ?? Promise.resolve();
   const current = previous.then((): Promise<TabOpResponse> =>
-    op === "capture" ? captureTab(tabId, params) : op === "export_asset" ? exportTab(tabId, params) : sendToTab(tabId, op, params),
+    op === "capture"
+      ? captureTab(tabId, params)
+      : op === "export_asset"
+        ? exportTab(tabId, params)
+        : op === "snapshot_layer"
+          ? snapshotTab(tabId, params)
+          : sendToTab(tabId, op, params),
   );
   const settled = current.catch(() => undefined);
   tabQueues.set(tabId, settled);
   void settled.then(() => {
+    if (op === "snapshot_layer") snapshotting.delete(tabId);
     if (tabQueues.get(tabId) === settled) tabQueues.delete(tabId);
   });
   return current;
@@ -229,6 +248,7 @@ const PARAM_SCHEMAS: Record<string, { safeParse(value: unknown): { success: bool
   capture: CaptureParamsSchema,
   export_asset: ExportRequestSchema,
   visual_neighbors: VisualNeighborsParamsSchema,
+  snapshot_layer: SnapshotParamsSchema,
 };
 
 /** How long the page hook waits for Figma to hand over the exported files. */
@@ -317,30 +337,77 @@ async function sendToTab(tabId: number, op: string, params: unknown): Promise<Ta
  * screen, crops it to the target, and the tab then puts the user's selection back.
  */
 async function captureTab(tabId: number, params: unknown): Promise<TabOpResponse> {
+  return (await takeCapture(tabId, params)).response;
+}
+
+/** A capture, and whether the user stepped in before their selection could be put back. */
+async function takeCapture(tabId: number, params: unknown): Promise<{ response: TabOpResponse; interrupted: boolean }> {
   const started = Date.now();
   // Read the tab again: it may have changed while this request waited in the queue.
   const tab = await chrome.tabs.get(tabId).catch(() => null);
   const window = tab ? await chrome.windows.get(tab.windowId).catch(() => null) : null;
   if (!tab || !tab.active || !window || window.state === "minimized") {
-    return { ok: false, error: { code: "TAB_IN_BACKGROUND", message: "the Figma tab must be the visible tab of its window to capture it" } };
+    return { response: { ok: false, error: { code: "TAB_IN_BACKGROUND", message: "the Figma tab must be the visible tab of its window to capture it" } }, interrupted: false };
   }
   const prepared = await sendToTab(tabId, "prepare_capture", params);
-  if (!prepared.ok) return prepared;
+  if (!prepared.ok) return { response: prepared, interrupted: false };
   const plan = CapturePlanSchema.parse(prepared.result);
-  let finished: TabOpResponse = { ok: true, result: { userSelectionRestored: false } };
   try {
     const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-    const image = await cropCapture(dataUrl, plan.crop, plan.viewport);
-    finished = await sendToTab(tabId, "finish_capture", { token: plan.token });
-    const restored = finished.ok && (finished.result as { userSelectionRestored?: boolean } | undefined)?.userSelectionRestored === true;
-    return {
-      ok: true,
-      result: { identity: plan.identity, image: { ...image, mimeType: "image/jpeg" }, cropSource: plan.cropSource, zoom: plan.zoom, userSelectionRestored: restored, elapsedMs: Date.now() - started },
+    const { crop, ...image } = await cropCapture(dataUrl, plan.crop, plan.viewport);
+    const finished = await sendToTab(tabId, "finish_capture", { token: plan.token });
+    const done = finished.ok ? (finished.result as { userSelectionRestored?: boolean; interrupted?: boolean } | undefined) : undefined;
+    const result: CaptureResult = {
+      identity: plan.identity,
+      image: { ...image, mimeType: "image/jpeg" },
+      crop,
+      cropSource: plan.cropSource,
+      zoom: plan.zoom,
+      userSelectionRestored: done?.userSelectionRestored === true,
+      elapsedMs: Date.now() - started,
     };
+    return { response: { ok: true, result }, interrupted: done?.interrupted === true };
   } catch (error) {
     await sendToTab(tabId, "finish_capture", { token: plan.token });
-    return { ok: false, error: { code: "INTERNAL", message: `capture failed: ${error instanceof Error ? error.message : String(error)}` } };
+    return { response: { ok: false, error: { code: "INTERNAL", message: `capture failed: ${error instanceof Error ? error.message : String(error)}` } }, interrupted: false };
   }
+}
+
+/**
+ * Kept back from a snapshot's time budget: when reading runs out of time, the tab still closes what
+ * it opened and puts the selection back, which took about 5 s in Arc, and the reply has to arrive.
+ */
+const SNAPSHOT_CLEANUP_MS = 15_000;
+
+/**
+ * Captures the root zoomed to fit the screen, then has the tab read every layer below it without
+ * moving the view, so each layer's place on screen can be found in the screenshot.
+ */
+async function snapshotTab(tabId: number, params: unknown): Promise<TabOpResponse> {
+  const started = Date.now();
+  const { expect, ref } = SnapshotParamsSchema.parse(params);
+  const shot = await takeCapture(tabId, { expect, ref });
+  if (!shot.response.ok) return shot.response;
+  if (shot.interrupted) return { ok: false, error: { code: "USER_INTERRUPTED", message: "the user interacted with Figma during the screenshot" } };
+  const { image, crop } = shot.response.result as CaptureResult;
+  const timeBudgetMs = Math.round(SNAPSHOT_TIME_BUDGET_MS - SNAPSHOT_CLEANUP_MS - (Date.now() - started));
+  if (timeBudgetMs <= 0) return { ok: false, error: { code: "BUDGET_EXCEEDED", message: "the screenshot used up the snapshot's time budget" } };
+  const read = await sendToTab(tabId, "read_subtree", { expect, ref, maxLayers: MAX_SNAPSHOT_LAYERS, timeBudgetMs });
+  if (!read.ok) return read;
+  const result = SnapshotReadResultSchema.parse(read.result);
+  const elapsedMs = Date.now() - started;
+  if (result.status === "too_large") return { ok: true, result: { ...result, elapsedMs } };
+  return {
+    ok: true,
+    result: {
+      ...result,
+      image,
+      crop,
+      rootInImage: result.rootOnScreen ? placeInImage(result.rootOnScreen, crop, image) : null,
+      imageScale: result.zoom ? (image.width / crop.width) * result.zoom : null,
+      elapsedMs,
+    },
+  };
 }
 
 function startHeartbeat(intervalMs: number): void {

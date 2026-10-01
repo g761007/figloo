@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chooseZoom, place, placeSiblings, type Measured } from "../src/adapter/geometry.js";
+import { boundsInRoot, chooseZoom, place, placeSiblings, type Measured, type SnapshotMeasure } from "../src/adapter/geometry.js";
 
 // A 100 x 40 button at (200, 300) on screen, with the canvas zoomed to 50%.
 const button = { x: 200, y: 300, width: 100, height: 40 };
@@ -97,5 +97,61 @@ describe("placeSiblings", () => {
     expect(result.zoom).toBe(0.5);
     expect(byId(result).second).toMatchObject({ side: "right", gap: 12, offset: { x: 112, y: 0 } });
     expect(result.unplaced).toEqual(["name"]);
+  });
+});
+
+describe("boundsInRoot", () => {
+  // A 393 x 852 screen at (500, 100) on screen, zoomed to 50%.
+  const screen: SnapshotMeasure = { id: "screen", parentId: null, type: "Frame", rect: { x: 500, y: 100, width: 196.5, height: 426 }, box: { width: 393, height: 852, position: null } };
+  const card: SnapshotMeasure = { id: "card", parentId: "screen", type: "Frame", rect: { x: 510, y: 200, width: 176.5, height: 100 }, box: null };
+  const text = (id: string, parentId: string, position: { left: number; top: number } | null): SnapshotMeasure => ({
+    id,
+    parentId,
+    type: "Text",
+    rect: null,
+    box: { width: 120, height: 24, position },
+  });
+
+  it("measures layers the mirror shows on screen, in design pixels from the root's corner", () => {
+    const bounds = boundsInRoot([screen, card], 0.5);
+    expect(bounds.get("screen")).toEqual({ x: 0, y: 0, width: 393, height: 852, source: "mirror" });
+    expect(bounds.get("card")).toEqual({ x: 20, y: 200, width: 353, height: 200, source: "mirror" });
+  });
+
+  it("rounds away the error of a fractional zoom", () => {
+    const zoomed = { ...screen, rect: { x: 500, y: 100, width: 365.49, height: 792.36 } };
+    const child = { ...card, rect: { x: 500 + 18.6, y: 100 + 186, width: 111.6, height: 22.32 } };
+    expect(boundsInRoot([zoomed, child], 0.93).get("card")).toEqual({ x: 20, y: 200, width: 120, height: 24, source: "mirror" });
+  });
+
+  it("places text from the panel's Top and Left inside its frame, which a group does not count as", () => {
+    const group: SnapshotMeasure = { id: "group", parentId: "card", type: "Group", rect: { x: 515, y: 250, width: 50, height: 20 }, box: null };
+    const bounds = boundsInRoot([screen, card, text("title", "card", { left: 16, top: 12 }), group, text("label", "group", { left: 40, top: 110 })], 0.5);
+    expect(bounds.get("title")).toEqual({ x: 36, y: 212, width: 120, height: 24, source: "panel" });
+    expect(bounds.get("group")).toMatchObject({ x: 30, y: 300, source: "mirror" });
+    // 40 and 110 are measured from the card, not from the group at (30, 300).
+    expect(bounds.get("label")).toEqual({ x: 60, y: 310, width: 120, height: 24, source: "panel" });
+  });
+
+  it("measures a line, which has no height on screen", () => {
+    const line: SnapshotMeasure = { id: "line", parentId: "screen", type: "Line", rect: { x: 592.5, y: 203, width: 65, height: 0 }, box: { width: 130, height: 0, position: { left: 185, top: 206 } } };
+    expect(boundsInRoot([screen, line], 0.5).get("line")).toEqual({ x: 185, y: 206, width: 130, height: 0, source: "mirror" });
+  });
+
+  it("keeps only the size of text placed by auto layout, and of layers in a frame with no known place", () => {
+    const row: SnapshotMeasure = { id: "row", parentId: "screen", type: "Auto layout", rect: null, box: { width: 200, height: 40, position: null } };
+    const bounds = boundsInRoot([screen, row, text("auto", "screen", null), text("lost", "row", { left: 4, top: 8 })], 0.5);
+    expect(bounds.get("auto")).toEqual({ x: null, y: null, width: 120, height: 24, source: "unknown" });
+    expect(bounds.get("row")).toEqual({ x: null, y: null, width: 200, height: 40, source: "unknown" });
+    expect(bounds.get("lost")).toMatchObject({ x: null, y: null, source: "unknown" });
+  });
+
+  it("works from the panel alone without the mirror, and measures a group root's children from the group's own place", () => {
+    const plain = boundsInRoot([{ ...screen, rect: null }, text("title", "screen", { left: 24, top: 64 })], null);
+    expect(plain.get("screen")).toEqual({ x: 0, y: 0, width: 393, height: 852, source: "panel" });
+    expect(plain.get("title")).toMatchObject({ x: 24, y: 64, source: "panel" });
+
+    const groupRoot: SnapshotMeasure = { id: "g", parentId: null, type: "Group", rect: null, box: { width: 200, height: 100, position: { left: 100, top: 50 } } };
+    expect(boundsInRoot([groupRoot, text("t", "g", { left: 110, top: 70 })], null).get("t")).toMatchObject({ x: 10, y: 20, source: "panel" });
   });
 });

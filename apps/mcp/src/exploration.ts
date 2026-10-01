@@ -62,6 +62,7 @@ export const HINTS: Record<string, string> = {
   TAB_IN_BACKGROUND:
     "Ask the user to bring the Figma tab to the front (visible on screen, it may sit beside other windows), then retry. Reading pages, the selection, and already expanded layers still works from the background.",
   INVALID_ARGUMENT: "Check the tool's parameters against its description.",
+  INSIDE_INSTANCE: "Layers inside an instance get new IDs when the page reloads, so a snapshot needs a root outside instances: use the instance itself or a layer above it.",
 };
 
 class ToolFailure extends Error {

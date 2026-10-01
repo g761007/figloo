@@ -207,6 +207,7 @@ Forget an exploration context and the refs it returned.
 | `CONTEXT_NOT_FOUND` | The context was released or expired; call get_anchor again. |
 | `EXPORT_BLOCKED` | Figma handed over no file and the browser started no download. If the browser blocked repeated downloads from figma.com, ask the user to allow them in the site settings, then retry. |
 | `EXPORT_PENDING` | The browser is waiting to save the export, probably behind a Save dialog. Ask the user to confirm it, or to turn off asking where to save each file. |
+| `INSIDE_INSTANCE` | Layers inside an instance get new IDs when the page reloads, so a snapshot needs a root outside instances: use the instance itself or a layer above it. |
 | `INTERNAL` | No hint; the message says what went wrong. |
 | `INVALID_ARGUMENT` | Check the tool's parameters against its description. |
 | `INVALID_CURSOR` | Pass nextCursor exactly as returned, with the same contextId, ref, and relation. |

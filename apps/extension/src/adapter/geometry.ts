@@ -1,4 +1,4 @@
-import type { Rect } from "@figloo/protocol";
+import type { Rect, SnapshotBounds } from "@figloo/protocol";
 
 export type Side = "right" | "left" | "below" | "above" | "overlaps";
 
@@ -150,4 +150,69 @@ export function place(reference: Rect, other: Rect, scale: number): Placement {
     offset: { x: round((other.x - reference.x) / scale), y: round((other.y - reference.y) / scale) },
     size: { width: round(other.width / scale), height: round(other.height / scale) },
   };
+}
+
+/** What a snapshot measured for one layer. */
+export interface SnapshotMeasure {
+  id: string;
+  /** null for the root. */
+  parentId: string | null;
+  type: string | null;
+  /** Where the screen reader mirror shows it, in viewport CSS pixels. */
+  rect: Rect | null;
+  box: LayerBox | null;
+}
+
+/** Layers whose children the inspection panel places relative to the nearest frame further up. */
+const NOT_A_FRAME = new Set(["Group"]);
+
+/**
+ * Places every layer of a snapshot relative to the root's top-left corner, in design pixels. A layer
+ * the mirror shows is measured on screen and divided by the zoom. Otherwise, as for text layers, the
+ * panel's Top and Left are relative to the nearest frame, which groups do not count as, so they add
+ * to that frame's place. With neither, only the size is known. `layers` lists parents before their
+ * children and the root first; `zoom` is screen pixels per design pixel.
+ */
+export function boundsInRoot(layers: SnapshotMeasure[], zoom: number | null): Map<string, SnapshotBounds> {
+  const out = new Map<string, SnapshotBounds>();
+  const root = layers[0];
+  if (!root) return out;
+  const byId = new Map(layers.map((layer) => [layer.id, layer]));
+  const origin = root.rect;
+  for (const layer of layers) {
+    const size = { width: layer.box?.width ?? null, height: layer.box?.height ?? null };
+    if (layer.rect && origin && zoom) {
+      out.set(layer.id, {
+        x: round((layer.rect.x - origin.x) / zoom),
+        y: round((layer.rect.y - origin.y) / zoom),
+        width: round(layer.rect.width / zoom),
+        height: round(layer.rect.height / zoom),
+        source: "mirror",
+      });
+    } else if (layer === root) {
+      out.set(layer.id, { x: 0, y: 0, ...size, source: "panel" });
+    } else {
+      const offset = layer.box?.position ? frameOrigin(layer, root, byId, out) : null;
+      out.set(
+        layer.id,
+        offset && layer.box?.position
+          ? { x: round(offset.x + layer.box.position.left), y: round(offset.y + layer.box.position.top), ...size, source: "panel" }
+          : { x: null, y: null, ...size, source: "unknown" },
+      );
+    }
+  }
+  return out;
+}
+
+/** Where the frame the panel measures `layer` from sits relative to the root, when known. */
+function frameOrigin(layer: SnapshotMeasure, root: SnapshotMeasure, byId: Map<string, SnapshotMeasure>, placed: Map<string, SnapshotBounds>): { x: number; y: number } | null {
+  let frame = layer.parentId === null ? undefined : byId.get(layer.parentId);
+  while (frame && frame !== root && NOT_A_FRAME.has(frame.type ?? "")) frame = frame.parentId === null ? undefined : byId.get(frame.parentId);
+  if (!frame) return null;
+  if (frame === root && NOT_A_FRAME.has(root.type ?? "")) {
+    // A group root shares its frame with its children, so its own Top and Left come off theirs.
+    return root.box?.position ? { x: -root.box.position.left, y: -root.box.position.top } : null;
+  }
+  const bounds = placed.get(frame.id);
+  return bounds && bounds.x !== null && bounds.y !== null ? { x: bounds.x, y: bounds.y } : null;
 }

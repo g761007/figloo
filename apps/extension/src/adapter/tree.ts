@@ -57,6 +57,20 @@ interface Parent {
   type: string | null;
 }
 
+/** A layer met by walkSubtree, with its parent and its depth below the root. */
+export interface WalkedLayer {
+  row: Row;
+  parentRef: string | null;
+  depth: number;
+}
+
+export interface Walk {
+  /** The root first, then every layer below it in layers panel order; instances count as one layer. */
+  layers: WalkedLayer[];
+  /** False when the subtree has more than the allowed number of layers. */
+  complete: boolean;
+}
+
 /** The page itself, parent of the layers at level 0. */
 const PAGE_ROOT: Parent = { id: null, rowIndex: 0, level: -1, type: null };
 
@@ -286,6 +300,41 @@ export class LayerTree {
       frontier = next;
     }
     return { rows, total: rows.length, from: 1, nextFrom: null, hasMore: false, stopReason: "complete" };
+  }
+
+  /**
+   * Reads the whole subtree of a layer outside instances in one pass down the list: each collapsed
+   * layer is expanded where the walk meets it, so its children follow right below and no row is
+   * read twice. Instances count as one layer and stay as they are; the rows of an instance the user
+   * expanded are skipped. Stops once the subtree turns out to hold more than `maxLayers` layers.
+   */
+  async walkSubtree(root: Row, maxLayers: number): Promise<Walk> {
+    const layers: WalkedLayer[] = [{ row: root, parentRef: null, depth: 0 }];
+    this.remember(root, { insideInstance: false });
+    if (!root.hasChildren || root.type === "Instance") return { layers, complete: true };
+    const opened = await this.opened(root);
+    layers[0]!.row = opened;
+    // Open layers from the root down to the current row; in a pre-order list the parent is the last one above its level.
+    const open: Row[] = [opened];
+    let skipBelow: number | null = null;
+    for (let i = opened.rowIndex + 1; ; i += 1) {
+      const row = await this.rowAt(i, "start");
+      if (!row || row.level <= root.level) return { layers, complete: true };
+      if (skipBelow !== null && row.level > skipBelow) continue;
+      skipBelow = null;
+      while (open.at(-1)!.level >= row.level) open.pop();
+      if (layers.length >= maxLayers) return { layers, complete: false };
+      const parent = open.at(-1)!;
+      layers.push({ row, parentRef: parent.id, depth: row.level - root.level });
+      this.remember(row, { parentRef: parent.id, insideInstance: false });
+      this.remember(parent, { childCount: row.setSize });
+      if (!row.hasChildren) continue;
+      if (row.type === "Instance") {
+        if (row.expanded) skipBelow = row.level;
+        continue;
+      }
+      open.push(await this.opened(row));
+    }
   }
 
   async childrenPage(parentRow: Parent | Row, from: number, limit: number, after?: string): Promise<Page> {

@@ -15,6 +15,8 @@ export interface Row {
   expanded: boolean;
   /** Figma also marks the rendered descendants of a selected layer as selected. */
   selected: boolean;
+  /** Figma greys out a hidden layer and every layer inside it (seen in Arc on 2026-10-01). */
+  hidden: boolean;
 }
 
 const ROW_ID_SUFFIX = "-layers-panel-row";
@@ -42,6 +44,7 @@ export function parseRow(el: Element): Row | null {
     hasChildren: expanded !== null,
     expanded: expanded === "true",
     selected: el.getAttribute("aria-selected") === "true",
+    hidden: /--color-text-disabled/.test(el.getAttribute("style") ?? ""),
   };
 }
 

@@ -12,12 +12,16 @@ import type {
   InspectParams,
   InspectResult,
   InspectedNode,
+  InspectedSection,
   LayerNode,
   ListNeighborsParams,
   ListPagesResult,
   NeighborsResult,
   PageIdentity,
+  ReadSubtreeParams,
   Rect,
+  SnapshotLayer,
+  SnapshotReadResult,
   VisualNeighbor,
   VisualNeighborsParams,
   VisualNeighborsResult,
@@ -27,10 +31,10 @@ import { parseFigmaUrl } from "../figma-url.js";
 import { parseSelectedCount } from "../probe.js";
 import { DomRowSource, TabInBackground, synthesizeClick } from "./dom-source.js";
 import { addTemporarySetting, exportButton, exportRows, exportSection, exportSettings, exportsLayer, removeTemporarySetting } from "./export.js";
-import { placeSiblings, type LayerBox, type Measured } from "./geometry.js";
+import { boundsInRoot, chooseZoom, placeSiblings, type LayerBox, type Measured } from "./geometry.js";
 import { inspectionHeader, inspectionRoot, inspectionSignature, readInspection } from "./inspect.js";
 import { layersPanel, readRenderedRows, type Row } from "./row.js";
-import { LayerTree, StopExploration, type IndexEntry, type Page } from "./tree.js";
+import { LayerTree, StopExploration, type IndexEntry, type Page, type WalkedLayer } from "./tree.js";
 
 /** Per-operation budgets from the plan: 15 s of UI work and a bounded number of UI operations. */
 export const OP_TIME_BUDGET_MS = 15_000;
@@ -48,6 +52,20 @@ const CAPTURE_FALLBACK_MARGIN_PX = 48;
 const ZOOM_ANIMATION_MS = 500;
 const TOAST_TIMEOUT_MS = 4_000;
 const BACKGROUND_MESSAGE = "the Figma tab is in the background, where Figma does not apply selection, zoom, or page changes";
+/** A snapshot's UI budget per allowed layer: the walk opens a layer at most once, and reading reveals few rows. */
+const SNAPSHOT_UI_OPS_PER_LAYER = 3;
+/** How long a snapshot waits for the mirror to place a selected layer; it never places hidden ones. */
+const SNAPSHOT_MIRROR_WAIT_MS = 300;
+
+/** Budgets of one operation, and what happens to the layers panel when the user steps in. */
+interface RunLimits {
+  timeBudgetMs: number;
+  maxUiOps: number;
+  /** Close the layers this operation opened even after the user stepped in, until their next input. */
+  collapseAfterInterrupt?: boolean;
+}
+
+const DEFAULT_LIMITS: RunLimits = { timeBudgetMs: OP_TIME_BUDGET_MS, maxUiOps: OP_MAX_UI_OPS };
 
 /** What the user had selected: none, one layer, several found layers, or several Figloo could not all find. */
 type UserSelection = { kind: "none" } | { kind: "layer"; id: string } | { kind: "layers"; ids: string[] } | { kind: "multiple" };
@@ -92,19 +110,22 @@ export class OpError extends Error {
 
 interface UserWatch {
   interrupted: () => boolean;
+  /** How many inputs the user made so far. */
+  inputs: () => number;
   dispose: () => void;
 }
 
 /** Any trusted pointer, key, or wheel input during an operation means the user took over. */
 function watchForUser(win: Window): UserWatch {
-  let interrupted = false;
+  let inputs = 0;
   const onInput = (event: Event) => {
-    if (event.isTrusted) interrupted = true;
+    if (event.isTrusted) inputs += 1;
   };
   const types = ["pointerdown", "keydown", "wheel"];
   for (const type of types) win.addEventListener(type, onInput, { capture: true, passive: true });
   return {
-    interrupted: () => interrupted,
+    interrupted: () => inputs > 0,
+    inputs: () => inputs,
     dispose: () => {
       for (const type of types) win.removeEventListener(type, onInput, { capture: true });
     },
@@ -368,14 +389,14 @@ export class Explorer {
     return { identity, token, ...value, viewport: { width: this.win.innerWidth, height: this.win.innerHeight } };
   }
 
-  async finishCapture(token: string): Promise<{ userSelectionRestored: boolean }> {
+  async finishCapture(token: string): Promise<{ userSelectionRestored: boolean; interrupted: boolean }> {
     const pending = this.pendingCapture;
-    if (!pending || pending.token !== token) return { userSelectionRestored: false };
+    if (!pending || pending.token !== token) return { userSelectionRestored: false, interrupted: false };
     this.pendingCapture = null;
     clearTimeout(pending.timer);
     pending.user.dispose();
     // If the user clicked or typed while the capture ran, their new selection wins.
-    if (pending.user.interrupted()) return { userSelectionRestored: false };
+    if (pending.user.interrupted()) return { userSelectionRestored: false, interrupted: true };
     let restored = false;
     await this.run(
       async () => undefined,
@@ -383,7 +404,117 @@ export class Explorer {
         restored = await this.restoreSelection(tree, source, pending.before);
       },
     );
-    return { userSelectionRestored: restored };
+    return { userSelectionRestored: restored, interrupted: false };
+  }
+
+  /**
+   * Reads a layer and its whole subtree for a snapshot, instances counting as one layer: walks the
+   * layers panel once, opening what is collapsed, then selects every layer in panel order to read
+   * its inspection panel and where the mirror shows it. The view must not move meanwhile, so the
+   * screen positions match the screenshot taken just before. Closes what it opened and puts the
+   * user's selection back. A subtree above `maxLayers` is not read; its root's children are listed.
+   */
+  async readSubtree(params: ReadSubtreeParams): Promise<SnapshotReadResult> {
+    const identity = this.checkExpected(params.expect);
+    if (this.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
+    await this.showPropertiesTab();
+    let before: UserSelection = { kind: "none" };
+    let restored = false;
+    const { value, uiOps, elapsedMs } = await this.run(
+      async (tree, source) => {
+        const started = Date.now();
+        before = await this.userSelection(tree);
+        const root = await tree.find(params.ref);
+        if (!root) throw new OpError("NODE_NOT_FOUND", `layer ${params.ref} is no longer in the layers panel`);
+        const { chain, reachedTop } = await tree.climb(root);
+        if (!reachedTop) throw new OpError("UI_NOT_READY", `the layers panel did not show the parents of layer ${params.ref}`);
+        if (chain.some((parent) => parent.type === "Instance")) {
+          throw new OpError("INSIDE_INSTANCE", `layer ${params.ref} is inside an instance, whose layer IDs only hold until the page reloads`);
+        }
+        const walk = await tree.walkSubtree(root, params.maxLayers);
+        if (!walk.complete) {
+          const page = await tree.childrenPage(walk.layers[0]!.row, 1, MAX_NEIGHBOR_LIMIT);
+          return { status: "too_large" as const, children: page.rows, childrenHasMore: page.hasMore };
+        }
+        const walkMs = Date.now() - started;
+        // The view stays put, so every layer the mirror places on the way is measured on the same screen.
+        const rects = new Map<string, Rect>();
+        const collect = () => {
+          for (const [id, rect] of source.mirrorRects()) rects.set(id, rect);
+        };
+        const read: { layer: WalkedLayer; sections: InspectedSection[]; exports: string[] | null }[] = [];
+        for (const layer of walk.layers) {
+          tree.check();
+          const row = await tree.find(layer.row.id);
+          if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${layer.row.id} is no longer in the layers panel`);
+          const previous = inspectionSignature(this.doc);
+          if (!(await source.select(row))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${row.id}`);
+          // Two layers that look alike leave the panel unchanged; the selection itself did change.
+          const switched = await this.waitForPanel(row, previous, source).then(
+            () => true,
+            () => false,
+          );
+          const sections = readInspection(inspectionRoot(this.doc) ?? this.doc);
+          collect();
+          // The mirror does not place text layers.
+          if (row.type !== "Text" && !rects.has(row.id) && (await source.settle(() => source.mirrorRects().has(row.id), SNAPSHOT_MIRROR_WAIT_MS))) collect();
+          read.push({ layer, sections, exports: switched ? designerExports(this.doc, row.name) : null });
+        }
+        return { status: "complete" as const, read, rects, walkMs, zoomLabel: parseZoom(source.zoomLabel()) };
+      },
+      async (tree, source) => {
+        restored = await this.restoreSelection(tree, source, before);
+      },
+      { timeBudgetMs: params.timeBudgetMs, maxUiOps: SNAPSHOT_UI_OPS_PER_LAYER * params.maxLayers, collapseAfterInterrupt: true },
+    );
+    if (value.status === "too_large") {
+      return {
+        status: "too_large",
+        identity,
+        maxLayers: params.maxLayers,
+        children: value.children.map((row) => this.toNode(row)),
+        childrenHasMore: value.childrenHasMore,
+        userSelectionRestored: restored,
+        uiOps,
+        elapsedMs,
+      };
+    }
+    const measures = value.read.map(({ layer, sections }) => {
+      const box = boxOf(sections);
+      // A rotated layer's Top and Left are where its origin went, not the corner of what shows on screen.
+      const rotated = sections.some((section) => section.properties.some((p) => p.group === null && p.name === "Rotation"));
+      return { id: layer.row.id, parentId: layer.parentRef, type: layer.row.type, rect: value.rects.get(layer.row.id) ?? null, box: box && rotated ? { ...box, position: null } : box };
+    });
+    const root = measures[0]!;
+    // The root's width on screen over its width in the panel, as for visual neighbors.
+    const zoom = chooseZoom(root.rect && root.box ? root.rect.width / root.box.width : null, value.zoomLabel);
+    const rootOnScreen = root.rect && root.rect.width > 0 && root.rect.height > 0 ? root.rect : null;
+    const bounds = boundsInRoot(measures, zoom);
+    const layers: SnapshotLayer[] = value.read.map(({ layer: { row, parentRef, depth }, sections, exports }) => ({
+      ref: row.id,
+      name: row.name.slice(0, MAX_NAME_LENGTH),
+      type: row.type,
+      depth,
+      parentRef,
+      position: row.position,
+      siblingCount: row.setSize,
+      hasChildren: row.hasChildren,
+      hidden: row.hidden,
+      bounds: bounds.get(row.id)!,
+      sections,
+      exports,
+    }));
+    return {
+      status: "complete",
+      identity,
+      layers,
+      rootOnScreen,
+      zoom,
+      walkMs: value.walkMs,
+      userSelectionRestored: restored,
+      uiOps,
+      elapsedMs,
+    };
   }
 
   /** The inspection panel lives in the Properties tab of the right sidebar, which guests do not have. */
@@ -585,18 +716,20 @@ export class Explorer {
   private async run<T>(
     work: (tree: LayerTree, source: DomRowSource) => Promise<T>,
     finish?: (tree: LayerTree, source: DomRowSource) => Promise<void>,
+    limits: RunLimits = DEFAULT_LIMITS,
   ): Promise<{ value: T; uiOps: number; elapsedMs: number }> {
     if (this.running) throw new OpError("BUSY", "another Figloo operation is running in this tab");
     if (!layersPanel(this.doc)) throw new OpError("UI_NOT_READY", "the layers panel is not rendered; expand the Figma UI");
     this.running = true;
     const started = Date.now();
     const user = watchForUser(this.win);
+    let stopped = user.interrupted;
     const source = new DomRowSource(this.doc);
     const tree = new LayerTree(source, this.index, {
-      deadline: started + OP_TIME_BUDGET_MS,
-      maxUiOps: OP_MAX_UI_OPS,
+      deadline: started + limits.timeBudgetMs,
+      maxUiOps: limits.maxUiOps,
       now: Date.now,
-      interrupted: user.interrupted,
+      interrupted: () => stopped(),
     });
     try {
       let value: T;
@@ -605,7 +738,14 @@ export class Explorer {
         // Rows read after the user stepped in may already describe a different state.
         if (user.interrupted()) throw new StopExploration("user_interrupted");
       } catch (error) {
-        if (!user.interrupted()) await this.putBack(tree, source, finish);
+        if (!user.interrupted()) {
+          await this.putBack(tree, source, finish);
+        } else if (limits.collapseAfterInterrupt) {
+          // The user's new selection and scroll position stay; only what this operation opened closes.
+          const seen = user.inputs();
+          stopped = () => user.inputs() > seen;
+          await tree.restore().catch(() => undefined);
+        }
         throw translate(error);
       }
       await this.putBack(tree, source, finish);
@@ -658,7 +798,13 @@ export class Explorer {
 /** Width and height from the inspection panel, for example "393px", "Hug (317px)", or "1,064px". */
 function layerBox(doc: Document): LayerBox | null {
   const root = inspectionRoot(doc);
-  const layout = root ? readInspection(root).find((section) => section.kind === "properties") : undefined;
+  const box = root ? boxOf(readInspection(root)) : null;
+  return box && box.width > 0 && box.height > 0 ? box : null;
+}
+
+/** The size and the place in its nearest frame that the panel's layout section shows; a line has a zero height. */
+function boxOf(sections: InspectedSection[]): LayerBox | null {
+  const layout = sections.find((section) => section.kind === "properties");
   const px = (name: string) => {
     const value = layout?.properties.find((p) => p.group === null && p.name === name)?.value;
     const match = value ? /(-?[\d,.]+)px\)?$/.exec(value) : null;
@@ -666,12 +812,23 @@ function layerBox(doc: Document): LayerBox | null {
   };
   const width = px("Width");
   const height = px("Height");
-  if (!(width > 0 && height > 0)) return null;
+  if (!(width >= 0 && height >= 0)) return null;
   // A missing Top or Left next to a shown one is zero; with neither shown the position is unknown.
   const left = px("Left");
   const top = px("Top");
   const shown = Number.isFinite(left) || Number.isFinite(top);
   return { width, height, position: shown ? { left: Number.isFinite(left) ? left : 0, top: Number.isFinite(top) ? top : 0 } : null };
+}
+
+/**
+ * The export settings the panel shows for a layer once it has switched to it; in Arc on 2026-10-01
+ * they did not change any more after that. A layer without settings keeps the previous layer's
+ * button label, so settings count as this layer's only under a button that names it.
+ */
+function designerExports(doc: Document, name: string): string[] | null {
+  const section = exportSection(doc);
+  const settings = section ? exportSettings(section) : [];
+  return settings.length === 0 || (section !== null && exportsLayer(section, name)) ? settings : null;
 }
 
 function layerSize(doc: Document): { width: number; height: number } | null {

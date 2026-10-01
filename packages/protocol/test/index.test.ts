@@ -7,6 +7,7 @@ import {
   MAX_NEIGHBOR_LIMIT,
   PROTOCOL_VERSION,
   ServerMessageSchema,
+  SnapshotResultSchema,
   TabStatusSchema,
   protocolCompatible,
 } from "../src/index.js";
@@ -108,5 +109,39 @@ describe("exploration schemas", () => {
   it("rejects a layer summary without a position among its siblings", () => {
     expect(LayerNodeSchema.safeParse(node).success).toBe(true);
     expect(LayerNodeSchema.safeParse({ ...node, position: 0 }).success).toBe(false);
+  });
+});
+
+describe("snapshot schemas", () => {
+  const identity = { pageId: "p", fileKey: "abc", page: null };
+  const counts = { userSelectionRestored: true, uiOps: 120, elapsedMs: 61_000 };
+  const layer = {
+    ref: "1:3",
+    name: "Title",
+    type: "Text",
+    depth: 1,
+    parentRef: "1:2",
+    position: 1,
+    siblingCount: 2,
+    hasChildren: false,
+    hidden: false,
+    bounds: { x: null, y: null, width: 120, height: 24, source: "unknown" },
+    sections: [],
+    exports: [],
+  };
+
+  it("keeps the size of a layer Figma shows no position for", () => {
+    const image = { data: "", mimeType: "image/jpeg", width: 748, height: 1568 };
+    const complete = { status: "complete", identity, layers: [layer], rootOnScreen: null, zoom: null, walkMs: 4_000, ...counts, image, crop: { x: 1, y: 2, width: 388, height: 813 }, rootInImage: null, imageScale: null };
+    const parsed = SnapshotResultSchema.parse(complete);
+    expect(parsed.status === "complete" && parsed.layers[0]!.bounds).toEqual({ x: null, y: null, width: 120, height: 24, source: "unknown" });
+    expect(SnapshotResultSchema.safeParse({ ...complete, layers: [{ ...layer, bounds: { ...layer.bounds, source: "guess" } }] }).success).toBe(false);
+  });
+
+  it("reports a subtree that is too large with the root's children instead of layers", () => {
+    const tooLarge = { status: "too_large", identity, maxLayers: 400, children: [], childrenHasMore: false, ...counts };
+    expect(SnapshotResultSchema.safeParse(tooLarge).success).toBe(true);
+    // A too-large result never carries layers that would look like a partial snapshot.
+    expect(SnapshotResultSchema.parse({ ...tooLarge, layers: [layer] })).not.toHaveProperty("layers");
   });
 });

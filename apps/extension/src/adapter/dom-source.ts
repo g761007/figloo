@@ -105,13 +105,16 @@ export class DomRowSource implements RowSource {
     return this.doc.querySelector('#hidden-input-activedescendant[role="main"]') !== null;
   }
 
-  /** Every layer the mirror currently places on screen. It holds only a few layers around the selection. */
+  /**
+   * Every layer the mirror currently places on screen. It holds only a few layers around the
+   * selection. A line has no height, or no width once rotated a quarter turn, and still counts.
+   */
   mirrorRects(): Map<string, Rect> {
     const rects = new Map<string, Rect>();
     for (const el of this.doc.querySelectorAll('[role="main"] [data-nodeid]')) {
       const rect = el.getBoundingClientRect();
       const id = el.getAttribute("data-nodeid");
-      if (id && rect.width > 0 && rect.height > 0) rects.set(id, { x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+      if (id && (rect.width > 0 || rect.height > 0)) rects.set(id, { x: rect.x, y: rect.y, width: rect.width, height: rect.height });
     }
     return rects;
   }

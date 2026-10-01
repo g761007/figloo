@@ -63,3 +63,4 @@
 - [工具列 popup](2026-09-30-popup.md)
 - [M4：交付與驗收](2026-10-01-m4-acceptance.md)
 - [相鄰元件與多選錨點](2026-10-01-visual-neighbors-and-multi-select.md)
+- [頁面快照第一階段：adapter 的完整讀取](2026-10-01-page-snapshot-phase1.md)

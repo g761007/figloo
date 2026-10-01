@@ -32,6 +32,14 @@ describe("layers panel parsing on captured Figma markup", () => {
     expect(rows.find((row) => row.id === "1335:5269")).toMatchObject({ level: 2, position: 2, setSize: 3, type: "Auto layout", selected: true, name: "Layer 7" });
     expect(rows.find((row) => row.id === "338:4259")).toMatchObject({ type: "Image", hasChildren: false, expanded: false });
   });
+
+  it("marks the row Figma greys out as hidden, selected or not", () => {
+    // The one greyed-out row in the capture is not selected; its style sets color: var(--color-text-disabled).
+    expect(readRenderedRows(document).filter((row) => row.hidden).map((row) => row.id)).toEqual(["338:4259"]);
+    const el = document.querySelector('[data-testid="338:4259-layers-panel-row"]')!.closest('[role="row"]') as HTMLElement;
+    el.setAttribute("style", el.getAttribute("style")!.replace("color: var(--color-text-disabled);", ""));
+    expect(readRenderedRows(document).some((row) => row.hidden)).toBe(false);
+  });
 });
 
 describe("Explorer on captured Figma markup", () => {

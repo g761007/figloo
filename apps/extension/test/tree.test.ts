@@ -290,3 +290,87 @@ describe("LayerTree subtree", () => {
     expect(page).toMatchObject({ hasMore: false, stopReason: "complete" });
   });
 });
+
+describe("LayerTree whole subtree walk", () => {
+  const cardIds = (n: number) => [`c${n}`, `c${n}-title`, `c${n}-image`, `c${n}-button`];
+
+  it("reads every layer below the root once in panel order, expanding each collapsed layer where it meets it", async () => {
+    const source = new FakeLayers(cardScreen(3));
+    const before = source.expandedIds();
+    const index = new Map<string, IndexEntry>();
+    const tree = makeTree(source, index);
+    const list = source.flat().find((row) => row.id === "list")!;
+
+    const walk = await tree.walkSubtree(list, 400);
+    expect(walk.complete).toBe(true);
+    expect(walk.layers.map((layer) => layer.row.id)).toEqual(["list", ...[1, 2, 3, 4, 5].flatMap(cardIds)]);
+    // Cards 1, 2, 4, and 5 were collapsed; card 3 was already open and the buttons are instances.
+    expect(source.toggles).toBe(4);
+    expect(walk.layers.find((layer) => layer.row.id === "c4-title")).toMatchObject({ parentRef: "c4", depth: 2 });
+    expect(walk.layers.find((layer) => layer.row.id === "c2")).toMatchObject({ parentRef: "list", depth: 1 });
+    expect(walk.layers[0]).toMatchObject({ parentRef: null, depth: 0 });
+    expect(index.get("c5-button")).toMatchObject({ parentRef: "c5", insideInstance: false });
+
+    await tree.restore();
+    expect(source.expandedIds()).toEqual(before);
+  });
+
+  it("keeps instances closed and skips the layers of an instance the user opened", async () => {
+    const source = new FakeLayers(cardScreen(3, { buttonExpanded: true }));
+    const card = source.flat().find((row) => row.id === "c3")!;
+
+    const walk = await makeTree(source).walkSubtree(card, 400);
+    expect(walk.layers.map((layer) => layer.row.id)).toEqual(cardIds(3));
+    expect(walk.layers.at(-1)!.row).toMatchObject({ type: "Instance", hasChildren: true });
+    expect(source.node("c1-button").expanded).toBeFalsy();
+  });
+
+  it("opens a collapsed root and closes it again on restore", async () => {
+    const source = new FakeLayers(cardScreen(3));
+    const tree = makeTree(source);
+    const card = source.flat().find((row) => row.id === "c1")!;
+
+    const walk = await tree.walkSubtree(card, 400);
+    expect(walk.layers.map((layer) => layer.row.id)).toEqual(cardIds(1));
+    expect(source.node("c1").expanded).toBe(true);
+
+    await tree.restore();
+    expect(source.node("c1").expanded).toBe(false);
+  });
+
+  it("stops as soon as the subtree holds more layers than allowed, and allows exactly the limit", async () => {
+    const source = new FakeLayers(cardScreen(3));
+    const list = source.flat().find((row) => row.id === "list")!;
+
+    const cut = await makeTree(source).walkSubtree(list, 10);
+    expect(cut.complete).toBe(false);
+    expect(cut.layers).toHaveLength(10);
+
+    const exact = await makeTree(new FakeLayers(cardScreen(3))).walkSubtree(list, 21);
+    expect(exact.complete).toBe(true);
+    expect(exact.layers).toHaveLength(21);
+  });
+
+  it("reads a root without layers of its own, or an instance root, as one layer", async () => {
+    const source = new FakeLayers(cardScreen(3));
+    const tree = makeTree(source);
+    const footer = source.flat().find((row) => row.id === "footer")!;
+    expect((await tree.walkSubtree(footer, 400)).layers.map((layer) => layer.row.id)).toEqual(["footer"]);
+
+    const button = source.flat().find((row) => row.id === "c3-button")!;
+    expect((await tree.walkSubtree(button, 400)).layers.map((layer) => layer.row.id)).toEqual(["c3-button"]);
+    expect(source.toggles).toBe(0);
+  });
+
+  it("stops when the user steps in during the walk", async () => {
+    const source = new FakeLayers(cardScreen(3));
+    let operations = 0;
+    source.onOperation = () => {
+      operations += 1;
+    };
+    const list = source.flat().find((row) => row.id === "list")!;
+    const tree = makeTree(source, new Map(), { interrupted: () => operations >= 3 });
+
+    await expect(tree.walkSubtree(list, 400)).rejects.toMatchObject({ cause: "user_interrupted" });
+  });
+});

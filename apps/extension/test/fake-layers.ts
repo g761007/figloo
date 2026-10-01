@@ -7,6 +7,7 @@ export interface FakeNode {
   type?: string;
   expanded?: boolean;
   selected?: boolean;
+  hidden?: boolean;
   children?: FakeNode[];
 }
 
@@ -25,16 +26,17 @@ export class FakeLayers implements RowSource {
 
   flat(): Row[] {
     const out: Row[] = [];
-    const visit = (nodes: FakeNode[], level: number, insideSelected: boolean) => {
+    const visit = (nodes: FakeNode[], level: number, insideSelected: boolean, insideHidden: boolean) => {
       nodes.forEach((node, i) => {
         const hasChildren = (node.children?.length ?? 0) > 0;
         const expanded = hasChildren && node.expanded === true;
         const selected = insideSelected || node.selected === true;
-        out.push({ id: node.id, name: node.name, type: node.type ?? "Frame", level, position: i + 1, setSize: nodes.length, rowIndex: out.length + 1, hasChildren, expanded, selected });
-        if (expanded) visit(node.children!, level + 1, selected);
+        const hidden = insideHidden || node.hidden === true;
+        out.push({ id: node.id, name: node.name, type: node.type ?? "Frame", level, position: i + 1, setSize: nodes.length, rowIndex: out.length + 1, hasChildren, expanded, selected, hidden });
+        if (expanded) visit(node.children!, level + 1, selected, hidden);
       });
     };
-    visit(this.roots, 0, false);
+    visit(this.roots, 0, false, false);
     return out;
   }
 

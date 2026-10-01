@@ -54,6 +54,7 @@ export const ErrorCodeSchema = z.enum([
   "TAB_IN_BACKGROUND",
   "EXPORT_BLOCKED",
   "EXPORT_PENDING",
+  "INSIDE_INSTANCE",
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 
@@ -120,7 +121,18 @@ export const BridgeErrorCodeSchema = z.enum([
 ]);
 export type BridgeErrorCode = z.infer<typeof BridgeErrorCodeSchema>;
 
-export const BridgeOpSchema = z.enum(["refresh_tabs", "get_anchor", "list_neighbors", "list_pages", "explore_page", "inspect_nodes", "capture", "export_asset", "visual_neighbors"]);
+export const BridgeOpSchema = z.enum([
+  "refresh_tabs",
+  "get_anchor",
+  "list_neighbors",
+  "list_pages",
+  "explore_page",
+  "inspect_nodes",
+  "capture",
+  "export_asset",
+  "visual_neighbors",
+  "snapshot_layer",
+]);
 export type BridgeOp = z.infer<typeof BridgeOpSchema>;
 
 // Messages sent by the extension to the local bridge.
@@ -439,9 +451,13 @@ export const CapturePlanSchema = z.object({
 });
 export type CapturePlan = z.infer<typeof CapturePlanSchema>;
 
+export const CaptureImageSchema = z.object({ data: z.string(), mimeType: z.literal("image/jpeg"), width: z.number().int(), height: z.number().int() });
+
 export const CaptureResultSchema = z.object({
   identity: PageIdentitySchema,
-  image: z.object({ data: z.string(), mimeType: z.literal("image/jpeg"), width: z.number().int(), height: z.number().int() }),
+  image: CaptureImageSchema,
+  /** The part of the viewport the image shows, in CSS pixels; the image is this rectangle scaled to its width and height. */
+  crop: RectSchema,
   cropSource: z.enum(["layer", "canvas"]),
   zoom: z.string().nullable(),
   userSelectionRestored: z.boolean(),
@@ -630,3 +646,108 @@ export const ExportOutputSchema = z.object({
   userSelectionRestored: z.boolean(),
 });
 export type ExportOutput = z.infer<typeof ExportOutputSchema>;
+
+/** Most layers a page snapshot reads, the root included: about two minutes of reading. */
+export const MAX_SNAPSHOT_LAYERS = 400;
+/** Time a page snapshot may take, screenshot included; below the five minutes Chrome allows one extension request. */
+export const SNAPSHOT_TIME_BUDGET_MS = 180_000;
+
+export const SnapshotParamsSchema = z.object({
+  expect: PageIdentitySchema,
+  /** The root layer; it must not be inside an instance. */
+  ref: z.string(),
+});
+export type SnapshotParams = z.infer<typeof SnapshotParamsSchema>;
+
+/** What the service worker asks the tab to read once it has captured the root. */
+export const ReadSubtreeParamsSchema = SnapshotParamsSchema.extend({
+  maxLayers: z.number().int().positive(),
+  timeBudgetMs: z.number().int().positive(),
+});
+export type ReadSubtreeParams = z.infer<typeof ReadSubtreeParamsSchema>;
+
+export const BoundsSourceSchema = z.enum(["mirror", "panel", "unknown"]);
+export type BoundsSource = z.infer<typeof BoundsSourceSchema>;
+
+/** A layer's place relative to the root's top-left corner, in design pixels. */
+export const SnapshotBoundsSchema = z.object({
+  /** null, together with y, when Figma shows no position, as for text placed by auto layout. */
+  x: z.number().nullable(),
+  y: z.number().nullable(),
+  width: z.number().nullable(),
+  height: z.number().nullable(),
+  /** "mirror": measured on screen; "panel": the inspection panel's Top and Left added to its frame's place; "unknown": the size at most. */
+  source: BoundsSourceSchema,
+});
+export type SnapshotBounds = z.infer<typeof SnapshotBoundsSchema>;
+
+/** One layer of a snapshot: where it sits in the tree, where it sits in the root, and its inspection panel. */
+export const SnapshotLayerSchema = z.object({
+  ref: z.string(),
+  name: z.string(),
+  type: z.string().nullable(),
+  /** 0 for the root. */
+  depth: z.number().int().nonnegative(),
+  /** null for the root. */
+  parentRef: z.string().nullable(),
+  /** 1-based position among its siblings, in layers panel order. */
+  position: z.number().int().positive(),
+  siblingCount: z.number().int().positive(),
+  /** For an instance, whether it has layers of its own; a snapshot does not read inside instances. */
+  hasChildren: z.boolean(),
+  /** Hidden in Figma, or inside a hidden layer; the layers panel greys both out. Its bounds are still measured. */
+  hidden: z.boolean(),
+  bounds: SnapshotBoundsSchema,
+  sections: z.array(InspectedSectionSchema),
+  /** What the designer set the layer up to export, such as "PNG 2x"; null when Figloo could not confirm the export section showed this layer. */
+  exports: z.array(z.string()).nullable(),
+});
+export type SnapshotLayer = z.infer<typeof SnapshotLayerSchema>;
+
+const SnapshotReadCompleteSchema = z.object({
+  status: z.literal("complete"),
+  identity: PageIdentitySchema,
+  /** Every layer in layers panel order, the root first. */
+  layers: z.array(SnapshotLayerSchema),
+  /** The root on screen, in viewport CSS pixels; null without Figma's screen reader mirror. */
+  rootOnScreen: RectSchema.nullable(),
+  /** Screen pixels per design pixel. */
+  zoom: z.number().positive().nullable(),
+  /** Time spent walking the layers panel, before reading each layer. */
+  walkMs: z.number().nonnegative(),
+  userSelectionRestored: z.boolean(),
+  uiOps: z.number().int().nonnegative(),
+  elapsedMs: z.number().nonnegative(),
+});
+
+/** The subtree has more layers than a snapshot reads; nothing was read. */
+const SnapshotTooLargeSchema = z.object({
+  status: z.literal("too_large"),
+  identity: PageIdentitySchema,
+  maxLayers: z.number().int().positive(),
+  /** The root's direct children, to pick a smaller root from. */
+  children: z.array(LayerNodeSchema),
+  childrenHasMore: z.boolean(),
+  userSelectionRestored: z.boolean(),
+  uiOps: z.number().int().nonnegative(),
+  elapsedMs: z.number().nonnegative(),
+});
+
+/** Result of the tab's `read_subtree` op. */
+export const SnapshotReadResultSchema = z.discriminatedUnion("status", [SnapshotReadCompleteSchema, SnapshotTooLargeSchema]);
+export type SnapshotReadResult = z.infer<typeof SnapshotReadResultSchema>;
+
+/** Result of the `snapshot_layer` op: the root's screenshot and every layer below it. */
+export const SnapshotResultSchema = z.discriminatedUnion("status", [
+  SnapshotReadCompleteSchema.extend({
+    image: CaptureImageSchema,
+    /** The part of the viewport the image shows, in CSS pixels. */
+    crop: RectSchema,
+    /** The root in the image, in image pixels; null when its place on screen is unknown. */
+    rootInImage: RectSchema.nullable(),
+    /** Image pixels per design pixel, to place a layer's bounds in the image; null when the zoom is unknown. */
+    imageScale: z.number().positive().nullable(),
+  }),
+  SnapshotTooLargeSchema,
+]);
+export type SnapshotResult = z.infer<typeof SnapshotResultSchema>;

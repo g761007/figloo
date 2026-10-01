@@ -327,7 +327,7 @@ describe("inspect_nodes", () => {
 });
 
 describe("capture", () => {
-  const captured = { identity, image: { data: Buffer.from("jpeg bytes").toString("base64"), mimeType: "image/jpeg", width: 364, height: 789 }, cropSource: "layer", zoom: "93%", userSelectionRestored: true, elapsedMs: 900 };
+  const captured = { identity, image: { data: Buffer.from("jpeg bytes").toString("base64"), mimeType: "image/jpeg", width: 364, height: 789 }, crop: { x: 531, y: 28, width: 388, height: 813 }, cropSource: "layer", zoom: "93%", userSelectionRestored: true, elapsedMs: 900 };
 
   it("returns the image to the agent along with how it was cropped", async () => {
     const { requests, call } = await setup((request) => (request.op === "get_anchor" ? { ok: true, result: anchorResult } : { ok: true, result: captured }));
