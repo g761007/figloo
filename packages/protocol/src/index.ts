@@ -42,7 +42,6 @@ export type NeighborRelation = z.infer<typeof NeighborRelationSchema>;
 export const ErrorCodeSchema = z.enum([
   "USER_INTERRUPTED",
   "NO_SELECTION",
-  "MULTIPLE_SELECTION",
   "NODE_NOT_FOUND",
   "PAGE_CHANGED",
   "UI_NOT_READY",
@@ -121,7 +120,7 @@ export const BridgeErrorCodeSchema = z.enum([
 ]);
 export type BridgeErrorCode = z.infer<typeof BridgeErrorCodeSchema>;
 
-export const BridgeOpSchema = z.enum(["refresh_tabs", "get_anchor", "list_neighbors", "list_pages", "explore_page", "inspect_nodes", "capture", "export_asset"]);
+export const BridgeOpSchema = z.enum(["refresh_tabs", "get_anchor", "list_neighbors", "list_pages", "explore_page", "inspect_nodes", "capture", "export_asset", "visual_neighbors"]);
 export type BridgeOp = z.infer<typeof BridgeOpSchema>;
 
 // Messages sent by the extension to the local bridge.
@@ -271,10 +270,16 @@ export const ListNeighborsParamsSchema = z.object({
 export type ListNeighborsParams = z.infer<typeof ListNeighborsParamsSchema>;
 
 /** Result of the `get_anchor` op, produced inside the Figma tab. */
+/** Most selected layers `get_anchor` returns. */
+export const MAX_ANCHORS = 20;
+
 export const AnchorResultSchema = z.object({
   identity: PageIdentitySchema,
   selectionCount: z.number().int().nonnegative(),
+  /** The first selected layer in layers panel order. */
   anchor: LayerNodeSchema,
+  /** Every selected layer found, in layers panel order, at most MAX_ANCHORS. */
+  anchors: z.array(LayerNodeSchema).min(1).max(MAX_ANCHORS),
   uiOps: z.number().int().nonnegative(),
   elapsedMs: z.number().nonnegative(),
 });
@@ -303,6 +308,7 @@ export const GetAnchorOutputSchema = z.object({
   page: z.string().nullable(),
   selectionCount: z.number().int().nonnegative(),
   anchor: LayerNodeSchema,
+  anchors: z.array(LayerNodeSchema),
 });
 export type GetAnchorOutput = z.infer<typeof GetAnchorOutputSchema>;
 
@@ -478,6 +484,68 @@ export const CaptureOutputSchema = z.object({
 export type CaptureOutput = z.infer<typeof CaptureOutputSchema>;
 
 /** Formats and scale presets the export section of Figma's inspection panel offers. */
+/** Most layers `get_visual_neighbors` returns. */
+export const MAX_VISUAL_NEIGHBORS = 20;
+export const DEFAULT_VISUAL_NEIGHBORS = 10;
+
+export const VisualDirectionSchema = z.enum(["nearest", "right", "left", "below", "above"]);
+export const VisualSideSchema = z.enum(["right", "left", "below", "above", "overlaps"]);
+
+export const VisualNeighborsParamsSchema = z.object({
+  expect: PageIdentitySchema,
+  ref: z.string(),
+  direction: VisualDirectionSchema,
+  limit: z.number().int().positive().max(MAX_VISUAL_NEIGHBORS),
+});
+export type VisualNeighborsParams = z.infer<typeof VisualNeighborsParamsSchema>;
+
+/** A sibling of the reference layer, placed by where both are on screen; lengths in design pixels. */
+export const VisualNeighborSchema = LayerNodeSchema.extend({
+  side: VisualSideSchema,
+  /** Whether it shares a row (left or right) or a column (above or below) with the reference layer. */
+  inLine: z.boolean(),
+  /** Edge-to-edge distance, corner to corner for layers off to a diagonal; 0 when touching or overlapping. */
+  gap: z.number().nonnegative(),
+  /** Its top-left corner relative to the reference layer's. */
+  offset: z.object({ x: z.number(), y: z.number() }),
+  size: z.object({ width: z.number(), height: z.number() }),
+});
+export type VisualNeighbor = z.infer<typeof VisualNeighborSchema>;
+
+export const VisualNeighborsResultSchema = z.object({
+  identity: PageIdentitySchema,
+  reference: z.object({ width: z.number(), height: z.number() }),
+  /** Zoom used to turn screen pixels into design pixels, for example 0.61; null when every position came from the inspection panel. */
+  zoom: z.number().positive().nullable(),
+  neighbors: z.array(VisualNeighborSchema),
+  /** Siblings that were measured, not counting the reference. */
+  compared: z.number().int().nonnegative(),
+  /** Siblings Figma gave no position on screen, such as hidden layers. */
+  unplaced: z.array(z.string()),
+  /** True when the parent has more children than one call compares. */
+  siblingsHasMore: z.boolean(),
+  userSelectionRestored: z.boolean(),
+  uiOps: z.number().int().nonnegative(),
+  elapsedMs: z.number().nonnegative(),
+});
+export type VisualNeighborsResult = z.infer<typeof VisualNeighborsResultSchema>;
+
+export const VisualNeighborsOutputSchema = z.object({
+  contextId: z.string(),
+  ref: z.string(),
+  direction: VisualDirectionSchema,
+  reference: z.object({ width: z.number(), height: z.number() }),
+  zoom: z.number().nullable(),
+  neighbors: z.array(VisualNeighborSchema),
+  compared: z.number().int().nonnegative(),
+  unplaced: z.array(z.string()),
+  siblingsHasMore: z.boolean(),
+  userSelectionRestored: z.boolean(),
+  uiOps: z.number().int().nonnegative(),
+  elapsedMs: z.number().nonnegative(),
+});
+export type VisualNeighborsOutput = z.infer<typeof VisualNeighborsOutputSchema>;
+
 export const ExportFormatSchema = z.enum(["svg", "png", "jpg", "pdf"]);
 export type ExportFormat = z.infer<typeof ExportFormatSchema>;
 export const ExportScaleSchema = z.enum(["0.5x", "0.75x", "1x", "1.5x", "2x", "3x", "4x"]);

@@ -208,7 +208,7 @@ try {
 
   // M2 through every hop: a guest cannot select, so get_anchor must say so instead of guessing an anchor.
   let anchorError = toolErrorOf(await client.callTool({ name: "get_anchor", arguments: { tabId: figmaTabId } }));
-  assert(anchorError?.code === "NO_SELECTION" && /select one layer/.test(anchorError.hint), `get_anchor without a selection (got ${JSON.stringify(anchorError)})`);
+  assert(anchorError?.code === "NO_SELECTION" && /select the layers to work on/.test(anchorError.hint), `get_anchor without a selection (got ${JSON.stringify(anchorError)})`);
   anchorError = toolErrorOf(await client.callTool({ name: "get_anchor", arguments: { tabId: optionsTabId } }));
   assert(anchorError?.code === "TAB_NOT_FOUND", `get_anchor on a tab without a design file (got ${JSON.stringify(anchorError)})`);
   const neighborsError = toolErrorOf(await client.callTool({ name: "get_neighbors", arguments: { contextId: "ctx_missing", ref: "1:1", relation: "parent" } }));

@@ -18,11 +18,16 @@ import type {
   NeighborsResult,
   PageIdentity,
   Rect,
+  VisualNeighbor,
+  VisualNeighborsParams,
+  VisualNeighborsResult,
 } from "@figloo/protocol";
+import { MAX_ANCHORS, MAX_NEIGHBOR_LIMIT } from "@figloo/protocol";
 import { parseFigmaUrl } from "../figma-url.js";
 import { parseSelectedCount } from "../probe.js";
 import { DomRowSource, TabInBackground, synthesizeClick } from "./dom-source.js";
 import { addTemporarySetting, exportButton, exportRows, exportSection, exportSettings, exportsLayer, removeTemporarySetting } from "./export.js";
+import { placeSiblings, type LayerBox, type Measured } from "./geometry.js";
 import { inspectionHeader, inspectionRoot, inspectionSignature, readInspection } from "./inspect.js";
 import { layersPanel, readRenderedRows, type Row } from "./row.js";
 import { LayerTree, StopExploration, type IndexEntry, type Page } from "./tree.js";
@@ -44,7 +49,11 @@ const ZOOM_ANIMATION_MS = 500;
 const TOAST_TIMEOUT_MS = 4_000;
 const BACKGROUND_MESSAGE = "the Figma tab is in the background, where Figma does not apply selection, zoom, or page changes";
 
-type UserSelection = { kind: "none" } | { kind: "layer"; id: string } | { kind: "multiple" };
+/** What the user had selected: none, one layer, several found layers, or several Figloo could not all find. */
+type UserSelection = { kind: "none" } | { kind: "layer"; id: string } | { kind: "layers"; ids: string[] } | { kind: "multiple" };
+
+const MIRROR_MESSAGE =
+  "Figma shows where layers are on screen only with Adapt content for screen readers turned on (Main menu, Preferences, Accessibility settings)";
 
 interface PendingExport {
   token: string;
@@ -127,14 +136,16 @@ export class Explorer {
     const label = this.doc.querySelector("input.focus-target")?.getAttribute("aria-label") ?? null;
     const count = parseSelectedCount(label);
     if (count === 0) throw new OpError("NO_SELECTION", "no layer is selected in Figma");
-    if (count !== null && count > 1) throw new OpError("MULTIPLE_SELECTION", `${count} layers are selected in Figma`);
     const { value, uiOps, elapsedMs } = await this.run(async (tree) => {
-      const row = await tree.selectionRoot();
-      if (!row) throw new OpError("NO_SELECTION", "the selected layer is not in the layers panel");
-      await tree.climb(row);
-      return row;
+      // One layer can be found from the rows on screen; several need the list read in order.
+      const single = count === null || count === 1;
+      const rows = single ? [await tree.selectionRoot()].filter((row): row is Row => row !== null) : await tree.selectionRoots(Math.min(count, MAX_ANCHORS));
+      if (rows.length === 0) throw new OpError("NO_SELECTION", "the selected layer is not in the layers panel");
+      for (const row of rows) await tree.climb(row);
+      return rows;
     });
-    return { identity, selectionCount: count ?? 1, anchor: this.toNode(value), uiOps, elapsedMs };
+    const anchors = value.map((row) => this.toNode(row));
+    return { identity, selectionCount: count ?? 1, anchor: anchors[0]!, anchors, uiOps, elapsedMs };
   }
 
   /** Throws when a context no longer matches the page it was created for. */
@@ -218,6 +229,87 @@ export class Explorer {
       },
     );
     return { identity, nodes: value, userSelectionRestored: restored, uiOps, elapsedMs };
+  }
+
+  /**
+   * Places the siblings of a layer by where they are on screen. Figma's screen reader mirror only
+   * places the selected layer, its neighbours in layer order, its parent, and its first child, so
+   * every third sibling is selected in turn. The user's selection is put back afterwards.
+   */
+  async visualNeighbors(params: VisualNeighborsParams): Promise<VisualNeighborsResult> {
+    const identity = this.checkExpected(params.expect);
+    if (this.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
+    await this.showPropertiesTab();
+    let before: UserSelection = { kind: "none" };
+    let restored = false;
+    const { value, uiOps, elapsedMs } = await this.run(
+      async (tree, source) => {
+        if (!source.hasMirror()) throw new OpError("UI_NOT_READY", MIRROR_MESSAGE);
+        before = await this.userSelection(tree);
+        const row = await tree.find(params.ref);
+        if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${params.ref} is no longer in the layers panel`);
+        const page = await tree.siblingsPage(row, 1, MAX_NEIGHBOR_LIMIT);
+        const list = page.rows;
+        const siblingsHasMore = page.hasMore;
+        const rects = new Map<string, Rect>();
+        const boxes = new Map<string, LayerBox>();
+        // The mirror places frames, groups, shapes, and instances, but not text layers.
+        const isText = (layer: Row) => layer.type === "Text";
+        const select = async (target: Row): Promise<void> => {
+          tree.check();
+          const shown = (await tree.find(target.id)) ?? target;
+          const previous = inspectionSignature(this.doc);
+          if (!(await source.select(shown))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${target.id}`);
+          if (!isText(target)) {
+            await source.settle(() => source.mirrorRect(target.id) !== null);
+            for (const [id, rect] of source.mirrorRects()) rects.set(id, rect);
+          }
+          const inPanel = await this.waitForPanel(shown, previous, source).then(() => true).catch(() => false);
+          const box = inPanel ? layerBox(this.doc) : null;
+          if (box) boxes.set(target.id, box);
+        };
+        await select(row);
+        // Selecting a layer also places its neighbours in layer order, so pick the next one when it can.
+        for (let i = 0; i < list.length; i += 1) {
+          const sibling = list[i]!;
+          if (sibling.id === row.id || isText(sibling) || rects.has(sibling.id)) continue;
+          const next = list[i + 1];
+          await select(next && next.id !== row.id && !isText(next) ? next : sibling);
+        }
+        // Text layers get their position from the panel.
+        for (const sibling of list) {
+          if (sibling.id !== row.id && isText(sibling) && !boxes.has(sibling.id)) await select(sibling);
+        }
+        return { row, list, rects, boxes, siblingsHasMore, zoomLabel: parseZoom(source.zoomLabel()) };
+      },
+      async (tree, source) => {
+        restored = await this.restoreSelection(tree, source, before);
+      },
+    );
+    const measured = (layer: Row): Measured => ({ id: layer.id, rect: value.rects.get(layer.id) ?? null, box: value.boxes.get(layer.id) ?? null });
+    const others = value.list.filter((layer) => layer.id !== value.row.id);
+    const result = placeSiblings(measured(value.row), others.map(measured), value.zoomLabel);
+    if (!result.reference) {
+      throw new OpError("UI_NOT_READY", `Figma shows no position for layer ${params.ref}: it may be hidden, or a text layer placed by auto layout`);
+    }
+    const byId = new Map(others.map((layer) => [layer.id, layer]));
+    const placed: VisualNeighbor[] = result.placed.map(({ id, placement }) => ({ ...this.toNode(byId.get(id)!), ...placement }));
+    const nearest = params.direction === "nearest";
+    const wanted = nearest ? placed : placed.filter((neighbor) => neighbor.side === params.direction);
+    // For a direction, layers in the same row or column come before those off to a diagonal.
+    wanted.sort(nearest ? (a, b) => a.gap - b.gap : (a, b) => Number(b.inLine) - Number(a.inLine) || a.gap - b.gap);
+    return {
+      identity,
+      reference: { width: Math.round(result.reference.width * 10) / 10, height: Math.round(result.reference.height * 10) / 10 },
+      zoom: result.zoom === null ? null : Math.round(result.zoom * 10_000) / 10_000,
+      neighbors: wanted.slice(0, params.limit),
+      compared: placed.length,
+      unplaced: result.unplaced,
+      siblingsHasMore: value.siblingsHasMore,
+      userSelectionRestored: restored,
+      uiOps,
+      elapsedMs,
+    };
   }
 
   /**
@@ -419,7 +511,12 @@ export class Explorer {
   private async userSelection(tree: LayerTree): Promise<UserSelection> {
     const count = parseSelectedCount(this.doc.querySelector("input.focus-target")?.getAttribute("aria-label") ?? null);
     if (count === 0) return { kind: "none" };
-    if (count !== null && count > 1) return { kind: "multiple" };
+    if (count !== null && count > 1) {
+      const roots = count <= MAX_ANCHORS ? await tree.selectionRoots(count) : [];
+      if (roots.length !== count) return { kind: "multiple" };
+      for (const root of roots) await tree.climb(root);
+      return { kind: "layers", ids: roots.map((root) => root.id) };
+    }
     const root = await tree.selectionRoot();
     if (!root) return { kind: "none" };
     // Knowing its ancestors lets find() reveal it again after other selections collapse its branch.
@@ -427,14 +524,25 @@ export class Explorer {
     return { kind: "layer", id: root.id };
   }
 
-  /** Puts the user's selection back; several selected layers cannot be restored, so they are cleared. */
+  /** Puts the user's selection back; several layers come back one by one, as Cmd-click adds them. */
   private async restoreSelection(tree: LayerTree, source: DomRowSource, before: UserSelection): Promise<boolean> {
-    if (before.kind === "layer") {
-      const row = await tree.find(before.id);
-      if (row && (await source.select(row))) return true;
+    const ids = before.kind === "layer" ? [before.id] : before.kind === "layers" ? before.ids : [];
+    if (ids.length > 0) {
+      let restored = true;
+      for (const [index, id] of ids.entries()) {
+        const row = await tree.find(id);
+        restored = row !== null && (await source.select(row, index > 0)) && restored;
+      }
+      if (restored && [null, ids.length].includes(this.selectedCount())) return true;
     }
     source.pressKey("Escape", "Escape", 27);
-    return before.kind === "none";
+    // Report the selection as cleared only once Figma shows that it is.
+    const cleared = await source.settle(() => this.selectedCount() === 0);
+    return before.kind === "none" && cleared;
+  }
+
+  private selectedCount(): number | null {
+    return parseSelectedCount(this.doc.querySelector("input.focus-target")?.getAttribute("aria-label") ?? null);
   }
 
   /** Waits until the inspection panel shows `row` rather than the previous selection. */
@@ -548,17 +656,27 @@ export class Explorer {
 }
 
 /** Width and height from the inspection panel, for example "393px", "Hug (317px)", or "1,064px". */
-function layerSize(doc: Document): { width: number; height: number } | null {
+function layerBox(doc: Document): LayerBox | null {
   const root = inspectionRoot(doc);
   const layout = root ? readInspection(root).find((section) => section.kind === "properties") : undefined;
   const px = (name: string) => {
     const value = layout?.properties.find((p) => p.group === null && p.name === name)?.value;
-    const match = value ? /([\d,.]+)px\)?$/.exec(value) : null;
+    const match = value ? /(-?[\d,.]+)px\)?$/.exec(value) : null;
     return match ? Number(match[1]!.replace(/,/g, "")) : Number.NaN;
   };
   const width = px("Width");
   const height = px("Height");
-  return width > 0 && height > 0 ? { width, height } : null;
+  if (!(width > 0 && height > 0)) return null;
+  // A missing Top or Left next to a shown one is zero; with neither shown the position is unknown.
+  const left = px("Left");
+  const top = px("Top");
+  const shown = Number.isFinite(left) || Number.isFinite(top);
+  return { width, height, position: shown ? { left: Number.isFinite(left) ? left : 0, top: Number.isFinite(top) ? top : 0 } : null };
+}
+
+function layerSize(doc: Document): { width: number; height: number } | null {
+  const box = layerBox(doc);
+  return box ? { width: box.width, height: box.height } : null;
 }
 
 function parseZoom(label: string | null): number | null {

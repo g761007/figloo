@@ -1,9 +1,13 @@
 import type { LayerNode, TabStatus } from "@figloo/protocol";
 import type { ConnectionState } from "./state.js";
 
-/** The layer the user selected, as far as the popup shows it. */
+/** The layers the user selected, as far as the popup shows them. */
 export interface PopupSelection {
+  /** The first selected layer. With one selected layer, its path and children are shown too. */
   anchor: LayerNode;
+  /** Every selected layer found, including `anchor`. */
+  anchors: LayerNode[];
+  selectionCount: number;
   /** Nearest first. */
   ancestors: LayerNode[];
   children: LayerNode[];
@@ -51,6 +55,22 @@ export function buildPrompt(snapshot: PopupSnapshot): string | null {
       .join("\n");
   }
   const { anchor } = selection;
+  if (selection.anchors.length > 1) {
+    const refs = selection.anchors.map((node) => node.ref).join(", ");
+    return [
+      `Use the Figloo MCP tools to work on the ${selection.anchors.length} Figma layers I selected in my browser.`,
+      "",
+      file,
+      page,
+      "Layers:",
+      ...selection.anchors.map((node) => `- ${described(node)}, ref ${node.ref}`),
+      selection.selectionCount > selection.anchors.length ? `(${selection.selectionCount} layers are selected; these are the ones Figloo found.)` : null,
+      "",
+      `Call get_anchor with tabId ${tab.tabId} first; its anchors should be ${refs}. If they differ, ask me to select these layers again. Then use ${tools}.`,
+    ]
+      .filter((line) => line !== null)
+      .join("\n");
+  }
   const path = [snapshot.page, ...[...selection.ancestors].reverse().map((node) => node.name), anchor.name].filter(Boolean).join(" > ");
   const shown = selection.children.slice(0, PROMPT_CHILDREN).map(described);
   const total = selection.childrenTotal ?? selection.children.length;

@@ -51,12 +51,10 @@ describe("Explorer on captured Figma markup", () => {
     expect(result.anchor.link).toBe("https://www.figma.com/design/AbCdEfGhIjKlMnOpQrStUv/Sample-App?node-id=422-7842");
   });
 
-  it("refuses to anchor without exactly one selected layer", async () => {
+  it("refuses to anchor without a selection", async () => {
     const target = document.querySelector("input.focus-target")!;
     target.setAttribute("aria-label", "Figma Design");
     await expect(new Explorer("p", document, window).getAnchor()).rejects.toMatchObject({ code: "NO_SELECTION" });
-    target.setAttribute("aria-label", "Figma Design, 3 items selected");
-    await expect(new Explorer("p", document, window).getAnchor()).rejects.toMatchObject({ code: "MULTIPLE_SELECTION" });
   });
 
   it("rejects a context from an earlier page load before touching the panel", async () => {

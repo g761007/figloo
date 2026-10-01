@@ -15,6 +15,9 @@ const anchorResult = {
   identity,
   selectionCount: 1,
   anchor: { ref: "3:3", name: "Close", nameTruncated: false, type: "Instance", depth: 2, position: 1, siblingCount: 1, parentRef: "2:2", hasChildren: false, childCount: 0, insideInstance: false, link: null },
+  get anchors() {
+    return [this.anchor];
+  },
   uiOps: 1,
   elapsedMs: 5,
 };

@@ -22,7 +22,7 @@ No parameters.
 
 ## get_anchor
 
-Start exploring from the layer the user selected in a Figma tab. Returns that layer (the anchor) and a contextId for get_neighbors. Exactly one layer must be selected. Use a tabId from get_status.
+Start exploring from the layers the user selected in a Figma tab. Returns the selected layers (the anchors) and a contextId for get_neighbors. anchor is the first selected layer; anchors lists every selected layer found, in layers panel order, at most 20. Fewer anchors than selectionCount means the rest are hidden in collapsed groups; ask the user to reveal them if they matter. Use a tabId from get_status.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -36,6 +36,7 @@ Start exploring from the layer the user selected in a Figma tab. Returns that la
 | `page` | string or null |
 | `selectionCount` | integer, at least 0 |
 | `anchor` | object with ref, name, nameTruncated, type, depth, position, siblingCount, parentRef, hasChildren, childCount, insideInstance, link |
+| `anchors` | array of object with ref, name, nameTruncated, type, depth, position, siblingCount, parentRef, hasChildren, childCount, insideInstance, link |
 
 ## get_neighbors
 
@@ -97,6 +98,32 @@ Open a page of the Figma file (the shown page when page is omitted) and list the
 | `total` | integer, at least 0 or null |
 | `hasMore` | boolean |
 | `nextCursor` | string or null |
+
+## get_visual_neighbors
+
+List the siblings of a layer by where they are on screen: direction right, left, below, or above, or nearest (default) for all of them by distance. Each one has its side, whether it shares a row or column with the layer (inLine), the edge-to-edge gap, and its offset and size. Lengths are design pixels, measured on screen and divided by the zoom; text layers, which Figma does not place on screen, are placed from the inspection panel instead. Use inspect_nodes for exact values. Only layers in the same parent are compared; call it again on an ancestor to look further out. Needs Figma's Adapt content for screen readers setting and the Figma tab on screen. Siblings are selected in turn, and the user's selection is put back afterwards.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `contextId` | string | yes |  |
+| `ref` | string | yes | A ref returned earlier in this context |
+| `direction` | "nearest" or "right" or "left" or "below" or "above" | no | Default nearest |
+| `limit` | integer 1 to 20 | no | Default 10 |
+
+| Result field | Type |
+|---|---|
+| `contextId` | string |
+| `ref` | string |
+| `direction` | "nearest" or "right" or "left" or "below" or "above" |
+| `reference` | object with width, height |
+| `zoom` | number or null |
+| `neighbors` | array of object with ref, name, nameTruncated, type, depth, position, siblingCount, parentRef, hasChildren, childCount, insideInstance, link, side, inLine, gap, offset, size |
+| `compared` | integer, at least 0 |
+| `unplaced` | array of string |
+| `siblingsHasMore` | boolean |
+| `userSelectionRestored` | boolean |
+| `uiOps` | integer, at least 0 |
+| `elapsedMs` | number, at least 0 |
 
 ## inspect_nodes
 
@@ -183,10 +210,9 @@ Forget an exploration context and the refs it returned.
 | `INTERNAL` | No hint; the message says what went wrong. |
 | `INVALID_ARGUMENT` | Check the tool's parameters against its description. |
 | `INVALID_CURSOR` | Pass nextCursor exactly as returned, with the same contextId, ref, and relation. |
-| `MULTIPLE_SELECTION` | Ask the user to select a single layer in Figma, then call get_anchor again. |
 | `NODE_NOT_FOUND` | The layer is no longer in the layers panel; call get_anchor again. |
 | `NOT_CONNECTED` | Call get_status for setup steps. |
-| `NO_SELECTION` | Ask the user to select one layer in Figma, then call get_anchor again. |
+| `NO_SELECTION` | Ask the user to select the layers to work on in Figma, then call get_anchor again. |
 | `PAGE_CHANGED` | The user switched to another Figma page; call get_anchor again. |
 | `PROTOCOL_MISMATCH` | No hint; the message says what went wrong. |
 | `SAVE_REFUSED` | saveTo must be a path inside the project directory, and existing files are only replaced with overwrite: true. |

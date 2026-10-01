@@ -32,8 +32,9 @@
 | `get_status` | 已驗證 | 否 |
 | `list_pages` | 已驗證 | 否 |
 | `explore_page` | 已驗證 | 切換頁面時需要 |
-| `get_anchor` | 已驗證 | 否 |
+| `get_anchor` | 已驗證，包含多選 | 否 |
 | `get_neighbors` | 已驗證 | 展開收合的圖層時需要 |
+| `get_visual_neighbors` | 已驗證，需要開啟「Adapt content for screen readers」 | 需要 |
 | `inspect_nodes` | 已驗證 | 需要 |
 | `capture` | 已驗證 | 需要 |
 | `export_asset` | 已驗證 SVG 與 PNG、設計師的設定、臨時設定與 ZIP；PDF 與 JPG 未驗證 | 需要 |
@@ -50,6 +51,7 @@
 7. 使用者在操作途中動到 Figma 時，操作會中止並回報 `USER_INTERRUPTED`，面板也不再還原。
 8. 每次呼叫都有時間與操作次數的預算，超過時回傳部分結果並附續查資訊。數百列以上的長圖層清單未驗證。
 9. 背景分頁裡的展開點擊究竟被丟棄還是延後執行，無法確認，所以在背景一律不送出。
+10. `get_visual_neighbors` 只比較同一個父層的圖層。由 auto layout 決定位置的文字圖層，畫面與屬性面板都沒有它的位置，會列為未量測。
 
 ## 各階段驗證紀錄
 
@@ -60,3 +62,4 @@
 - [匯出 icon 與圖片](2026-09-30-export-asset.md)
 - [工具列 popup](2026-09-30-popup.md)
 - [M4：交付與驗收](2026-10-01-m4-acceptance.md)
+- [相鄰元件與多選錨點](2026-10-01-visual-neighbors-and-multi-select.md)

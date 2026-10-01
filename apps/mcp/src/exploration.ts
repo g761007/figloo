@@ -14,12 +14,19 @@ import {
   InspectResultSchema,
   ListPagesResultSchema,
   MAX_INSPECT_REFS,
+  MAX_ANCHORS,
   MAX_NEIGHBOR_DEPTH,
   MAX_NEIGHBOR_LIMIT,
   NeighborRelationSchema,
   NeighborsResultSchema,
   ReleaseContextOutputSchema,
+  DEFAULT_VISUAL_NEIGHBORS,
+  MAX_VISUAL_NEIGHBORS,
+  VisualDirectionSchema,
+  VisualNeighborsOutputSchema,
+  VisualNeighborsResultSchema,
   type CaptureOutput,
+  type VisualNeighborsOutput,
   type ExplorePageOutput,
   type GetAnchorOutput,
   type GetNeighborsOutput,
@@ -38,8 +45,7 @@ const OP_TIMEOUT_MS = 20_000;
 export const MAX_OUTPUT_BYTES = 32 * 1024;
 
 export const HINTS: Record<string, string> = {
-  NO_SELECTION: "Ask the user to select one layer in Figma, then call get_anchor again.",
-  MULTIPLE_SELECTION: "Ask the user to select a single layer in Figma, then call get_anchor again.",
+  NO_SELECTION: "Ask the user to select the layers to work on in Figma, then call get_anchor again.",
   NOT_CONNECTED: "Call get_status for setup steps.",
   TAB_NOT_FOUND: "Call get_status to list the open Figma tabs and their tabId.",
   CONTEXT_NOT_FOUND: "The context was released or expired; call get_anchor again.",
@@ -93,8 +99,9 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
     "get_anchor",
     {
       description:
-        "Start exploring from the layer the user selected in a Figma tab. Returns that layer (the anchor) and a contextId for get_neighbors. " +
-        "Exactly one layer must be selected. Use a tabId from get_status.",
+        "Start exploring from the layers the user selected in a Figma tab. Returns the selected layers (the anchors) and a contextId for get_neighbors. " +
+        `anchor is the first selected layer; anchors lists every selected layer found, in layers panel order, at most ${MAX_ANCHORS}. ` +
+        "Fewer anchors than selectionCount means the rest are hidden in collapsed groups; ask the user to reveal them if they matter. Use a tabId from get_status.",
       inputSchema: { tabId: z.number().int().describe("Figma tab from get_status") },
       outputSchema: GetAnchorOutputSchema,
     },
@@ -102,7 +109,10 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
       try {
         const result = AnchorResultSchema.parse(await bridge.request("get_anchor", {}, OP_TIMEOUT_MS, tabId));
         const context = contexts.create(tabId, result.identity, result.anchor.ref);
-        if (result.anchor.parentRef) context.knownRefs.add(result.anchor.parentRef);
+        for (const anchor of result.anchors) {
+          context.knownRefs.add(anchor.ref);
+          if (anchor.parentRef) context.knownRefs.add(anchor.parentRef);
+        }
         const output: GetAnchorOutput = {
           contextId: context.id,
           tabId,
@@ -110,8 +120,9 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
           page: result.identity.page,
           selectionCount: result.selectionCount,
           anchor: result.anchor,
+          anchors: result.anchors,
         };
-        log(`get_anchor tab=${tabId} depth=${result.anchor.depth} uiOps=${result.uiOps} ms=${Math.round(result.elapsedMs)}`);
+        log(`get_anchor tab=${tabId} anchors=${result.anchors.length}/${result.selectionCount} depth=${result.anchor.depth} uiOps=${result.uiOps} ms=${Math.round(result.elapsedMs)}`);
         return toolResult(output);
       } catch (error) {
         return toolError(error);
@@ -252,6 +263,60 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
               : null,
         };
         log(`explore_page tab=${tabId} returned=${result.nodes.length} total=${result.total ?? "?"} uiOps=${result.uiOps} ms=${Math.round(result.elapsedMs)}`);
+        return toolResult(output);
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_visual_neighbors",
+    {
+      description:
+        "List the siblings of a layer by where they are on screen: direction right, left, below, or above, or nearest (default) for all of them by distance. " +
+        "Each one has its side, whether it shares a row or column with the layer (inLine), the edge-to-edge gap, and its offset and size. " +
+        "Lengths are design pixels, measured on screen and divided by the zoom; text layers, which Figma does not place on screen, are placed from the inspection panel instead. Use inspect_nodes for exact values. " +
+        "Only layers in the same parent are compared; call it again on an ancestor to look further out. " +
+        "Needs Figma's Adapt content for screen readers setting and the Figma tab on screen. Siblings are selected in turn, and the user's selection is put back afterwards.",
+      inputSchema: {
+        contextId: z.string(),
+        ref: z.string().describe("A ref returned earlier in this context"),
+        direction: VisualDirectionSchema.optional().describe("Default nearest"),
+        limit: z.number().int().min(1).max(MAX_VISUAL_NEIGHBORS).optional().describe(`Default ${DEFAULT_VISUAL_NEIGHBORS}`),
+      },
+      outputSchema: VisualNeighborsOutputSchema,
+    },
+    async ({ contextId, ref, direction = "nearest", limit = DEFAULT_VISUAL_NEIGHBORS }) => {
+      try {
+        const context = contexts.get(contextId);
+        if (!context) throw new ToolFailure("CONTEXT_NOT_FOUND", `no context ${contextId}`);
+        if (!context.knownRefs.has(ref)) throw new ToolFailure("UNKNOWN_REF", `ref ${ref} was not returned in context ${contextId}`);
+        let result;
+        try {
+          result = VisualNeighborsResultSchema.parse(
+            await bridge.request("visual_neighbors", { expect: context.identity, ref, direction, limit }, OP_TIMEOUT_MS, context.tabId),
+          );
+        } catch (error) {
+          if (error instanceof BridgeError && error.code === "CONTEXT_EXPIRED") contexts.release(contextId);
+          throw error;
+        }
+        for (const neighbor of result.neighbors) context.knownRefs.add(neighbor.ref);
+        const output: VisualNeighborsOutput = {
+          contextId,
+          ref,
+          direction,
+          reference: result.reference,
+          zoom: result.zoom,
+          neighbors: result.neighbors,
+          compared: result.compared,
+          unplaced: result.unplaced,
+          siblingsHasMore: result.siblingsHasMore,
+          userSelectionRestored: result.userSelectionRestored,
+          uiOps: result.uiOps,
+          elapsedMs: result.elapsedMs,
+        };
+        log(`get_visual_neighbors direction=${direction} returned=${result.neighbors.length} compared=${result.compared} uiOps=${result.uiOps} ms=${Math.round(result.elapsedMs)}`);
         return toolResult(output);
       } catch (error) {
         return toolError(error);

@@ -63,12 +63,14 @@ export class DomRowSource implements RowSource {
   }
 
   /** Selects a layer the way a click in the layers panel does, and waits until Figma shows it selected. */
-  async select(row: Row): Promise<boolean> {
+  /** Selects the row's layer; with `add`, adds it to the selection the way Cmd-click (Ctrl-click off macOS) does. */
+  async select(row: Row, add = false): Promise<boolean> {
     if (this.doc.hidden) throw new TabInBackground();
     const cell = rowElement(this.doc, row.id)?.querySelector('[role="gridcell"]:not([aria-hidden="true"])');
     if (!cell) return false;
     this.actions += 1;
-    synthesizeClick(cell);
+    const mac = /Mac/.test(this.doc.defaultView?.navigator.platform ?? "");
+    synthesizeClick(cell, add ? (mac ? { metaKey: true } : { ctrlKey: true }) : {});
     return this.waitFor(() => this.rows().find((r) => r.id === row.id)?.selected === true);
   }
 
@@ -98,6 +100,22 @@ export class DomRowSource implements RowSource {
   }
 
   /** Screen bounds of a layer from the screen reader mirror, which covers the selection's neighborhood. */
+  /** Whether Figma renders its screen reader mirror, which needs "Adapt content for screen readers". */
+  hasMirror(): boolean {
+    return this.doc.querySelector('#hidden-input-activedescendant[role="main"]') !== null;
+  }
+
+  /** Every layer the mirror currently places on screen. It holds only a few layers around the selection. */
+  mirrorRects(): Map<string, Rect> {
+    const rects = new Map<string, Rect>();
+    for (const el of this.doc.querySelectorAll('[role="main"] [data-nodeid]')) {
+      const rect = el.getBoundingClientRect();
+      const id = el.getAttribute("data-nodeid");
+      if (id && rect.width > 0 && rect.height > 0) rects.set(id, { x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+    }
+    return rects;
+  }
+
   mirrorRect(id: string): Rect | null {
     const el = this.doc.querySelector(`[role="main"] [data-nodeid="${id}"]`);
     const rect = el?.getBoundingClientRect();
@@ -167,9 +185,17 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Figma's layers panel accepts untrusted pointer and mouse events (verified in M0). */
-export function synthesizeClick(target: Element): void {
+/** Modifier keys held during a synthesized click. */
+export interface ClickModifiers {
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+}
+
+export function synthesizeClick(target: Element, modifiers: ClickModifiers = {}): void {
   const rect = target.getBoundingClientRect();
   const init = {
+    ...modifiers,
     bubbles: true,
     cancelable: true,
     composed: true,

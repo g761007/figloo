@@ -1,4 +1,4 @@
-import type { CaptureParams, ExplorePageParams, ExportParams, InspectParams, ListNeighborsParams } from "@figloo/protocol";
+import type { CaptureParams, ExplorePageParams, ExportParams, InspectParams, ListNeighborsParams, VisualNeighborsParams } from "@figloo/protocol";
 import { Explorer, OpError } from "./adapter/ops.js";
 import { probeFigmaPage } from "./probe.js";
 import { deriveReadiness } from "./readiness.js";
@@ -47,6 +47,8 @@ async function runOp(message: OpMessage): Promise<unknown> {
       // The service worker validated the params; keeping zod out of this script keeps it small.
       case "list_neighbors":
         return { ok: true, result: await explorer.listNeighbors(message.params as ListNeighborsParams) };
+      case "visual_neighbors":
+        return { ok: true, result: await explorer.visualNeighbors(message.params as VisualNeighborsParams) };
       case "list_pages":
         return { ok: true, result: explorer.listPages() };
       case "explore_page":

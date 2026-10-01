@@ -5,6 +5,7 @@ import {
   CaptureOutputSchema,
   ExplorePageOutputSchema,
   GetAnchorOutputSchema,
+  VisualNeighborsOutputSchema,
   GetNeighborsOutputSchema,
   InspectNodesOutputSchema,
   type LayerNode,
@@ -50,7 +51,8 @@ function serve(ext: FakeExtension, handler: Handler): RequestMessage[] {
   return seen;
 }
 
-const anchorResult = { identity, selectionCount: 1, anchor: node("3:3", { name: "Button", type: "Instance", depth: 3, parentRef: "2:2" }), uiOps: 2, elapsedMs: 12 };
+const button = node("3:3", { name: "Button", type: "Instance", depth: 3, parentRef: "2:2" });
+const anchorResult = { identity, selectionCount: 1, anchor: button, anchors: [button], uiOps: 2, elapsedMs: 12 };
 
 const bridges: Bridge[] = [];
 const clients: Client[] = [];
@@ -90,7 +92,7 @@ describe("get_anchor", () => {
     const { call, errorOf } = await setup(() => ({ ok: false, error: { code: "NO_SELECTION", message: "no layer is selected in Figma" } }));
     const error = errorOf(await call("get_anchor", { tabId: 7 }));
     expect(error.code).toBe("NO_SELECTION");
-    expect(error.hint).toMatch(/select one layer/);
+    expect(error.hint).toMatch(/select the layers to work on/);
   });
 });
 
@@ -113,6 +115,21 @@ describe("get_neighbors", () => {
     const { contextId } = GetAnchorOutputSchema.parse((await call("get_anchor", { tabId: 7 })).structuredContent);
     const result = await call("get_neighbors", { contextId, ref: "2:2", relation: "children" });
     expect(result.isError).toBeFalsy();
+  });
+
+  it("takes every selected layer as an anchor, so each one and its parent can be explored", async () => {
+    const card = node("4:4", { name: "Card", type: "Component", depth: 2, parentRef: "1:1" });
+    const { call } = await setup((request) =>
+      request.op === "get_anchor"
+        ? { ok: true, result: { ...anchorResult, selectionCount: 2, anchors: [button, card] } }
+        : { ok: true, result: { identity, nodes: [node("5:5")], total: 1, from: 1, nextFrom: null, hasMore: false, stopReason: "complete", uiOps: 0, elapsedMs: 1 } },
+    );
+    const output = GetAnchorOutputSchema.parse((await call("get_anchor", { tabId: 7 })).structuredContent);
+    expect(output.anchor.ref).toBe("3:3");
+    expect(output.anchors.map((anchor) => anchor.ref)).toEqual(["3:3", "4:4"]);
+    for (const ref of ["4:4", "1:1"]) {
+      expect((await call("get_neighbors", { contextId: output.contextId, ref, relation: "children" })).isError).toBeFalsy();
+    }
   });
 
   it("pins every request to the context's page load and resumes pages from the cursor", async () => {
@@ -228,6 +245,48 @@ describe("page entry point", () => {
     const next = await call("get_neighbors", { contextId: output.contextId, ref: "10:1", relation: "siblings", cursor: output.nextCursor });
     expect(next.isError).toBeFalsy();
     expect(requests.at(-1)).toMatchObject({ op: "list_neighbors", params: { ref: "10:1", relation: "siblings", from: 51, after: "10:50", expect: { page: "Specs" } } });
+  });
+});
+
+describe("get_visual_neighbors", () => {
+  const placed = (ref: string, side: string, gap: number) => ({ ...node(ref, { parentRef: "2:2" }), side, inLine: true, gap, offset: { x: gap + 100, y: 0 }, size: { width: 40, height: 20 } });
+  const visual = {
+    identity,
+    reference: { width: 100, height: 20 },
+    zoom: 0.61,
+    neighbors: [placed("3:4", "right", 8), placed("3:5", "right", 24)],
+    compared: 4,
+    unplaced: ["3:9"],
+    siblingsHasMore: false,
+    userSelectionRestored: true,
+    uiOps: 3,
+    elapsedMs: 900,
+  };
+
+  it("asks for the nearest ten by default, and lets the agent read the layers it returns", async () => {
+    const { requests, call } = await setup((request) =>
+      request.op === "get_anchor"
+        ? { ok: true, result: anchorResult }
+        : request.op === "visual_neighbors"
+          ? { ok: true, result: visual }
+          : { ok: true, result: { identity, nodes: [], userSelectionRestored: true, uiOps: 1, elapsedMs: 5 } },
+    );
+    const { contextId } = GetAnchorOutputSchema.parse((await call("get_anchor", { tabId: 7 })).structuredContent);
+    const output = VisualNeighborsOutputSchema.parse((await call("get_visual_neighbors", { contextId, ref: "3:3" })).structuredContent);
+    expect(requests.find((request) => request.op === "visual_neighbors")?.params).toMatchObject({ expect: identity, ref: "3:3", direction: "nearest", limit: 10 });
+    expect(output.neighbors.map((neighbor) => [neighbor.ref, neighbor.side, neighbor.gap])).toEqual([
+      ["3:4", "right", 8],
+      ["3:5", "right", 24],
+    ]);
+    expect(output).toMatchObject({ compared: 4, unplaced: ["3:9"], zoom: 0.61 });
+    expect((await call("inspect_nodes", { contextId, refs: ["3:4", "3:5"] })).isError).toBeFalsy();
+  });
+
+  it("refuses refs the context did not return, without asking the tab", async () => {
+    const { requests, call, errorOf } = await setup((request) => (request.op === "get_anchor" ? { ok: true, result: anchorResult } : { ok: true, result: visual }));
+    const { contextId } = GetAnchorOutputSchema.parse((await call("get_anchor", { tabId: 7 })).structuredContent);
+    expect(errorOf(await call("get_visual_neighbors", { contextId, ref: "9:9", direction: "below" })).code).toBe("UNKNOWN_REF");
+    expect(requests.some((request) => request.op === "visual_neighbors")).toBe(false);
   });
 });
 

@@ -14,6 +14,7 @@ import {
   ProbeResultSchema,
   ServerMessageSchema,
   TabOpResponseSchema,
+  VisualNeighborsParamsSchema,
   type ExtensionMessage,
   type ProbeResult,
   type TabOpResponse,
@@ -183,7 +184,8 @@ async function handleRequest(id: string, op: string, tabId?: number, params?: Re
       case "explore_page":
       case "inspect_nodes":
       case "capture":
-      case "export_asset": {
+      case "export_asset":
+      case "visual_neighbors": {
         const reply = await runInTab(tabId, op, params);
         send(reply.ok ? { type: "response", id, ok: true, result: reply.result } : { type: "response", id, ok: false, error: reply.error });
         return;
@@ -226,6 +228,7 @@ const PARAM_SCHEMAS: Record<string, { safeParse(value: unknown): { success: bool
   inspect_nodes: InspectParamsSchema,
   capture: CaptureParamsSchema,
   export_asset: ExportRequestSchema,
+  visual_neighbors: VisualNeighborsParamsSchema,
 };
 
 /** How long the page hook waits for Figma to hand over the exported files. */
@@ -533,7 +536,12 @@ async function popupSnapshot(tabId: number | undefined): Promise<PopupSnapshot> 
     snapshot.selectionError = anchored.error ?? { code: "INTERNAL", message: "the Figma tab did not report its selection" };
     return snapshot;
   }
-  const { identity, anchor } = AnchorResultSchema.parse(anchored.result);
+  const { identity, anchor, anchors, selectionCount } = AnchorResultSchema.parse(anchored.result);
+  if (anchors.length > 1) {
+    // Several selected layers are listed as they are; reading each one's path would expand too much.
+    snapshot.selection = { anchor, anchors, selectionCount, ancestors: [], children: [], childrenTotal: null, childrenHasMore: false };
+    return snapshot;
+  }
   const list = async (relation: "ancestors" | "children", limit: number) => {
     const reply = await runInTab(id, "list_neighbors", { expect: identity, ref: anchor.ref, relation, from: 1, limit });
     return reply.ok ? NeighborsResultSchema.parse(reply.result) : null;
@@ -542,6 +550,8 @@ async function popupSnapshot(tabId: number | undefined): Promise<PopupSnapshot> 
   const children = anchor.hasChildren ? await list("children", POPUP_CHILDREN) : null;
   snapshot.selection = {
     anchor,
+    anchors,
+    selectionCount,
     ancestors: ancestors?.nodes ?? [],
     children: children?.nodes ?? [],
     childrenTotal: anchor.hasChildren ? (children?.total ?? null) : 0,

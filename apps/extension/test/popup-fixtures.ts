@@ -35,12 +35,21 @@ export function snapshot(extra: Partial<PopupSnapshot> = {}): PopupSnapshot {
 }
 
 /** A card inside a screen, with twelve children, as the service worker would report it. */
-export function cardSelection(): PopupSnapshot["selection"] {
+export function cardSelection(): NonNullable<PopupSnapshot["selection"]> {
+  const anchor = layer("2:5", "Order card", "Frame", { hasChildren: true, link: "https://www.figma.com/design/abc123/Sample-app?node-id=2-5" });
   return {
-    anchor: layer("2:5", "Order card", "Frame", { hasChildren: true, link: "https://www.figma.com/design/abc123/Sample-app?node-id=2-5" }),
+    anchor,
+    anchors: [anchor],
+    selectionCount: 1,
     ancestors: [layer("2:3", "Order list", "Auto layout"), layer("2:1", "Checkout screen", "Frame", { depth: 0 })],
     children: Array.from({ length: 12 }, (_, index) => layer(`2:${10 + index}`, `Item ${index + 1}`, index === 0 ? "Text" : "Instance")),
     childrenTotal: 12,
     childrenHasMore: false,
   };
+}
+
+/** Three selected cards, of which Figloo found two. */
+export function severalSelected(): NonNullable<PopupSnapshot["selection"]> {
+  const anchors = [layer("2:5", "Order card", "Frame"), layer("2:6", "Order card", "Frame"), layer("7:1", "Total", "Text")];
+  return { anchor: anchors[0]!, anchors, selectionCount: 4, ancestors: [], children: [], childrenTotal: null, childrenHasMore: false };
 }

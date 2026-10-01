@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from "vitest";
 import { renderPopup } from "../src/popup-view.js";
-import { cardSelection, figmaTab, layer, snapshot } from "./popup-fixtures.js";
+import { cardSelection, figmaTab, layer, severalSelected, snapshot } from "./popup-fixtures.js";
 
 let root: HTMLElement;
 beforeEach(() => {
@@ -22,10 +22,18 @@ describe("the toolbar popup", () => {
   });
 
   it("shows layer names as text, never as markup", () => {
-    const selection = { ...cardSelection()!, anchor: layer("2:5", '<img src=x onerror="window.hacked=1">', "Frame") };
+    const named = layer("2:5", '<img src=x onerror="window.hacked=1">', "Frame");
+    const selection = { ...cardSelection(), anchor: named, anchors: [named] };
     renderPopup(root, snapshot({ selection, selectionError: null }), { copy: async () => true });
     expect(root.querySelector("img")).toBeNull();
     expect(root.querySelector("h2.layer")?.textContent).toContain("<img src=x");
+  });
+
+  it("lists several selected layers and says when some were not found", () => {
+    renderPopup(root, snapshot({ selection: severalSelected(), selectionError: null }), { copy: async () => true });
+    expect(root.textContent).toContain("4 layers selected; 3 found in the layers panel");
+    expect([...root.querySelectorAll("ul.anchors li")].map((li) => li.firstChild?.textContent)).toEqual(["Order card", "Order card", "Total"]);
+    expect(root.querySelector(".crumb")).toBeNull();
   });
 
   it("explains an empty selection and still offers a prompt to explore the file", () => {

@@ -171,6 +171,27 @@ export class LayerTree {
     }
   }
 
+  /**
+   * The selected layers in layers panel order, top-most rows only. A parent comes before its
+   * children, so a selected row inside a selected row's subtree is one of the descendants Figma
+   * also marks. Reads the list from the top and stops once `wanted` layers are found.
+   */
+  async selectionRoots(wanted: number): Promise<Row[]> {
+    const roots: Row[] = [];
+    let insideLevel: number | null = null;
+    for (let i = 1; roots.length < wanted; i += 1) {
+      const row = await this.rowAt(i, "start");
+      if (!row) break;
+      if (insideLevel !== null && row.level > insideLevel) continue;
+      insideLevel = null;
+      if (row.selected) {
+        roots.push(row);
+        insideLevel = row.level;
+      }
+    }
+    return roots;
+  }
+
   async expand(row: Row): Promise<Row> {
     // The caret can only be clicked while its row is rendered; earlier reads may have scrolled away.
     const shown = this.rendered(row.id) ?? (await this.find(row.id));

@@ -96,7 +96,7 @@ node apps/mcp/dist/index.js pair
 
 - 在裝了擴充功能的瀏覽器中登入 Figma。對檔案有檢視權限就夠了。
 - 使用 Figma 的英文介面，並保持介面展開：Cmd+\ 可以切換，縮到最小的介面會隱藏圖層面板。
-- 在 Main menu、Preferences、Accessibility settings 中打開「Adapt content for screen readers」。這樣截圖就能依圖層在畫面上的位置裁切。
+- 在 Main menu、Preferences、Accessibility settings 中打開「Adapt content for screen readers」。這樣截圖就能依圖層在畫面上的位置裁切，`get_visual_neighbors` 也能得知圖層的位置。
 - Agent 工作期間，請讓 Figma 分頁留在畫面上，放在 agent 視窗旁邊就可以。Figma 在背景分頁中會忽略選取與展開，所以 Figloo 會回報 `TAB_IN_BACKGROUND`，不會自行猜測。
 
 ## 工具列圖示
@@ -127,8 +127,9 @@ pnpm --filter @figloo/extension icons
 | `get_status` | 回報 bridge 的狀態、擴充功能是否已連線，以及每個已開啟的 Figma 設計稿分頁。每個分頁都包含就緒狀態（`LOADING`、`READY`、`DEGRADED`、`INCOMPATIBLE`）、存取權限（`edit`、`view`、`guest`、`unknown`）、介面語言、分頁是否可見，以及 content script 找到了哪些介面區塊。有需要注意的地方時，會附上 `hint`。 |
 | `list_pages` | 列出分頁中 Figma 檔案的頁面，以及目前顯示的是哪一頁。 |
 | `explore_page` | 開啟頁面（必要時切換），列出直接位於頁面上的圖層，並附上 `contextId`。 |
-| `get_anchor` | 回傳使用者在分頁中選取的單一圖層，並附上 `contextId`。 |
+| `get_anchor` | 回傳使用者在分頁中選取的圖層，依圖層面板順序最多 20 個，並附上 `contextId`。 |
 | `get_neighbors` | 列出同一個 context 中回傳過的圖層的 `parent`、`ancestors`、`siblings` 或 `children`。每次最多回傳 50 個圖層，預設 20 個；更多內容請依 `nextCursor` 續查。`children` 也接受 `depth`（最多 3 層），以廣度優先列出子樹。 |
+| `get_visual_neighbors` | 依畫面位置列出圖層的同層圖層：在它右側、左側、下方或上方，或依距離由近到遠，並附上以設計稿像素表示的距離與位移。Frame、群組、形狀與 instance 從畫面上量測，文字圖層則取自屬性面板。需要開啟「Adapt content for screen readers」。 |
 | `inspect_nodes` | 讀取最多 5 個圖層的 Figma 屬性面板：尺寸與尺寸模式、位置、auto layout 方向、padding、gap、圓角、填色、邊框、陰影、文字內容、每段樣式的字型設定，以及元件屬性。數值與 Figma 顯示的完全相同。 |
 | `capture` | 截取縮放到剛好容納的圖層，或整個頁面。回傳長邊最多 1568 px 的 JPEG。 |
 | `export_asset` | 以 Figma 的 Export 按鈕的方式匯出圖層，格式可以是 SVG、PNG、JPG 或 PDF，讓 agent 依專案需要選擇格式與倍率，例如網頁用 SVG，iOS 用 PDF 或 1x、2x、3x 的 PNG。SVG 以文字回傳，長邊最多 1568 px 的 PNG 或 JPG 以圖片回傳。加上 `saveTo` 時，也會把檔案寫到專案目錄中的該路徑；專案目錄是 Claude Code 設定的 `CLAUDE_PROJECT_DIR`，沒有時則是伺服器的工作目錄。既有檔案只在加上 `overwrite: true` 時取代。Figma 的檔名是圖層名稱，不含倍率後綴，所以每種倍率請存成不同的檔名。沒有 `format` 時，圖層有自己的匯出設定就沿用，沒有設定的圖層則匯出成 SVG。有 `format` 時，會加上一組該格式與 `scale`（預設 1x）的臨時設定，匯出後再移除；圖層已有完全相同的設定時則直接沿用。圖層本身的設定絕不會被改動。Figma 把多個檔案打包成的 ZIP 會自動解開。 |
@@ -138,7 +139,7 @@ pnpm --filter @figloo/extension icons
 
 典型的流程是：先呼叫 `get_status`，接著用 `list_pages` 與 `explore_page`，使用者有選取時改用 `get_anchor`。然後用 `capture` 看頁面或 frame，用 `get_neighbors` 找出重要的部分，用 `inspect_nodes` 取得精確數值，再用 `export_asset` 取得 icon 與圖片。每次呼叫都有上限，並回報用了多少次 UI 操作。
 
-Figma 只在分頁可見時套用選取、展開、縮放與切換頁面。讀取頁面、選取與已展開的圖層，在背景分頁也能運作；`inspect_nodes`、`capture`、`export_asset`、切換頁面與展開收合的圖層，則會回報 `TAB_IN_BACKGROUND`，直到 Figma 分頁回到畫面上。把 Figma 放在 agent 視窗旁邊就夠了。`inspect_nodes`、`capture` 與 `export_asset` 會依序選取圖層，`capture` 還會縮放畫面；之後會還原使用者的選取，但不會還原縮放。
+Figma 只在分頁可見時套用選取、展開、縮放與切換頁面。讀取頁面、選取與已展開的圖層，在背景分頁也能運作；`get_visual_neighbors`、`inspect_nodes`、`capture`、`export_asset`、切換頁面與展開收合的圖層，則會回報 `TAB_IN_BACKGROUND`，直到 Figma 分頁回到畫面上。把 Figma 放在 agent 視窗旁邊就夠了。這些工具會依序選取圖層，`capture` 還會縮放畫面；之後會還原使用者的選取，包括同時選取的多個圖層，但不會還原縮放。
 
 ## 開發
 

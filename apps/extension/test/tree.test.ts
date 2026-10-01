@@ -42,6 +42,39 @@ function makeTree(source: FakeLayers, index = new Map<string, IndexEntry>(), lim
 
 const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
 
+/** The card screen with whole cards selected; the first selected card is expanded, so its rows are marked too. */
+function selectedCards(numbers: number[]): FakeNode[] {
+  const nodes = cardScreen(0);
+  const list = nodes[1]!.children![1]!;
+  for (const card of list.children!) {
+    const n = Number(card.id.slice(1));
+    card.selected = numbers.includes(n);
+    card.expanded = n === numbers[0];
+  }
+  return nodes;
+}
+
+describe("LayerTree selection of several layers", () => {
+  it("finds every selected card in panel order and skips the rows Figma marks inside them", async () => {
+    const source = new FakeLayers(selectedCards([2, 4]));
+    const roots = await makeTree(source).selectionRoots(2);
+    expect(ids(roots)).toEqual(["c2", "c4"]);
+  });
+
+  it("reads past the rendered rows to reach selected layers further down", async () => {
+    const source = new FakeLayers(selectedCards([1, 5]));
+    expect(source.rows().some((row) => row.id === "c5")).toBe(false);
+    const roots = await makeTree(source).selectionRoots(2);
+    expect(ids(roots)).toEqual(["c1", "c5"]);
+  });
+
+  it("returns the layers it found when the list ends before all of them", async () => {
+    const source = new FakeLayers(selectedCards([3]));
+    const roots = await makeTree(source).selectionRoots(3);
+    expect(ids(roots)).toEqual(["c3"]);
+  });
+});
+
 describe("LayerTree anchor and ancestors", () => {
   it("finds the card around the selected button without mixing up cards with the same layer names", async () => {
     const source = new FakeLayers(cardScreen(3));

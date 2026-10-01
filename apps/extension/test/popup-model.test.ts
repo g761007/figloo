@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildPrompt } from "../src/popup-model.js";
-import { cardSelection, layer, snapshot } from "./popup-fixtures.js";
+import { cardSelection, layer, severalSelected, snapshot } from "./popup-fixtures.js";
 
 describe("the prompt the popup copies", () => {
   it("tells the agent which layer the user means and how to find it with Figloo", () => {
@@ -22,10 +22,20 @@ describe("the prompt the popup copies", () => {
   });
 
   it("leaves out the link for layers inside an instance, whose IDs do not last", () => {
-    const selection = { ...cardSelection()!, anchor: layer("I2:9;4:1", "Label", "Text", { insideInstance: true }) };
+    const label = layer("I2:9;4:1", "Label", "Text", { insideInstance: true });
+    const selection = { ...cardSelection(), anchor: label, anchors: [label] };
     const text = buildPrompt(snapshot({ selection, selectionError: null }))!;
     expect(text).toContain("Layer: Label (Text), ref I2:9;4:1");
     expect(text).not.toContain("Link:");
+  });
+
+  it("lists every selected layer with its ref, so same-named ones stay apart", () => {
+    const text = buildPrompt(snapshot({ selection: severalSelected(), selectionError: null }))!;
+    expect(text).toContain("work on the 3 Figma layers I selected");
+    expect(text).toContain("- Order card (Frame), ref 2:5\n- Order card (Frame), ref 2:6\n- Total (Text), ref 7:1");
+    expect(text).toContain("4 layers are selected; these are the ones Figloo found");
+    expect(text).toContain("its anchors should be 2:5, 2:6, 7:1");
+    expect(text).not.toContain("Path:");
   });
 
   it("lets the agent explore the file when nothing is selected", () => {

@@ -94,7 +94,7 @@ This prints the pairing token and port stored in `~/.figloo/config.json` (create
 
 - Sign in to Figma in the browser that has the extension. View access to the file is enough.
 - Use Figma's English UI, and keep the UI expanded: Cmd+\ toggles it, and a minimized UI hides the layers panel.
-- Turn on "Adapt content for screen readers" under Main menu, Preferences, Accessibility settings. Screenshots then crop to the layer's position on screen.
+- Turn on "Adapt content for screen readers" under Main menu, Preferences, Accessibility settings. Screenshots then crop to the layer's position on screen, and `get_visual_neighbors` can tell where layers are.
 - Keep the Figma tab on screen while the agent works; next to the agent's window is enough. Figma ignores selection and expansion in background tabs, so Figloo reports `TAB_IN_BACKGROUND` instead of guessing.
 
 ## Toolbar icon
@@ -125,8 +125,9 @@ pnpm --filter @figloo/extension icons
 | `get_status` | Reports the bridge state, whether the extension is connected, and every open Figma design tab with its readiness (`LOADING`, `READY`, `DEGRADED`, `INCOMPATIBLE`), access level (`edit`, `view`, `guest`, `unknown`), UI locale, whether the tab is visible, and which UI surfaces the content script found. Includes a `hint` when something needs attention. |
 | `list_pages` | Lists the pages of the Figma file in a tab and which one is shown. |
 | `explore_page` | Opens a page (switching if needed) and lists the layers directly on it, with a `contextId`. |
-| `get_anchor` | Returns the single layer the user selected in a tab, plus a `contextId`. |
+| `get_anchor` | Returns the layers the user selected in a tab, up to 20 in layers panel order, plus a `contextId`. |
 | `get_neighbors` | Lists the `parent`, `ancestors`, `siblings`, or `children` of a layer returned in the same context. Pages hold at most 50 layers (20 by default); follow `nextCursor` for more. `children` also takes `depth` (up to 3) for a breadth-first subtree. |
+| `get_visual_neighbors` | Lists the siblings of a layer by where they are on screen: to its right, left, below, or above, or nearest first, with the gap and offset in design pixels. Frames, groups, shapes, and instances are measured on screen; text layers come from the inspection panel. Needs "Adapt content for screen readers". |
 | `inspect_nodes` | Reads Figma's inspection panel for up to 5 layers: size and sizing mode, position, auto layout flow, padding, gap, corner radius, fills, borders, shadows, text content, typography per style run, and component properties. Values are exactly as Figma shows them. |
 | `capture` | Screenshots a layer, zoomed to fit, or the whole page. Returns a JPEG of at most 1568 px on its long edge. |
 | `export_asset` | Exports a layer the way Figma's Export button does, as SVG, PNG, JPG, or PDF, so the agent can pick the format and scale the project needs, for example SVG for web or PDF and PNG at 1x, 2x, and 3x for iOS. Returns SVG markup inline and PNG or JPG of at most 1568 px as an image. With `saveTo`, also writes the files to that path inside the project directory (`CLAUDE_PROJECT_DIR`, which Claude Code sets, or else the server's working directory); existing files are only replaced with `overwrite: true`. Figma names files after the layer without a scale suffix, so save each scale under its own file name. Without `format`, the layer's own export settings are used when it has some, and a layer without settings exports as SVG. With `format`, a temporary setting in that format and `scale` (1x by default) is added and removed again, unless the layer already has that exact setting. The layer's own settings are never changed. ZIP archives Figma packs several files into are opened. |
@@ -136,7 +137,7 @@ The full contract, with every parameter, result field, and error code, is in [do
 
 A typical request goes: `get_status`, then `list_pages` and `explore_page` (or `get_anchor` when the user selected something), `capture` to see a page or frame, `get_neighbors` to find the parts that matter, `inspect_nodes` for their exact values, and `export_asset` for icons and images. Each call is bounded and reports how many UI operations it used.
 
-Figma applies selection, expansion, zoom, and page changes only while its tab is visible. Reading pages, the selection, and already expanded layers works from a background tab; `inspect_nodes`, `capture`, `export_asset`, page switches, and expanding collapsed layers return `TAB_IN_BACKGROUND` until the Figma tab is on screen. Keeping Figma beside the agent window is enough. `inspect_nodes`, `capture`, and `export_asset` select layers one after another, and `capture` zooms the view; the user's selection is put back afterwards, the zoom is not.
+Figma applies selection, expansion, zoom, and page changes only while its tab is visible. Reading pages, the selection, and already expanded layers works from a background tab; `get_visual_neighbors`, `inspect_nodes`, `capture`, `export_asset`, page switches, and expanding collapsed layers return `TAB_IN_BACKGROUND` until the Figma tab is on screen. Keeping Figma beside the agent window is enough. These tools select layers one after another, and `capture` zooms the view; the user's selection, including several selected layers, is put back afterwards, the zoom is not.
 
 ## Development
 

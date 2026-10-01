@@ -32,7 +32,6 @@ function selectionHint(error: PopupSnapshot["selectionError"]): string {
   if (!error || error.code === "NO_SELECTION") {
     return "No layer is selected. Select one in Figma to see its structure, or copy the prompt below to let the agent explore the file.";
   }
-  if (error.code === "MULTIPLE_SELECTION") return `${error.message}. Select a single layer to see its structure.`;
   return error.message;
 }
 
@@ -58,7 +57,17 @@ export function renderPopup(root: HTMLElement, snapshot: PopupSnapshot, handlers
   if (!usable) return;
 
   const layer = el(doc, "section", "selection");
-  if (selection) {
+  if (selection && selection.anchors.length > 1) {
+    const found = selection.anchors.length;
+    layer.append(el(doc, "p", "muted", found < selection.selectionCount ? `${selection.selectionCount} layers selected; ${found} found in the layers panel` : `${found} layers selected`));
+    const list = el(doc, "ul", "anchors");
+    for (const node of selection.anchors) {
+      const item = el(doc, "li", undefined, node.name);
+      if (node.type) item.append(el(doc, "span", "type", node.type));
+      list.append(item);
+    }
+    layer.append(list);
+  } else if (selection) {
     const path = el(doc, "p", "path");
     const crumbs = [snapshot.page, ...[...selection.ancestors].reverse().map((node) => node.name)].filter((name): name is string => Boolean(name));
     crumbs.forEach((name) => path.append(el(doc, "span", "crumb", name)));
