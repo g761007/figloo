@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
+import { join } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Bridge } from "./bridge.js";
-import { configPath, loadOrCreateConfig } from "./config.js";
+import { configDir, configPath, loadOrCreateConfig } from "./config.js";
 import { createServer } from "./server.js";
+import { SnapshotStore } from "./snapshots.js";
 
 /** Set by `pnpm package`, whose single-file bundle has no package.json next to it. */
 declare const __FIGLOO_VERSION__: string | undefined;
@@ -23,7 +25,7 @@ if (command !== "serve") {
 
 const bridge = new Bridge({ ...config, serverVersion: VERSION });
 await bridge.start();
-const server = createServer({ bridge, version: VERSION });
+const server = createServer({ bridge, version: VERSION, snapshots: new SnapshotStore(join(configDir(), "snapshots"), config.snapshotTtlHours * 3_600_000) });
 server.server.onclose = () => {
   void bridge.stop().finally(() => process.exit(0));
 };

@@ -38,6 +38,8 @@ import { BridgeError, type Bridge } from "./bridge.js";
 import type { ContextStore } from "./contexts.js";
 import { decodeCursor, encodeCursor } from "./cursor.js";
 import { registerExportTool } from "./export-asset.js";
+import { registerSnapshotTools } from "./snapshot-tools.js";
+import type { SnapshotStore } from "./snapshots.js";
 
 /** The tab gets 15 s for UI work; the rest covers messaging. */
 const OP_TIMEOUT_MS = 20_000;
@@ -91,6 +93,7 @@ export interface ExplorationDeps {
   log: (message: string) => void;
   /** Directory export_asset may write into; defaults to the working directory. */
   root?: string;
+  snapshots: SnapshotStore;
 }
 
 export function registerExplorationTools(server: McpServer, deps: ExplorationDeps): void {
@@ -414,6 +417,7 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
   );
 
   registerExportTool(server, deps, toolError);
+  registerSnapshotTools(server, { bridge, contexts, snapshots: deps.snapshots, log, maxOutputBytes: MAX_OUTPUT_BYTES }, toolError);
 
   server.registerTool(
     "release_context",

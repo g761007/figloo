@@ -7,12 +7,13 @@ import { BridgeErrorCodeSchema, ErrorCodeSchema } from "@figloo/protocol";
 import type { Bridge } from "../src/bridge.js";
 import { EXPORT_HINTS } from "../src/export-asset.js";
 import { HINTS } from "../src/exploration.js";
+import { SNAPSHOT_HINTS } from "../src/snapshot-tools.js";
 import { createServer } from "../src/server.js";
 import { startBridge } from "./helpers.js";
 
 const DOC = resolve(import.meta.dirname, "../../../docs/mcp-tools.md");
 /** Codes the server raises itself, next to the protocol's. */
-const SERVER_CODES = ["INVALID_ARGUMENT", "SAVE_REFUSED"];
+const SERVER_CODES = ["INVALID_ARGUMENT", "SAVE_REFUSED", "SNAPSHOT_EXPIRED", "SNAPSHOT_NOT_FOUND", "SUBTREE_TOO_LARGE"];
 
 interface JsonSchema {
   type?: string | string[];
@@ -87,7 +88,7 @@ async function renderToolDocs(bridge: Bridge): Promise<string> {
       lines.push("");
     }
   }
-  const hints: Record<string, string> = { ...HINTS, ...EXPORT_HINTS };
+  const hints: Record<string, string> = { ...HINTS, ...EXPORT_HINTS, ...SNAPSHOT_HINTS };
   const codes = [...new Set([...ErrorCodeSchema.options, ...BridgeErrorCodeSchema.options, ...SERVER_CODES])].sort();
   lines.push("## Error codes", "", "| Code | Hint |", "|---|---|");
   for (const code of codes) lines.push(`| \`${code}\` | ${cell(hints[code] ?? "No hint; the message says what went wrong.")} |`);

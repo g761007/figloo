@@ -1,7 +1,7 @@
 # 頁面地圖與快照：實作前的企劃與研究
 
 日期：2026-10-01  
-狀態：研究完成；實作計畫在 2026-10-01 review 後調整，並經使用者確認；第一階段完成，見[驗證紀錄](../compatibility/2026-10-01-page-snapshot-phase1.md)，第二階段待開始  
+狀態：研究完成；實作計畫在 2026-10-01 review 後調整，並經使用者確認；第一階段完成，見[驗證紀錄](../compatibility/2026-10-01-page-snapshot-phase1.md)；第二階段完成，以單元測試驗證；第三階段待開始  
 依據：使用者提出的情境，以及 2026-10-01 在 Arc 上的實測
 
 ## 使用情境
@@ -221,6 +221,15 @@
 - 匯出格式：等屬性面板確認切換後就能穩定讀到，快照加上 `exports`。
 - 時間上限的 180 秒中保留 15 秒，給逾時後的收回與還原選取。
 - 使用者中止時，收回展開的圖層，但保留使用者的選取。
+
+### 第二階段的結果
+
+- `snapshot_layer` 與 `query_snapshot` 依上面的設計完成；snapshot id 的格式是 `<檔案 key>/<root ref，冒號換成連字號>`，例如 `AbCd/570-14192`，直接對應到檔案路徑。
+- 大綱的每一行依序是縮排、ref、類型、名稱、`x,y`、`寬×高`；文字內容與名稱不同時附上開頭，最後是 `[hidden]`、`[has layers]`（有子層的 instance）、`[export PNG 2x]` 等標記。大綱放不下時附上 `nextCursor`，交給 `query_snapshot` 接著讀。
+- 子樹過大時回報 `SUBTREE_TOO_LARGE`，訊息中列出 root 的直接子層，這些 ref 可以直接用來呼叫 `snapshot_layer`。快照中的 ref 也都加入 context，可以直接交給 `inspect_nodes` 或 `export_asset`。
+- `config.json` 的 `snapshotTtlHours` 調整有效期限；補齊設定檔缺少的欄位時，會保留使用者自己加的設定。
+- 單元測試 18 項：檔名轉換與路徑跳脫、大綱格式、存檔與權限、快取、refresh、過期、版本不符、過期快照的清理、大綱截斷後接續、子樹過大、instance 內的 root、篩選與組合、完整屬性與分頁、錯誤的 cursor、沒有 Figma 時的查詢、設定檔。
+- 經由 extension 的完整路徑尚未實測：另一個 Claude 工作階段的 Figloo MCP 佔用了 bridge 的連接埠，留到第三階段一起驗證。
 
 ### 風險
 

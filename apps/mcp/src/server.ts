@@ -1,8 +1,11 @@
+import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { PROTOCOL_VERSION, RefreshTabsResultSchema, StatusReportSchema, type StatusReport } from "@figloo/protocol";
 import type { Bridge } from "./bridge.js";
+import { configDir } from "./config.js";
 import { ContextStore } from "./contexts.js";
 import { registerExplorationTools } from "./exploration.js";
+import { SnapshotStore } from "./snapshots.js";
 import { overallStatus, statusHint } from "./status.js";
 
 export interface ServerDeps {
@@ -12,6 +15,8 @@ export interface ServerDeps {
   contexts?: ContextStore;
   log?: (message: string) => void;
   root?: string;
+  /** Where snapshots are kept; ~/.figloo/snapshots with a 24-hour lifetime by default. */
+  snapshots?: SnapshotStore;
 }
 
 export function createServer(deps: ServerDeps): McpServer {
@@ -35,6 +40,7 @@ export function createServer(deps: ServerDeps): McpServer {
     contexts: deps.contexts ?? new ContextStore(),
     log: deps.log ?? ((message) => console.error(`[figloo] ${message}`)),
     ...(deps.root ? { root: deps.root } : {}),
+    snapshots: deps.snapshots ?? new SnapshotStore(join(configDir(), "snapshots")),
   });
 
   return server;

@@ -751,3 +751,58 @@ export const SnapshotResultSchema = z.discriminatedUnion("status", [
   SnapshotTooLargeSchema,
 ]);
 export type SnapshotResult = z.infer<typeof SnapshotResultSchema>;
+
+/** Where the root sits in a snapshot's screenshot, to find a layer's bounds in the image. */
+export const SnapshotImageInfoSchema = z.object({
+  width: z.number().int(),
+  height: z.number().int(),
+  /** The root in the image, in image pixels; null when Figma did not show where it is on screen. */
+  rootInImage: RectSchema.nullable(),
+  /** Image pixels per design pixel: a layer at (x, y) is at rootInImage + (x, y) × scale. */
+  scale: z.number().positive().nullable(),
+});
+
+/** What `snapshot_layer` returns to the coding agent, next to the screenshot. */
+export const SnapshotOutputSchema = z.object({
+  contextId: z.string(),
+  /** Pass it to query_snapshot, which reads the saved snapshot without the Figma tab. */
+  snapshot: z.string(),
+  fileKey: z.string(),
+  page: z.string().nullable(),
+  rootRef: z.string(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  /** True when an earlier snapshot was returned without reading Figma again. */
+  fromCache: z.boolean(),
+  layerCount: z.number().int().positive(),
+  image: SnapshotImageInfoSchema,
+  /** One line per layer in layers panel order, indented by depth. */
+  outline: z.string(),
+  /** Layers the outline lists; fewer than layerCount when it was cut to fit. */
+  outlineLayers: z.number().int().nonnegative(),
+  /** Continues the outline with query_snapshot when it was cut. */
+  nextCursor: z.string().nullable(),
+  elapsedMs: z.number().nonnegative(),
+});
+export type SnapshotOutput = z.infer<typeof SnapshotOutputSchema>;
+
+/** Most layers `query_snapshot` returns in full per call. */
+export const MAX_SNAPSHOT_DETAILS = 20;
+
+export const QuerySnapshotOutputSchema = z.object({
+  snapshot: z.string(),
+  expiresAt: z.string(),
+  /** Layers matching the query, over all pages. */
+  matched: z.number().int().nonnegative(),
+  /** 1-based number of the first returned match. */
+  from: z.number().int().positive(),
+  /** Outline lines of the matches; null when full layers are returned. */
+  outline: z.string().nullable(),
+  /** Full layers, for refs or details; null for an outline. */
+  layers: z.array(SnapshotLayerSchema).nullable(),
+  /** Requested refs the snapshot does not have. */
+  missing: z.array(z.string()),
+  hasMore: z.boolean(),
+  nextCursor: z.string().nullable(),
+});
+export type QuerySnapshotOutput = z.infer<typeof QuerySnapshotOutputSchema>;

@@ -184,6 +184,59 @@ Export a layer of a context with Figma's Export button and hand the files over: 
 | `usedExistingSettings` | boolean |
 | `userSelectionRestored` | boolean |
 
+## snapshot_layer
+
+Read a layer and everything inside it in one go, for implementing a page: a screenshot, and for each layer its place, size, and all that inspect_nodes shows, saved as a snapshot that query_snapshot reads without Figma. Use it on the page's root, such as the frame the user selected (get_anchor). Instances count as one layer; read inside them with get_neighbors. Returns the screenshot, the snapshot id, and an outline with one line per layer: ref, type, name, x,y and width×height in design pixels from the root's top-left corner (? when Figma shows no place), the start of its text, and marks for hidden layers, instances with layers of their own, and export settings. A layer at (x, y) shows at image.rootInImage + (x, y) × image.scale in the screenshot. A saved snapshot comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. Reading takes about 40 s for 300 layers, at most 3 minutes, for up to 400 layers; a larger subtree fails and lists the root's children. Meanwhile the Figma tab must stay visible and the user cannot use Figma; a click in Figma stops it. The user's selection is put back; the view stays zoomed to the root.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `contextId` | string | yes |  |
+| `ref` | string | yes | A ref returned earlier in this context, outside instances |
+| `refresh` | boolean | no | Read Figma again even when a saved snapshot has not expired |
+
+| Result field | Type |
+|---|---|
+| `contextId` | string |
+| `snapshot` | string |
+| `fileKey` | string |
+| `page` | string or null |
+| `rootRef` | string |
+| `createdAt` | string |
+| `expiresAt` | string |
+| `fromCache` | boolean |
+| `layerCount` | integer, at least 1 |
+| `image` | object with width, height, rootInImage, scale |
+| `outline` | string |
+| `outlineLayers` | integer, at least 0 |
+| `nextCursor` | string or null |
+| `elapsedMs` | number, at least 0 |
+
+## query_snapshot
+
+Look layers up in a snapshot from snapshot_layer. Reads the saved file only, so it needs no Figma tab and works after the page reloads. refs: those layers in full, up to 20: bounds with where they came from, hidden, export settings, and every inspection panel section as inspect_nodes returns them. Otherwise filter by text (in names and text content, ignoring case), type (such as Text, Instance, or Auto layout), and under (only layers inside that ref); filters combine, and none lists every layer. Matches come as outline lines, or in full with details: true, one page at a time; pass nextCursor for the next page. An expired snapshot fails; take a new one with snapshot_layer.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `snapshot` | string | yes | The snapshot id from snapshot_layer |
+| `refs` | array of string | no | Layers to return in full; not combined with the filters |
+| `text` | string | no |  |
+| `type` | string | no |  |
+| `under` | string | no | A ref in the snapshot |
+| `details` | boolean | no | Return matches in full instead of as outline lines |
+| `cursor` | string | no | nextCursor from the previous page of the same query |
+
+| Result field | Type |
+|---|---|
+| `snapshot` | string |
+| `expiresAt` | string |
+| `matched` | integer, at least 0 |
+| `from` | integer, at least 1 |
+| `outline` | string or null |
+| `layers` | array of object with ref, name, type, depth, parentRef, position, siblingCount, hasChildren, hidden, bounds, sections, exports or null |
+| `missing` | array of string |
+| `hasMore` | boolean |
+| `nextCursor` | string or null |
+
 ## release_context
 
 Forget an exploration context and the refs it returned.
@@ -217,6 +270,9 @@ Forget an exploration context and the refs it returned.
 | `PAGE_CHANGED` | The user switched to another Figma page; call get_anchor again. |
 | `PROTOCOL_MISMATCH` | No hint; the message says what went wrong. |
 | `SAVE_REFUSED` | saveTo must be a path inside the project directory, and existing files are only replaced with overwrite: true. |
+| `SNAPSHOT_EXPIRED` | Take a new snapshot with snapshot_layer, which needs a contextId from get_anchor or explore_page. |
+| `SNAPSHOT_NOT_FOUND` | Pass the snapshot id exactly as snapshot_layer returned it; without one, take a snapshot with snapshot_layer. |
+| `SUBTREE_TOO_LARGE` | Snapshot a smaller root: call snapshot_layer on one of the children listed in the message, or on a layer further down. |
 | `TAB_IN_BACKGROUND` | Ask the user to bring the Figma tab to the front (visible on screen, it may sit beside other windows), then retry. Reading pages, the selection, and already expanded layers still works from the background. |
 | `TAB_NOT_FOUND` | Call get_status to list the open Figma tabs and their tabId. |
 | `TIMEOUT` | The Figma tab did not answer in time; call get_status. |
