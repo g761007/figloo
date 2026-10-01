@@ -12,7 +12,7 @@
 
 ## 檢視權限下 Export 區塊的實測
 
-環境：Arc，已登入、檢視權限，英文 UI，檔案 Sample App。測試對象是 16×16 的 instance `tag_icon`，以及設計師設了 PNG 2x 的 frame「測試畫面」。
+環境：Arc，已登入、檢視權限，英文 UI，使用者提供的私人測試檔。測試對象是 16×16 的 icon instance `tag_icon`，以及設計師設了 PNG 2x 的 frame「測試畫面」。
 
 ### 結構
 
@@ -23,8 +23,8 @@
 - 「Advanced export settings」對話框只有後綴、色彩設定檔、影像重新取樣與兩個勾選項，沒有格式。
 - 「Export <圖層名稱>」一次匯出所有設定列。
 - Figma 給的檔名就是圖層名稱，例如 `tag_icon.svg`。2x 的 PNG 也叫 `tag_icon.png`，沒有倍率後綴。
-- 同時匯出多組設定時，Figma 打包成一個以設計稿檔名命名的 ZIP，例如 `Sample App.zip`，裡面的檔名同樣沒有倍率後綴。
-- 先前在下載資料夾看到的檔名是「Sample App Identity Tag.svg」，與 Figma 給的名稱不同，可能是瀏覽器存檔時改了名稱，原因未確認。
+- 同時匯出多組設定時，Figma 打包成一個以設計稿檔名命名的 ZIP，例如 `<檔案名稱>.zip`，裡面的檔名同樣沒有倍率後綴。
+- 先前在下載資料夾看到的檔名是「<檔案名稱> Tag Icon.svg」這種格式，與 Figma 給的名稱不同，可能是瀏覽器存檔時改了名稱，原因未確認。
 
 ### 行為
 
@@ -75,7 +75,7 @@
 | Arc 注入程式，攔下 Export 點擊 | 六種情境全部通過：icon 的 SVG、PNG 2x 與不指定格式，frame 使用設計師的 PNG 2x、沿用相同的 PNG 2x，以及在 PNG 2x 旁加 SVG 臨時設定。每次結束都選回原本的 frame，設計師的 PNG 2x 不變，沒有留下展開的圖層，icon 也沒有殘留設定 |
 | Arc 完整鏈路（MCP、bridge、service worker、content script） | 重新載入 extension 後，四次匯出都是 `source: "direct"`：icon 的 SVG 5,606 B 以文字回傳，約 1.2 秒；icon 的 PNG 2x 為 32×32，以圖片回傳並存檔，約 1.2 秒；frame 依設計師的 PNG 2x 匯出 786×1704、1.9 MB，超過內嵌上限所以只存檔，約 3.2 秒；frame 在 PNG 2x 旁加 SVG 臨時設定，從 ZIP 取出 18 MB 的 SVG，約 4.2 秒。每次都選回原本的 frame，設計師的 PNG 2x 不變，下載資料夾沒有新增檔案 |
 | 使用者的 Claude Code 工作階段 | Agent 依 popup 複製的提示，匯出標籤 `label-global-rank` 的 PNG 1x 與 2x，兩個檔案都直接回傳；沒有指定 `saveTo`，所以專案沒有新增檔案 |
-| Arc 原始 ZIP | 只經 bridge 要求同樣的匯出，取得 15 MB 的 `Sample App.zip`；Figloo 解出的項目名稱與大小，和 Python `zipfile` 讀到的一致 |
+| Arc 原始 ZIP | 只經 bridge 要求同樣的匯出，取得 15 MB、以設計稿檔名命名的 ZIP；Figloo 解出的項目名稱與大小，和 Python `zipfile` 讀到的一致 |
 
 ## 測試中發生的問題
 

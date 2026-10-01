@@ -4,11 +4,9 @@
 import { join, resolve } from "node:path";
 import { build } from "esbuild";
 import { chromium } from "playwright";
+import { FIGMA_URL } from "./figma-url.mjs";
 
 const ROOT = resolve(import.meta.dirname, "../..");
-const FIGMA_URL =
-  process.env.FIGLOO_E2E_FIGMA_URL ??
-  "https://www.figma.com/design/AbCdEfGhIjKlMnOpQrStUv/Sample-App?node-id=338-4231&p=f&t=abc-0";
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
 const MAX_LIST_CALLS = 40;
 

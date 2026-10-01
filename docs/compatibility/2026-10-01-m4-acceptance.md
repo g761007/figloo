@@ -30,9 +30,9 @@ MCP client 的完整流程：使用者在 Claude Code 中貼上 popup 複製的�
 
 ## 核心情境重複 10 次
 
-環境：Arc 1.166.0、macOS 27.0，已登入、檢視權限、英文 UI，檔案 Sample App 的「測試頁」頁。MCP 伺服器使用打包後的 `release/figloo-mcp-0.0.1.mjs`，以 `tests/acceptance/core-scenario.mjs` 執行。
+環境：Arc 1.166.0、macOS 27.0，已登入、檢視權限、英文 UI，使用者提供的私人測試檔中的「測試頁」。MCP 伺服器使用打包後的 `release/figloo-mcp-0.0.1.mjs`，以 `tests/acceptance/core-scenario.mjs` 執行。
 
-情境：選取資訊卡片「資訊卡片元件」裡的「動作按鈕」，再依序執行：
+情境：選取資訊卡片元件裡的動作按鈕，再依序執行：
 
 1. `get_anchor` 取得選取的按鈕。
 2. `get_neighbors` 列出祖先；最近的 component 或 instance 就是卡片。

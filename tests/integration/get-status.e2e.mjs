@@ -8,15 +8,13 @@ import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { chromium } from "playwright";
+import { FIGMA_URL } from "./figma-url.mjs";
 import { EXTENSION_ID } from "../../packages/protocol/dist/index.js";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 // `pnpm test:release` points these at the unzipped extension and the bundled server in release/.
 const EXTENSION_DIR = process.env.FIGLOO_E2E_EXTENSION_DIR ?? join(ROOT, "apps/extension/dist");
 const MCP_ENTRY = process.env.FIGLOO_E2E_MCP_ENTRY ?? join(ROOT, "apps/mcp/dist/index.js");
-const FIGMA_URL =
-  process.env.FIGLOO_E2E_FIGMA_URL ??
-  "https://www.figma.com/design/AbCdEfGhIjKlMnOpQrStUv/Sample-App?node-id=338-4231&p=f&t=abc-0";
 const FILE_KEY = new URL(FIGMA_URL).pathname.split("/")[2];
 const TOKEN = `e2e-${Math.random().toString(36).slice(2)}`;
 const HEADLESS = process.env.FIGLOO_E2E_HEADED !== "1";

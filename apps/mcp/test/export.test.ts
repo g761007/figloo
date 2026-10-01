@@ -171,7 +171,7 @@ describe("export_asset", () => {
   });
 
   it("opens the ZIP Figma packs files into and hands over each file", async () => {
-    const { root, exportAsset } = await setup(() => direct([{ name: "Sample App icons.zip", mimeType: "application/zip", data: ZIP }]));
+    const { root, exportAsset } = await setup(() => direct([{ name: "Sample App.zip", mimeType: "application/zip", data: ZIP }]));
     const result = await exportAsset({ saveTo: "src/assets/" });
     const output = ExportOutputSchema.parse(result.structuredContent);
     expect(output.files.map((f) => [f.name, f.mimeType])).toEqual([
@@ -187,11 +187,11 @@ describe("export_asset", () => {
   });
 
   it("keeps only the requested format when the designer's own settings were exported too", async () => {
-    const { exportAsset } = await setup(() => direct([{ name: "Sample App icons.zip", mimeType: "application/zip", data: ZIP }], "svg"));
+    const { exportAsset } = await setup(() => direct([{ name: "Sample App.zip", mimeType: "application/zip", data: ZIP }], "svg"));
     const output = ExportOutputSchema.parse((await exportAsset({ format: "svg" })).structuredContent);
     expect(output.files.map((f) => f.name)).toEqual(["關閉.svg"]);
 
-    const { exportAsset: exportPdf } = await setup(() => direct([{ name: "Sample App icons.zip", mimeType: "application/zip", data: ZIP }], "pdf"));
+    const { exportAsset: exportPdf } = await setup(() => direct([{ name: "Sample App.zip", mimeType: "application/zip", data: ZIP }], "pdf"));
     const missing = await exportPdf({ format: "pdf" });
     expect(missing.isError).toBe(true);
     expect(errorOf(missing).message).toMatch(/exported 關閉\.svg, 關閉@2x\.png, but no pdf file/);
