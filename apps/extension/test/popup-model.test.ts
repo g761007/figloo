@@ -38,6 +38,30 @@ describe("the prompt the popup copies", () => {
     expect(text).not.toContain("Path:");
   });
 
+  it("asks for a snapshot when the selection is a frame on the canvas or in a section", () => {
+    const screen = layer("2:1", "Checkout screen", "Frame", { depth: 0, hasChildren: true });
+    const inSection = layer("2:2", "Profile screen", "Auto layout", { depth: 1, hasChildren: true });
+    for (const selection of [
+      { ...cardSelection(), anchor: screen, anchors: [screen], ancestors: [] },
+      { ...cardSelection(), anchor: inSection, anchors: [inSection], ancestors: [layer("9:1", "Flows", "Section", { depth: 0 })] },
+    ]) {
+      const text = buildPrompt(snapshot({ selection, selectionError: null }))!;
+      expect(text).toMatch(/^I want to implement the Figma page I selected/);
+      expect(text).toContain(`it should return ref ${selection.anchor.ref}. If it returns another layer, ask me to select this one again. Then call snapshot_layer on it`);
+      expect(text).toContain("query_snapshot");
+    }
+  });
+
+  it("keeps the layer prompt for a card inside a screen, an instance, or a frame whose path is unknown", () => {
+    const instance = layer("3:1", "Header", "Instance", { depth: 0 });
+    const lost = layer("4:1", "Card", "Frame", { depth: 3 });
+    for (const selection of [cardSelection(), { ...cardSelection(), anchor: instance, anchors: [instance], ancestors: [] }, { ...cardSelection(), anchor: lost, anchors: [lost], ancestors: [] }]) {
+      const text = buildPrompt(snapshot({ selection, selectionError: null }))!;
+      expect(text).toMatch(/^Use the Figloo MCP tools to work on the Figma layer I selected/);
+      expect(text).not.toContain("snapshot_layer");
+    }
+  });
+
   it("lets the agent explore the file when nothing is selected", () => {
     const text = buildPrompt(snapshot())!;
     expect(text).toContain("explore the Figma file open in my browser");

@@ -356,8 +356,12 @@ export class Explorer {
         if (!(await source.select(row))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${params.ref}; guest sessions cannot select layers`);
         // The panel's size tells how large the layer should look once zoomed, which checks the bounds below.
         const size = inspectionRoot(this.doc) ? await this.waitForPanel(row, previous, source).then(() => layerSize(this.doc)).catch(() => null) : null;
+        // The mirror keeps the layer's old place until the zoom ends, about 0.5 s later, and then moves it in one
+        // step (Arc on 2026-10-01). A zoom close to the old one, or a pan alone, keeps about the expected size,
+        // so only a move shows that the place is new. When the layer is in place already, nothing moves.
+        const shownBefore = source.mirrorRect(params.ref);
         source.pressKey("@", "Digit2", 50, true); // Shift+2: zoom to selection
-        await source.settle(() => source.zoomLabel() !== zoomBefore);
+        await source.settle(() => (shownBefore ? moved(source.mirrorRect(params.ref!), shownBefore) : source.zoomLabel() !== zoomBefore));
         const zoom = parseZoom(source.zoomLabel());
         const expected = size && zoom ? { width: size.width * zoom, height: size.height * zoom } : null;
         // Figma animates the zoom and updates the mirror as it goes, so wait for the bounds to settle.
@@ -860,6 +864,10 @@ async function stableRect(read: () => Rect | null, expected: { width: number; he
     last = rect;
   }
   return null;
+}
+
+function moved(rect: Rect | null, from: Rect): boolean {
+  return rect !== null && (Math.abs(rect.x - from.x) > 0.5 || Math.abs(rect.y - from.y) > 0.5 || Math.abs(rect.width - from.width) > 0.5);
 }
 
 /** Zoom to selection centers the layer, so its size alone places it roughly in the canvas. */

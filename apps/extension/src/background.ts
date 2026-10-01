@@ -26,7 +26,7 @@ import {
   type TabStatus,
 } from "@figloo/protocol";
 import { DEFAULT_TITLE, actionAppearance, agentLine, applyAppearance } from "./action.js";
-import { cropCapture, placeInImage } from "./capture.js";
+import { cropCapture, insideImage, placeInImage } from "./capture.js";
 import { installExportCapture, removeExportCapture } from "./export-capture.js";
 import { parseFigmaUrl } from "./figma-url.js";
 import { POPUP_CHILDREN, type PopupSnapshot } from "./popup-model.js";
@@ -397,13 +397,18 @@ async function snapshotTab(tabId: number, params: unknown): Promise<TabOpRespons
   const result = SnapshotReadResultSchema.parse(read.result);
   const elapsedMs = Date.now() - started;
   if (result.status === "too_large") return { ok: true, result: { ...result, elapsedMs } };
+  const rootInImage = result.rootOnScreen ? placeInImage(result.rootOnScreen, crop, image) : null;
+  // The read measures the root where the screenshot was taken; a root outside the image means the view moved in between.
+  if (rootInImage && !insideImage(rootInImage, image)) {
+    return { ok: false, error: { code: "UI_NOT_READY", message: "the screenshot does not show the whole root, so the view moved while it was taken; take the snapshot again" } };
+  }
   return {
     ok: true,
     result: {
       ...result,
       image,
       crop,
-      rootInImage: result.rootOnScreen ? placeInImage(result.rootOnScreen, crop, image) : null,
+      rootInImage,
       imageScale: result.zoom ? (image.width / crop.width) * result.zoom : null,
       elapsedMs,
     },

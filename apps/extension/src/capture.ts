@@ -35,6 +35,12 @@ export function planCrop(crop: Rect, viewport: { width: number; height: number }
   return { sx, sy, sw, sh, width: Math.max(1, Math.round(sw * k)), height: Math.max(1, Math.round(sh * k)), shown };
 }
 
+/** Whether a rectangle in image pixels lies inside the image, give or take rounding. */
+export function insideImage(rect: Rect, image: { width: number; height: number }): boolean {
+  const slack = 2;
+  return rect.x >= -slack && rect.y >= -slack && rect.x + rect.width <= image.width + slack && rect.y + rect.height <= image.height + slack;
+}
+
 /** Where a rectangle on screen lands in an image of `crop` scaled to `image`, in image pixels. */
 export function placeInImage(rect: Rect, crop: Rect, image: { width: number; height: number }): Rect {
   const sx = image.width / crop.width;

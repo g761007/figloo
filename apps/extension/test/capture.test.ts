@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { placeInImage, planCrop } from "../src/capture.js";
+import { insideImage, placeInImage, planCrop } from "../src/capture.js";
 
 describe("planCrop", () => {
   it("maps a layer's CSS pixel bounds onto a 2x capture", () => {
@@ -36,5 +36,14 @@ describe("placeInImage", () => {
     expect(placed.y).toBeCloseTo(12 * (1568 / 813), 6);
     expect(placed.width).toBeCloseTo(364 * (748 / 388), 6);
     expect(placed.height).toBeCloseTo(789 * (1568 / 813), 6);
+  });
+});
+
+describe("insideImage", () => {
+  it("accepts a root that fills the image up to rounding, and refuses one the crop missed", () => {
+    expect(insideImage({ x: 23.1, y: 23.1, width: 701.7, height: 1521.7 }, { width: 748, height: 1568 })).toBe(true);
+    expect(insideImage({ x: -0.6, y: 0, width: 108, height: 1568.4 }, { width: 107, height: 1568 })).toBe(true);
+    // Arc on 2026-10-01: the crop followed the mirror's stale place and caught a neighbouring frame.
+    expect(insideImage({ x: -766.6, y: -44.9, width: 660, height: 1431.9 }, { width: 107, height: 1568 })).toBe(false);
   });
 });

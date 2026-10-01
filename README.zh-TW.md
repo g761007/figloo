@@ -8,7 +8,7 @@ Figloo 由 Chrome 擴充功能與本機 MCP 伺服器組成，讓 coding agent �
 
 ## 狀態
 
-MVP 已完成，也就是[計畫](docs/plans/2026-09-30-figloo-mvp-plan.md)中的 M0 到 M4 里程碑。Agent 可以列出 Figma 檔案的頁面、開啟頁面或從使用者的選取出發、每次在有上限的範圍內逐層瀏覽圖層、讀取 Figma 屬性面板顯示的內容、截圖，以及匯出 icon 與圖片。Figloo 的目標使用者是對檔案有檢視權限的工程師；它絕不編輯設計稿。
+MVP 已完成，也就是[計畫](docs/plans/2026-09-30-figloo-mvp-plan.md)中的 M0 到 M4 里程碑。Agent 可以列出 Figma 檔案的頁面、開啟頁面或從使用者的選取出發、每次在有上限的範圍內逐層瀏覽圖層、讀取 Figma 屬性面板顯示的內容、截圖，以及匯出 icon 與圖片。要實作一個頁面時，`snapshot_layer` 會一次讀取頁面中的每個圖層並截圖，存成快照，之後 `query_snapshot` 不必再操作 Figma 就能查詢圖層。Figloo 的目標使用者是對檔案有檢視權限的工程師；它絕不編輯設計稿。
 
 - [docs/mcp-tools.md](docs/mcp-tools.md)：每個工具的參數、回傳結果與錯誤碼。
 - [docs/compatibility/](docs/compatibility/README.md)：支援的瀏覽器與 Figma 設定、已知限制，以及在真實 Figma 頁面上驗證過的項目。
@@ -80,6 +80,15 @@ claude mcp add -s user figloo -- node /absolute/path/to/figloo/apps/mcp/dist/ind
 }
 ```
 
+`snapshot_layer` 最多可能需要三分鐘。Claude Code 的預設值等得夠久；如果你設定了 `MCP_TOOL_TIMEOUT` 或 `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`，請設在 200000 毫秒以上。Codex 預設在 60 秒後停止工具呼叫，所以請在 `~/.codex/config.toml` 中為 Figloo 調高 `tool_timeout_sec`：
+
+```toml
+[mcp_servers.figloo]
+command = "node"
+args = ["/absolute/path/to/figloo/apps/mcp/dist/index.js"]
+tool_timeout_sec = 300
+```
+
 伺服器透過 stdio 使用 MCP，並在同一個程序中監聽 `ws://127.0.0.1:47129`，等候擴充功能連線。要改用其他連接埠，請設定 `FIGLOO_PORT`，或修改設定檔中的 `port`。連接埠已被占用時，`get_status` 會回報錯誤，伺服器不會因此當掉。
 
 ### 3. 配對一次
@@ -112,7 +121,7 @@ node apps/mcp/dist/index.js pair
 
 點擊圖示會開啟 popup 視窗。它會顯示檔案、頁面，以及 Figloo 與 coding agent 是否就緒。在 Figma 中選取一個圖層時，它還會顯示這個圖層從頁面開始的路徑，以及它的直接子層。讀取子層時，圖層面板中的這個圖層可能會短暫展開，Figloo 會再把它收合。
 
-「Copy prompt for the agent」會複製一段文字，讓你在描述任務之前貼到 coding agent 中。這段文字寫出檔案、分頁與選取的圖層，並告訴 agent 先使用哪些 Figloo 工具。沒有選取時，這段提示會請 agent 自行探索檔案。複製之前，popup 視窗會先顯示提示內容。
+「Copy prompt for the agent」會複製一段文字，讓你在描述任務之前貼到 coding agent 中。這段文字寫出檔案、分頁與選取的圖層，並告訴 agent 先使用哪些 Figloo 工具。選取的圖層是畫布上或 section 中的 frame，例如一個畫面時，提示會說明你要實作這一頁，並請 agent 先為它建立快照。沒有選取時，這段提示會請 agent 自行探索檔案。複製之前，popup 視窗會先顯示提示內容。
 
 圖示的圖稿在 `apps/extension/scripts/render-icons.mjs`。修改後，請重新產生已提交的 PNG：
 
@@ -133,13 +142,15 @@ pnpm --filter @figloo/extension icons
 | `inspect_nodes` | 讀取最多 5 個圖層的 Figma 屬性面板：尺寸與尺寸模式、位置、auto layout 方向、padding、gap、圓角、填色、邊框、陰影、文字內容、每段樣式的字型設定，以及元件屬性。數值與 Figma 顯示的完全相同。 |
 | `capture` | 截取縮放到剛好容納的圖層，或整個頁面。回傳長邊最多 1568 px 的 JPEG。 |
 | `export_asset` | 以 Figma 的 Export 按鈕的方式匯出圖層，格式可以是 SVG、PNG、JPG 或 PDF，讓 agent 依專案需要選擇格式與倍率，例如網頁用 SVG，iOS 用 PDF 或 1x、2x、3x 的 PNG。SVG 以文字回傳，長邊最多 1568 px 的 PNG 或 JPG 以圖片回傳。加上 `saveTo` 時，也會把檔案寫到專案目錄中的該路徑；專案目錄是 Claude Code 設定的 `CLAUDE_PROJECT_DIR`，沒有時則是伺服器的工作目錄。既有檔案只在加上 `overwrite: true` 時取代。Figma 的檔名是圖層名稱，不含倍率後綴，所以每種倍率請存成不同的檔名。沒有 `format` 時，圖層有自己的匯出設定就沿用，沒有設定的圖層則匯出成 SVG。有 `format` 時，會加上一組該格式與 `scale`（預設 1x）的臨時設定，匯出後再移除；圖層已有完全相同的設定時則直接沿用。圖層本身的設定絕不會被改動。Figma 把多個檔案打包成的 ZIP 會自動解開。 |
+| `snapshot_layer` | 一次讀取一個圖層與其中的所有圖層，最多 400 個；300 個圖層約 40 秒，最多三分鐘。內容包括截圖，以及每個圖層相對這個圖層的位置與大小、是否隱藏、匯出設定，與 `inspect_nodes` 讀得到的全部內容。Instance 視為一個圖層。回傳截圖與每個圖層一行的大綱，並把快照存在 `~/.figloo/snapshots/`。24 小時內再次呼叫會直接回傳存好的快照，不再讀取 Figma，時間可用設定檔的 `snapshotTtlHours` 調整；加上 `refresh: true` 則重新讀取。讀取期間使用者不能操作 Figma，在 Figma 中點一下就會中止。 |
+| `query_snapshot` | 不需要 Figma 分頁，就能在存好的快照中查詢圖層，頁面重新整理後也可以。可以依 ref 取得完整內容，或依文字、類型與所在的圖層篩選，結果以大綱或完整內容分頁回傳。 |
 | `release_context` | 捨棄一個 context 與其中的圖層 ref。 |
 
 完整的契約，包括每個參數、回傳欄位與錯誤碼，見 [docs/mcp-tools.md](docs/mcp-tools.md)。
 
-典型的流程是：先呼叫 `get_status`，接著用 `list_pages` 與 `explore_page`，使用者有選取時改用 `get_anchor`。然後用 `capture` 看頁面或 frame，用 `get_neighbors` 找出重要的部分，用 `inspect_nodes` 取得精確數值，再用 `export_asset` 取得 icon 與圖片。每次呼叫都有上限，並回報用了多少次 UI 操作。
+典型的流程是：先呼叫 `get_status`，接著用 `list_pages` 與 `explore_page`，使用者有選取時改用 `get_anchor`。然後用 `capture` 看頁面或 frame，用 `get_neighbors` 找出重要的部分，用 `inspect_nodes` 取得精確數值，再用 `export_asset` 取得 icon 與圖片。每次呼叫都有上限，並回報用了多少次 UI 操作。要實作整個頁面時，改為對頁面的 frame 呼叫 `snapshot_layer`，再用 `query_snapshot` 查詢細節。
 
-Figma 只在分頁可見時套用選取、展開、縮放與切換頁面。讀取頁面、選取與已展開的圖層，在背景分頁也能運作；`get_visual_neighbors`、`inspect_nodes`、`capture`、`export_asset`、切換頁面與展開收合的圖層，則會回報 `TAB_IN_BACKGROUND`，直到 Figma 分頁回到畫面上。把 Figma 放在 agent 視窗旁邊就夠了。這些工具會依序選取圖層，`capture` 還會縮放畫面；之後會還原使用者的選取，包括同時選取的多個圖層，但不會還原縮放。
+Figma 只在分頁可見時套用選取、展開、縮放與切換頁面。讀取頁面、選取與已展開的圖層，在背景分頁也能運作；`get_visual_neighbors`、`inspect_nodes`、`capture`、`export_asset`、`snapshot_layer`、切換頁面與展開收合的圖層，則會回報 `TAB_IN_BACKGROUND`，直到 Figma 分頁回到畫面上。把 Figma 放在 agent 視窗旁邊就夠了。這些工具會依序選取圖層，`capture` 還會縮放畫面；之後會還原使用者的選取，包括同時選取的多個圖層，但不會還原縮放。
 
 ## 開發
 
@@ -206,4 +217,6 @@ release/             pnpm package 的輸出（不提交）
 - 剛安裝擴充功能後，分頁一直是 `LOADING` 或變成 `INCOMPATIBLE`：請重新載入 Figma 分頁，讓 content script 注入頁面。
 - `export_asset` 回報 `EXPORT_BLOCKED`：Figma 沒有交出任何檔案，瀏覽器也沒有開始下載。如果瀏覽器擋下了 figma.com 的連續下載，請在網站設定中允許，再試一次。
 - `export_asset` 回報 `EXPORT_PENDING`：瀏覽器正在等待儲存備援的下載，通常是停在另存新檔的對話框。請確認儲存，或關閉「每次下載前詢問儲存位置」。
+- `snapshot_layer` 回報 `SUBTREE_TOO_LARGE`：這個圖層中有超過 400 個圖層。請改為對訊息中列出的某個子層建立快照。
+- 在 Codex 中，`snapshot_layer` 在 60 秒後失敗：請調高 `tool_timeout_sec`，見[在 agent 中註冊 MCP 伺服器](#2-在-agent-中註冊-mcp-伺服器)。
 - `get_status` 回報連接埠 47129 已被占用：另一個 agent 工作階段已經在執行 Figloo，而同一時間只能有一個伺服器服務擴充功能。請關閉另一個工作階段，再重新啟動 agent。

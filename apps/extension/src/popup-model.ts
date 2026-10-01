@@ -32,6 +32,18 @@ const PROMPT_CHILDREN = 10;
 
 const described = (node: LayerNode) => (node.type ? `${node.name} (${node.type})` : node.name);
 
+const FRAME_TYPES = new Set(["Frame", "Auto layout"]);
+
+/**
+ * A frame on the canvas, or in a section, outside instances: what a screen to implement looks like.
+ * Without its whole path, which the popup may have failed to read, a frame is not taken for one.
+ */
+function isPage(selection: PopupSelection): boolean {
+  const { anchor, ancestors } = selection;
+  const onCanvas = ancestors.length === anchor.depth && ancestors.every((node) => node.type === "Section");
+  return FRAME_TYPES.has(anchor.type ?? "") && anchor.insideInstance !== true && onCanvas;
+}
+
 /**
  * Text to paste into the coding agent: where the design is, which layer the user means, and which
  * Figloo tools to start with. The user adds the task itself.
@@ -77,8 +89,9 @@ export function buildPrompt(snapshot: PopupSnapshot): string | null {
   const more = total - shown.length;
   const rest = more > 0 ? `, and ${more} more` : selection.childrenHasMore ? ", and more" : "";
   const children = shown.length > 0 ? `Children: ${shown.join(", ")}${rest}` : null;
+  const screen = isPage(selection);
   return [
-    "Use the Figloo MCP tools to work on the Figma layer I selected in my browser.",
+    screen ? "I want to implement the Figma page I selected in my browser; use the Figloo MCP tools." : "Use the Figloo MCP tools to work on the Figma layer I selected in my browser.",
     "",
     file,
     page,
@@ -87,7 +100,10 @@ export function buildPrompt(snapshot: PopupSnapshot): string | null {
     children,
     anchor.link ? `Link: ${anchor.link}` : null,
     "",
-    `Call get_anchor with tabId ${tab.tabId} first; it should return ref ${anchor.ref}. If it returns another layer, ask me to select this one again. Then use ${tools}.`,
+    `Call get_anchor with tabId ${tab.tabId} first; it should return ref ${anchor.ref}. If it returns another layer, ask me to select this one again. ` +
+      (screen
+        ? "Then call snapshot_layer on it: it reads every layer of the page at once, with a screenshot, which takes up to three minutes while I leave Figma alone. Look layers up with query_snapshot, and use export_asset for icons and images."
+        : `Then use ${tools}.`),
   ]
     .filter((line) => line !== null)
     .join("\n");

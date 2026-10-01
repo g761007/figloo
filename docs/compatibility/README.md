@@ -38,6 +38,8 @@
 | `inspect_nodes` | 已驗證 | 需要 |
 | `capture` | 已驗證 | 需要 |
 | `export_asset` | 已驗證 SVG 與 PNG、設計師的設定、臨時設定與 ZIP；PDF 與 JPG 未驗證 | 需要 |
+| `snapshot_layer` | 已驗證，278 個圖層約 35 秒；需要開啟「Adapt content for screen readers」才能量到大部分圖層的位置 | 需要 |
+| `query_snapshot` | 已驗證，只讀快照檔 | 否 |
 | 工具列圖示與 popup | 已驗證 | 點圖示時分頁本來就在畫面上 |
 
 ## 已知限制
@@ -48,7 +50,7 @@
 4. 同一時間只有一個 MCP 伺服器能使用 bridge 連接埠。同時開兩個使用 Figloo 的 agent 工作階段時，後開的那個由 `get_status` 回報連接埠被占用。
 5. `inspect_nodes` 每次最多 5 個圖層，數值是屬性面板顯示的文字，不另外換算。
 6. 匯出時 Figma 的檔名不含倍率後綴，多組設定會打包成 ZIP 再由 MCP 解開。備援的下載路徑可能被瀏覽器的多重下載保護擋下；直接交付在所有實測中都成功。
-7. 使用者在操作途中動到 Figma 時，操作會中止並回報 `USER_INTERRUPTED`，面板也不再還原。
+7. 使用者在操作途中動到 Figma 時，操作會中止並回報 `USER_INTERRUPTED`，面板也不再還原。`snapshot_layer` 例外：它一次展開很多圖層，所以中止時仍會收回，但保留使用者的選取。
 8. 每次呼叫都有時間與操作次數的預算，超過時回傳部分結果並附續查資訊。數百列以上的長圖層清單未驗證。
 9. 背景分頁裡的展開點擊究竟被丟棄還是延後執行，無法確認，所以在背景一律不送出。
 10. `get_visual_neighbors` 只比較同一個父層的圖層。由 auto layout 決定位置的文字圖層，畫面與屬性面板都沒有它的位置，會列為未量測。
@@ -64,3 +66,4 @@
 - [M4：交付與驗收](2026-10-01-m4-acceptance.md)
 - [相鄰元件與多選錨點](2026-10-01-visual-neighbors-and-multi-select.md)
 - [頁面快照第一階段：adapter 的完整讀取](2026-10-01-page-snapshot-phase1.md)
+- [頁面快照：MCP 工具與完整路徑](2026-10-01-page-snapshot-tools.md)

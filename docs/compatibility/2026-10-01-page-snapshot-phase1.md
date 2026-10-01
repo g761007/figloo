@@ -87,7 +87,7 @@
 
 ## 未驗證
 
-1. 經由 service worker 的完整路徑：`snapshot_layer` 的實際截圖、裁切、root 在截圖中的位置，以及快照期間其他操作回傳 `BUSY`。這要等第二階段的 MCP 工具，並以新的 build 重新載入 extension。
+1. 經由 service worker 的完整路徑：`snapshot_layer` 的實際截圖、裁切、root 在截圖中的位置，以及快照期間其他操作回傳 `BUSY`。已在第三階段驗證，並修正了截圖裁切的問題，見[MCP 工具與完整路徑](2026-10-01-page-snapshot-tools.md)。
 2. 接近 400 個圖層的子樹，以及接近 180 秒的情況。
 3. 讀取中 Figma 分頁切到背景時的中止。沿用現有的 `TAB_IN_BACKGROUND` 偵測，快照中未實測。
 4. Group 以外不算 frame 的類型，例如布林運算。目前只有 Group 不算 frame。

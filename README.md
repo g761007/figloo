@@ -6,7 +6,7 @@ Figloo is a Chrome extension plus a local MCP server that lets a coding agent de
 
 ## Status
 
-The MVP (milestones M0 to M4 of the [plan](docs/plans/2026-09-30-figloo-mvp-plan.md)) is complete. An agent can list the pages of a Figma file, open a page or start from the user's selection, walk the layer tree one bounded page at a time, read what Figma's inspection panel shows, take screenshots, and export icons and images. Figloo targets engineers with view access to a file; it never edits the design.
+The MVP (milestones M0 to M4 of the [plan](docs/plans/2026-09-30-figloo-mvp-plan.md)) is complete. An agent can list the pages of a Figma file, open a page or start from the user's selection, walk the layer tree one bounded page at a time, read what Figma's inspection panel shows, take screenshots, and export icons and images. To implement a page, `snapshot_layer` reads every layer of it at once, with a screenshot, and saves the result so that `query_snapshot` can look layers up without touching Figma again. Figloo targets engineers with view access to a file; it never edits the design.
 
 - [docs/mcp-tools.md](docs/mcp-tools.md): every tool's parameters, results, and error codes.
 - [docs/compatibility/](docs/compatibility/README.md): supported browsers and Figma settings, known limitations, and what was verified on real Figma pages.
@@ -78,6 +78,15 @@ For other MCP clients, a configuration like this starts the server (replace the 
 }
 ```
 
+`snapshot_layer` can take up to three minutes. Claude Code waits long enough by default; if you set `MCP_TOOL_TIMEOUT` or `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`, keep them above 200000 milliseconds. Codex stops a tool call after 60 seconds by default, so raise `tool_timeout_sec` for Figloo in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.figloo]
+command = "node"
+args = ["/absolute/path/to/figloo/apps/mcp/dist/index.js"]
+tool_timeout_sec = 300
+```
+
 The server speaks MCP over stdio and, in the same process, listens on `ws://127.0.0.1:47129` for the extension. Set `FIGLOO_PORT` or edit `port` in the config file to change the port. If the port is taken, `get_status` reports the error instead of the server crashing.
 
 ### 3. Pair once
@@ -110,7 +119,7 @@ The icon shows, for the tab you are looking at, whether Figloo can use it. Hover
 
 Click the icon to open the popup. It shows the file, the page, and whether Figloo and the coding agent are ready. When one layer is selected in Figma, it also shows the layer's path from the page and its direct children. Reading the children can briefly expand that layer in the layers panel; Figloo collapses it again.
 
-"Copy prompt for the agent" copies text to paste into your coding agent before you describe the task. It names the file, the tab, and the selected layer, and tells the agent which Figloo tools to start with. Without a selection, the prompt asks the agent to explore the file on its own. The popup shows the prompt before you copy it.
+"Copy prompt for the agent" copies text to paste into your coding agent before you describe the task. It names the file, the tab, and the selected layer, and tells the agent which Figloo tools to start with. When the selected layer is a frame on the canvas or in a section, such as a screen, the prompt says you want to implement that page and asks the agent for a snapshot of it first. Without a selection, the prompt asks the agent to explore the file on its own. The popup shows the prompt before you copy it.
 
 The artwork lives in `apps/extension/scripts/render-icons.mjs`. After changing it, regenerate the committed PNGs:
 
@@ -131,13 +140,15 @@ pnpm --filter @figloo/extension icons
 | `inspect_nodes` | Reads Figma's inspection panel for up to 5 layers: size and sizing mode, position, auto layout flow, padding, gap, corner radius, fills, borders, shadows, text content, typography per style run, and component properties. Values are exactly as Figma shows them. |
 | `capture` | Screenshots a layer, zoomed to fit, or the whole page. Returns a JPEG of at most 1568 px on its long edge. |
 | `export_asset` | Exports a layer the way Figma's Export button does, as SVG, PNG, JPG, or PDF, so the agent can pick the format and scale the project needs, for example SVG for web or PDF and PNG at 1x, 2x, and 3x for iOS. Returns SVG markup inline and PNG or JPG of at most 1568 px as an image. With `saveTo`, also writes the files to that path inside the project directory (`CLAUDE_PROJECT_DIR`, which Claude Code sets, or else the server's working directory); existing files are only replaced with `overwrite: true`. Figma names files after the layer without a scale suffix, so save each scale under its own file name. Without `format`, the layer's own export settings are used when it has some, and a layer without settings exports as SVG. With `format`, a temporary setting in that format and `scale` (1x by default) is added and removed again, unless the layer already has that exact setting. The layer's own settings are never changed. ZIP archives Figma packs several files into are opened. |
+| `snapshot_layer` | Reads a layer and everything inside it, up to 400 layers, in one call of about 40 seconds for 300 layers and at most three minutes: a screenshot, and for each layer its place and size relative to the layer, whether it is hidden, its export settings, and everything `inspect_nodes` shows. Instances count as one layer. Returns the screenshot and an outline with one line per layer, and saves the snapshot under `~/.figloo/snapshots/`. A saved snapshot is returned without reading Figma again for 24 hours (`snapshotTtlHours` in the config file); `refresh: true` reads it again. Meanwhile the user cannot use Figma; a click in Figma stops it. |
+| `query_snapshot` | Looks layers up in a saved snapshot without the Figma tab, even after the page reloads: by ref, in full, or by text, type, and the layer they are inside, as outline lines or in full, a page at a time. |
 | `release_context` | Forgets a context and its layer refs. |
 
 The full contract, with every parameter, result field, and error code, is in [docs/mcp-tools.md](docs/mcp-tools.md).
 
-A typical request goes: `get_status`, then `list_pages` and `explore_page` (or `get_anchor` when the user selected something), `capture` to see a page or frame, `get_neighbors` to find the parts that matter, `inspect_nodes` for their exact values, and `export_asset` for icons and images. Each call is bounded and reports how many UI operations it used.
+A typical request goes: `get_status`, then `list_pages` and `explore_page` (or `get_anchor` when the user selected something), `capture` to see a page or frame, `get_neighbors` to find the parts that matter, `inspect_nodes` for their exact values, and `export_asset` for icons and images. Each call is bounded and reports how many UI operations it used. To implement a whole page, call `snapshot_layer` on its frame instead, then `query_snapshot` for the details.
 
-Figma applies selection, expansion, zoom, and page changes only while its tab is visible. Reading pages, the selection, and already expanded layers works from a background tab; `get_visual_neighbors`, `inspect_nodes`, `capture`, `export_asset`, page switches, and expanding collapsed layers return `TAB_IN_BACKGROUND` until the Figma tab is on screen. Keeping Figma beside the agent window is enough. These tools select layers one after another, and `capture` zooms the view; the user's selection, including several selected layers, is put back afterwards, the zoom is not.
+Figma applies selection, expansion, zoom, and page changes only while its tab is visible. Reading pages, the selection, and already expanded layers works from a background tab; `get_visual_neighbors`, `inspect_nodes`, `capture`, `export_asset`, `snapshot_layer`, page switches, and expanding collapsed layers return `TAB_IN_BACKGROUND` until the Figma tab is on screen. Keeping Figma beside the agent window is enough. These tools select layers one after another, and `capture` zooms the view; the user's selection, including several selected layers, is put back afterwards, the zoom is not.
 
 ## Development
 
@@ -204,4 +215,6 @@ Common problems:
 - A tab stays `LOADING` or becomes `INCOMPATIBLE` right after installing the extension: reload the Figma tab so the content script is injected.
 - `export_asset` returns `EXPORT_BLOCKED`: Figma handed over no file and the browser started no download. If the browser blocked repeated downloads from figma.com, allow them in the site settings and retry.
 - `export_asset` returns `EXPORT_PENDING`: the browser is waiting to save the fallback download, usually behind a Save dialog. Confirm it, or turn off asking where to save each file.
+- `snapshot_layer` returns `SUBTREE_TOO_LARGE`: the layer holds more than 400 layers. Snapshot one of the children the message lists instead.
+- `snapshot_layer` fails after 60 seconds in Codex: raise `tool_timeout_sec`, see [Register the MCP server](#2-register-the-mcp-server-with-your-agent).
 - `get_status` reports that port 47129 is already in use: another agent session already runs Figloo, and only one server can serve the extension at a time. Close the other session, then start the agent again.
