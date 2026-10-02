@@ -1,0 +1,11 @@
+{
+  "name": "figloo",
+  "displayName": "Figloo",
+  "version": "0.2.0",
+  "description": "Explore and implement the Figma design open in your browser: the Figloo MCP server and the figloo-implement skill. Needs the Figloo browser extension, paired with figloo-mcp pair.",
+  "author": { "name": "Daniel Hsieh" },
+  "homepage": "https://github.com/g761007/figloo",
+  "repository": "https://github.com/g761007/figloo",
+  "keywords": ["figma", "design", "mcp"],
+  "mcpServers": "https://github.com/g761007/figloo/releases/download/v0.2.0/figloo-mcp-0.2.0.mcpb"
+}

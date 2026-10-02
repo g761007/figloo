@@ -1,0 +1,14 @@
+{
+  "name": "figloo",
+  "owner": {
+    "name": "Daniel Hsieh"
+  },
+  "description": "Figloo: let a coding agent explore and implement the Figma design open in your browser.",
+  "plugins": [
+    {
+      "name": "figloo",
+      "source": "./plugins/figloo",
+      "description": "Explore and implement the Figma design open in your browser, through the Figloo extension."
+    }
+  ]
+}
