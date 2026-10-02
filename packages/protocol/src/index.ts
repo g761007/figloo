@@ -382,7 +382,12 @@ export type TabOpResponse = z.infer<typeof TabOpResponseSchema>;
 export const FigmaPageSchema = z.object({ name: z.string(), current: z.boolean() });
 export type FigmaPage = z.infer<typeof FigmaPageSchema>;
 
-export const ListPagesResultSchema = z.object({ fileKey: z.string(), pages: z.array(FigmaPageSchema) });
+export const ListPagesResultSchema = z.object({
+  fileKey: z.string(),
+  pages: z.array(FigmaPageSchema),
+  /** False when the pages list kept changing or showed signs of pages it had not drawn. Missing from extensions up to 0.3.0. */
+  complete: z.boolean().optional(),
+});
 export type ListPagesResult = z.infer<typeof ListPagesResultSchema>;
 
 export const ExplorePageParamsSchema = z.object({

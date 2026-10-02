@@ -223,9 +223,9 @@ const topLevel = (count: number) => Array.from({ length: count }, (_, i) => node
 
 describe("page entry point", () => {
   it("lists the file's pages", async () => {
-    const { requests, call } = await setup(() => ({ ok: true, result: { fileKey: "abc", pages: [{ name: "Home", current: true }, { name: "Specs", current: false }] } }));
+    const { requests, call } = await setup(() => ({ ok: true, result: { fileKey: "abc", pages: [{ name: "Home", current: true }, { name: "Specs", current: false }], complete: false } }));
     const result = await call("list_pages", { tabId: 7 });
-    expect(result.structuredContent).toEqual({ tabId: 7, fileKey: "abc", pages: [{ name: "Home", current: true }, { name: "Specs", current: false }] });
+    expect(result.structuredContent).toEqual({ tabId: 7, fileKey: "abc", pages: [{ name: "Home", current: true }, { name: "Specs", current: false }], complete: false });
     expect(requests[0]).toMatchObject({ op: "list_pages", tabId: 7 });
   });
 

@@ -30,11 +30,12 @@ import { MAX_ANCHORS, MAX_NEIGHBOR_LIMIT } from "@figloo/protocol";
 import { CAPTURE_MARGIN_PX, inflate, intersect } from "../capture.js";
 import { parseFigmaUrl } from "../figma-url.js";
 import { parseSelectedCount } from "../probe.js";
-import { DomRowSource, TabInBackground, synthesizeClick } from "./dom-source.js";
+import { DomRowSource, TabInBackground, nextTask, synthesizeClick } from "./dom-source.js";
 import { addTemporarySetting, exportButton, exportRows, exportSection, exportSettings, exportsLayer, removeTemporarySetting } from "./export.js";
 import { boundsInRoot, chooseZoom, placeSiblings, type LayerBox, type Measured } from "./geometry.js";
 import { inspectionHeader, inspectionRoot, inspectionSignature, readInspection } from "./inspect.js";
 import { ReadingOverlay, estimateRemainingMs } from "./overlay.js";
+import { readPagesList } from "./pages.js";
 import { layersPanel, readRenderedRows, type Row } from "./row.js";
 import { LayerTree, StopExploration, type IndexEntry, type Page, type WalkedLayer } from "./tree.js";
 import { BackgroundPause } from "./visibility.js";
@@ -46,6 +47,9 @@ const MAX_NAME_LENGTH = 200;
 const INDEX_LIMIT = 5_000;
 const ALL_GROUPS: InspectGroup[] = ["layout", "appearance", "typography", "component"];
 const PAGE_SWITCH_TIMEOUT_MS = 8_000;
+/** How long the pages list must stay the same before it is reported, and the most list_pages waits for that. */
+const PAGES_SETTLE_MS = 200;
+const PAGES_WAIT_MS = 2_000;
 /** A capture the worker never finished restores the user's selection on its own after this long. */
 const PENDING_CAPTURE_TIMEOUT_MS = 10_000;
 /** Wider margin when the crop is estimated from the layer's size instead of measured. */
@@ -190,15 +194,27 @@ export class Explorer {
     return identity;
   }
 
-  listPages(): ListPagesResult {
+  /**
+   * Lists the pages once the pages list has stopped changing. Figma drew every page at once in each
+   * load seen in Arc on 2026-10-02, yet one first read there returned 8 of a file's 20 pages.
+   */
+  async listPages(): Promise<ListPagesResult> {
     const { fileKey } = this.identity();
-    const pages = [...this.doc.querySelectorAll('[data-testid="PagesRowWrapper"]')]
-      .map((wrapper) => wrapper.querySelector("button"))
-      .filter((button): button is HTMLButtonElement => button !== null)
-      .map((button) => ({ name: button.textContent?.trim() ?? "", current: button.getAttribute("aria-current") === "page" }))
-      .filter((page) => page.name.length > 0);
-    if (pages.length === 0) throw new OpError("UI_NOT_READY", "the pages list is not shown in Figma's left sidebar");
-    return { fileKey, pages };
+    const deadline = Date.now() + PAGES_WAIT_MS;
+    let list = readPagesList(this.doc);
+    let changedAt = Date.now();
+    while (Date.now() - changedAt < PAGES_SETTLE_MS && Date.now() < deadline) {
+      // Timers are throttled in hidden tabs but message tasks are not.
+      await (this.doc.hidden ? nextTask() : sleep(25));
+      const next = readPagesList(this.doc);
+      if (JSON.stringify(next) !== JSON.stringify(list)) {
+        list = next;
+        changedAt = Date.now();
+      }
+    }
+    if (list.pages.length === 0) throw new OpError("UI_NOT_READY", "the pages list is not shown in Figma's left sidebar");
+    const settled = Date.now() - changedAt >= PAGES_SETTLE_MS;
+    return { fileKey, pages: list.pages, complete: settled && list.allDrawn };
   }
 
   async explorePage(params: ExplorePageParams): Promise<ExplorePageResult> {

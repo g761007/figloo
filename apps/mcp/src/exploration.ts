@@ -217,9 +217,11 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
   server.registerTool(
     "list_pages",
     {
-      description: "List the pages of the Figma file open in a tab and which one is shown. Works while the tab is in the background.",
+      description:
+        "List the pages of the Figma file open in a tab and which one is shown. Works while the tab is in the background. " +
+        "complete is false when Figma's pages list kept changing or showed signs of pages it had not drawn: call list_pages again after a moment, and treat the list as partial if it stays false.",
       inputSchema: { tabId: z.number().int().describe("Figma tab: the tabId in the prompt the user pasted, or one from get_status") },
-      outputSchema: z.object({ tabId: z.number().int(), fileKey: z.string(), pages: ListPagesResultSchema.shape.pages }),
+      outputSchema: z.object({ tabId: z.number().int(), fileKey: z.string(), pages: ListPagesResultSchema.shape.pages, complete: ListPagesResultSchema.shape.complete }),
     },
     async ({ tabId }) => {
       try {

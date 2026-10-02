@@ -50,7 +50,7 @@ async function runOp(message: OpMessage): Promise<unknown> {
       case "visual_neighbors":
         return { ok: true, result: await explorer.visualNeighbors(message.params as VisualNeighborsParams) };
       case "list_pages":
-        return { ok: true, result: explorer.listPages() };
+        return { ok: true, result: await explorer.listPages() };
       case "explore_page":
         return { ok: true, result: await explorer.explorePage(message.params as ExplorePageParams) };
       case "inspect_nodes":

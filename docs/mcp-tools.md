@@ -66,7 +66,7 @@ List layers related to a ref within a context. relation is one of: parent; ances
 
 ## list_pages
 
-List the pages of the Figma file open in a tab and which one is shown. Works while the tab is in the background.
+List the pages of the Figma file open in a tab and which one is shown. Works while the tab is in the background. complete is false when Figma's pages list kept changing or showed signs of pages it had not drawn: call list_pages again after a moment, and treat the list as partial if it stays false.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -77,6 +77,7 @@ List the pages of the Figma file open in a tab and which one is shown. Works whi
 | `tabId` | integer |
 | `fileKey` | string |
 | `pages` | array of object with name, current |
+| `complete` | boolean |
 
 ## explore_page
 

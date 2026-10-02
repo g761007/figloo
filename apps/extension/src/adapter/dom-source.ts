@@ -199,7 +199,8 @@ export class DomRowSource implements RowSource {
   }
 }
 
-function nextTask(): Promise<void> {
+/** Waits for the next message task, which hidden tabs do not throttle the way they throttle timers. */
+export function nextTask(): Promise<void> {
   return new Promise((resolve) => {
     const channel = new MessageChannel();
     channel.port1.onmessage = () => {
