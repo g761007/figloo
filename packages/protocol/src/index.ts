@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = "0.1.0";
+export const PROTOCOL_VERSION = "0.2.0";
 
 /** Chrome extension ID pinned by the `key` field in apps/extension/static/manifest.json. */
 export const EXTENSION_ID = "offikfnknfkgijgianpfcghbccmkcjnb";

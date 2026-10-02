@@ -65,7 +65,7 @@ pnpm build
 claude mcp add -s user figloo -- node /absolute/path/to/figloo/apps/mcp/dist/index.js
 ```
 
-使用 release 檔案時，改用它的路徑，例如 `node /absolute/path/to/figloo-mcp-0.0.1.mjs`。在工作階段中，`/mcp` 會顯示伺服器是否已連線。
+使用 release 檔案時，改用它的路徑，例如 `node /absolute/path/to/figloo-mcp-0.1.0.mjs`。在工作階段中，`/mcp` 會顯示伺服器是否已連線。
 
 其他 MCP client 可以用類似下面的設定啟動伺服器（請替換路徑）：
 

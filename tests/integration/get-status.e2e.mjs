@@ -18,7 +18,8 @@ const MCP_ENTRY = process.env.FIGLOO_E2E_MCP_ENTRY ?? join(ROOT, "apps/mcp/dist/
 const FILE_KEY = new URL(FIGMA_URL).pathname.split("/")[2];
 const TOKEN = `e2e-${Math.random().toString(36).slice(2)}`;
 const HEADLESS = process.env.FIGLOO_E2E_HEADED !== "1";
-const DEFAULT_TITLE = JSON.parse(readFileSync(join(EXTENSION_DIR, "manifest.json"), "utf8")).action.default_title;
+const MANIFEST = JSON.parse(readFileSync(join(EXTENSION_DIR, "manifest.json"), "utf8"));
+const DEFAULT_TITLE = MANIFEST.action.default_title;
 
 const log = (...args) => console.log("[e2e]", ...args);
 const assert = (condition, message) => {
@@ -139,7 +140,7 @@ try {
     { timeoutMs: 10_000, label: "get_status to see the extension" },
   );
   assert(status.status === "NO_DESIGN_TAB", `status without design tabs is ${status.status}`);
-  assert(status.extension.extensionVersion === "0.0.1", "extension version is reported");
+  assert(status.extension.extensionVersion === MANIFEST.version, "extension version is reported");
 
   // A tab without a design file keeps the default gray icon, and Chrome can load both icon sets.
   const optionsTabId = await options.evaluate(() => chrome.tabs.getCurrent().then((t) => t.id));

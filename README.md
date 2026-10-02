@@ -63,7 +63,7 @@ For Claude Code, register it once for all your projects, then start a new sessio
 claude mcp add -s user figloo -- node /absolute/path/to/figloo/apps/mcp/dist/index.js
 ```
 
-With the release file, use its path instead, for example `node /absolute/path/to/figloo-mcp-0.0.1.mjs`. In a session, `/mcp` shows whether the server connected.
+With the release file, use its path instead, for example `node /absolute/path/to/figloo-mcp-0.1.0.mjs`. In a session, `/mcp` shows whether the server connected.
 
 For other MCP clients, a configuration like this starts the server (replace the path):
 
