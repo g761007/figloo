@@ -71,3 +71,4 @@
 - [頁面快照：MCP 工具與完整路徑](2026-10-01-page-snapshot-tools.md)
 - [多個工作階段的交接](2026-10-02-multi-session-handover.md)
 - [讀取時的遮罩與背景暫停](2026-10-02-reading-overlay.md)
+- [figloo-implement skill 與 Claude Code plugin](2026-10-02-figloo-skill.md)

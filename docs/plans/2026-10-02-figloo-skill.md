@@ -1,7 +1,7 @@
 # Figloo 的 skill 與 plugin
 
 日期：2026-10-02  
-狀態：待決定事項已確認，第一階段實作中  
+狀態：已實作，三個階段完成；release 網址與 Codex 尚未實測，見[驗證紀錄](../compatibility/2026-10-02-figloo-skill.md)  
 依據：使用者提議提供 skill，讓使用者搭配 Figloo 使用
 
 ## 背景

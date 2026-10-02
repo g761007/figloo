@@ -22,12 +22,13 @@ The MVP (milestones M0 to M4 of the [plan](docs/plans/2026-09-30-figloo-mvp-plan
 
 ### From release files
 
-`pnpm package` builds two files into `release/` that can be handed to someone else:
+`pnpm package` builds three files into `release/` that can be handed to someone else:
 
 | File | What to do with it |
 |---|---|
 | `figloo-extension-<version>.zip` | Unzip it into a folder you keep; the browser loads the extension from there. |
 | `figloo-mcp-<version>.mjs` | Keep it anywhere; it is the whole MCP server and needs only Node.js 24. |
+| `figloo-mcp-<version>.mcpb` | The same server as an MCP bundle. The Claude Code plugin downloads it from the GitHub release of its version, so attach it to that release. |
 
 Then follow [Set up](#set-up), using the unzipped folder and the `.mjs` file in place of the paths from a checkout.
 
@@ -57,7 +58,16 @@ After updating Figloo, run `pnpm build` and click the reload button on the exten
 
 ### 2. Register the MCP server with your agent
 
-For Claude Code, register it once for all your projects, then start a new session:
+For Claude Code, the Figloo plugin installs the MCP server together with the [figloo-implement skill](#the-figloo-implement-skill):
+
+```text
+/plugin marketplace add g761007/figloo
+/plugin install figloo@figloo
+```
+
+The plugin downloads the server bundle from the GitHub release of its version, so the release has to be reachable from your machine. A Figloo server you registered by hand would run next to the plugin's in every session; remove it with `claude mcp remove figloo -s user`.
+
+Without the plugin, register the server once for all your projects, then start a new session:
 
 ```sh
 claude mcp add -s user figloo -- node /absolute/path/to/figloo/apps/mcp/dist/index.js
@@ -154,6 +164,19 @@ When several Figma tabs are open, the tools that start from a tab take its `tabI
 
 Figma applies selection, expansion, zoom, and page changes only while its tab is visible. Reading pages, the selection, and already expanded layers works from a background tab; `get_visual_neighbors`, `inspect_nodes`, `capture`, `export_asset`, page switches, and expanding collapsed layers return `TAB_IN_BACKGROUND` until the Figma tab is on screen. `snapshot_layer` needs the tab on screen to start, then pauses while it is in the background. Keeping Figma beside the agent window is enough. These tools select layers one after another, and `capture` zooms the view; the user's selection, including several selected layers, is put back afterwards, the zoom is not.
 
+## The figloo-implement skill
+
+[`plugins/figloo/skills/figloo-implement/`](plugins/figloo/skills/figloo-implement/SKILL.md) guides an agent through implementing a Figma page or component with Figloo: check the connection, settle what to build, take a snapshot, map the design onto the project's tokens and components, read the details section by section, build, compare the result with the screenshot, and report. It also covers looking at a design and exporting assets. The agent picks it up when you paste a prompt from the popup or ask to build or export from the design you have open.
+
+The Claude Code plugin includes it. To use it without the plugin, copy or link the folder:
+
+| Agent | Where the folder goes | How to call it by name |
+|---|---|---|
+| Claude Code | `~/.claude/skills/figloo-implement` | `/figloo-implement` |
+| Codex | `~/.agents/skills/figloo-implement` | `$figloo-implement` |
+
+Codex also needs the MCP server registered in `~/.codex/config.toml`, as shown in [Register the MCP server](#2-register-the-mcp-server-with-your-agent).
+
 ## Development
 
 ```sh
@@ -164,7 +187,11 @@ pnpm test:integration  # real Chromium + real MCP process + real Figma tabs, see
 pnpm package           # build, then write the release files into release/
 pnpm test:release      # the status integration test, run against the files in release/
 pnpm --filter @figloo/mcp docs:tools   # regenerate docs/mcp-tools.md after changing a tool
+claude plugin validate --strict plugins/figloo   # check the plugin; run it on . for the marketplace
+claude plugin eval plugins/figloo --mocks off --ablation none   # whether the skill fires when it should, and only then
 ```
+
+`pnpm package` also checks that `plugins/figloo/.claude-plugin/plugin.json` carries the server's version and the URL of that version's bundle, so bump them together. The plugin evals need `--mocks off`, since `claude plugin eval` cannot stand in for a server declared through a bundle; the cases grant no Figloo tools, so nothing reaches Figma.
 
 `pnpm test` fails when `docs/mcp-tools.md` no longer matches the tools the server registers.
 
@@ -193,6 +220,8 @@ apps/mcp/            Local MCP server over stdio plus the WebSocket bridge: @fig
 packages/protocol/   Shared zod schemas, types, and constants: @figloo/protocol
 docs/plans/          Planning documents
 docs/compatibility/  What was verified on real Figma pages, and known limits
+plugins/figloo/      Claude Code plugin: the figloo-implement skill, its evals, and the server bundle it downloads
+.claude-plugin/      Marketplace manifest, so the repository can be added with /plugin marketplace add
 scripts/             Release packaging and the release check
 tests/fixtures/      Captured Figma markup and export files for regression tests
 tests/integration/   End-to-end tests against real Chromium and Figma
@@ -224,3 +253,5 @@ Common problems:
 - A tool returns `BUSY` and names another session: Figloo is serving that session, which is working or used Figloo in the last 10 seconds. Retry in a moment, or finish the work there first.
 - `get_status` or a tool says the port is held by a session running an older Figloo: that session started Figloo 0.1.0, which cannot hand over. Restart that session, or close it.
 - A tool says the session holding Figloo did not answer: that session's server is stuck. Close that session.
+- With the plugin installed, no Figloo tools show up: the plugin could not download the server bundle for its version. `/plugin` lists the error; check that the GitHub release of that version has the `.mcpb` file and can be reached from your machine.
+- The agent sees two sets of Figloo tools: a Figloo server registered by hand runs next to the plugin's. Remove it with `claude mcp remove figloo -s user`.

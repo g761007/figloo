@@ -24,12 +24,13 @@ MVP 已完成，也就是[計畫](docs/plans/2026-09-30-figloo-mvp-plan.md)中�
 
 ### 使用 release 檔案
 
-`pnpm package` 會在 `release/` 產生兩個可以交給其他人的檔案：
+`pnpm package` 會在 `release/` 產生三個可以交給其他人的檔案：
 
 | 檔案 | 用法 |
 |---|---|
 | `figloo-extension-<version>.zip` | 解壓縮到一個會保留的資料夾，瀏覽器會從那裡載入擴充功能。 |
 | `figloo-mcp-<version>.mjs` | 放在任何位置都可以。它就是完整的 MCP 伺服器，只需要 Node.js 24。 |
+| `figloo-mcp-<version>.mcpb` | 同一個伺服器的 MCP bundle。Claude Code plugin 會從對應版本的 GitHub release 下載它，所以要附在那個 release 上。 |
 
 接著依照[設定](#設定)的步驟進行，把原始碼中的路徑換成解壓縮後的資料夾與 `.mjs` 檔案。
 
@@ -59,7 +60,16 @@ pnpm build
 
 ### 2. 在 agent 中註冊 MCP 伺服器
 
-使用 Claude Code 時，註冊一次就能用在所有專案，之後請開一個新的工作階段：
+使用 Claude Code 時，Figloo plugin 會一併安裝 MCP 伺服器與 [figloo-implement skill](#figloo-implement-skill)：
+
+```text
+/plugin marketplace add g761007/figloo
+/plugin install figloo@figloo
+```
+
+Plugin 會從對應版本的 GitHub release 下載伺服器的 bundle，所以你的電腦要能存取那個 release。如果之前手動註冊過 Figloo，每個工作階段都會同時執行兩個 Figloo 伺服器，請用 `claude mcp remove figloo -s user` 移除手動的註冊。
+
+不使用 plugin 時，註冊一次就能用在所有專案，之後請開一個新的工作階段：
 
 ```sh
 claude mcp add -s user figloo -- node /absolute/path/to/figloo/apps/mcp/dist/index.js
@@ -156,6 +166,19 @@ pnpm --filter @figloo/extension icons
 
 Figma 只在分頁可見時套用選取、展開、縮放與切換頁面。讀取頁面、選取與已展開的圖層，在背景分頁也能運作；`get_visual_neighbors`、`inspect_nodes`、`capture`、`export_asset`、切換頁面與展開收合的圖層，則會回報 `TAB_IN_BACKGROUND`，直到 Figma 分頁回到畫面上。`snapshot_layer` 開始時需要分頁在畫面上，之後分頁進入背景時會暫停。把 Figma 放在 agent 視窗旁邊就夠了。這些工具會依序選取圖層，`capture` 還會縮放畫面；之後會還原使用者的選取，包括同時選取的多個圖層，但不會還原縮放。
 
+## figloo-implement skill
+
+[`plugins/figloo/skills/figloo-implement/`](plugins/figloo/skills/figloo-implement/SKILL.md) 引導 agent 用 Figloo 實作 Figma 的頁面或元件：確認連線、確認要實作的範圍、建立快照、把設計稿對應到專案既有的 token 與元件、依區塊讀取細節、實作、與截圖比對，最後回報。它也涵蓋查看設計稿與匯出圖檔。貼上 popup 複製的提示，或要求依照開著的設計稿實作或切圖時，agent 會自動使用它。
+
+Claude Code plugin 已經包含這個 skill。不使用 plugin 時，複製或連結這個資料夾：
+
+| Agent | 資料夾放在 | 以名稱呼叫 |
+|---|---|---|
+| Claude Code | `~/.claude/skills/figloo-implement` | `/figloo-implement` |
+| Codex | `~/.agents/skills/figloo-implement` | `$figloo-implement` |
+
+Codex 另外需要在 `~/.codex/config.toml` 註冊 MCP 伺服器，見[在 agent 中註冊 MCP 伺服器](#2-在-agent-中註冊-mcp-伺服器)。
+
 ## 開發
 
 ```sh
@@ -166,7 +189,11 @@ pnpm test:integration  # 真實的 Chromium、MCP 程序與 Figma 分頁，見�
 pnpm package           # 建置後把 release 檔案寫到 release/
 pnpm test:release      # 以 release/ 中的檔案執行狀態整合測試
 pnpm --filter @figloo/mcp docs:tools   # 修改工具後重新產生 docs/mcp-tools.md
+claude plugin validate --strict plugins/figloo   # 檢查 plugin；對 . 執行則檢查 marketplace
+claude plugin eval plugins/figloo --mocks off --ablation none   # skill 是否只在該觸發時觸發
 ```
+
+`pnpm package` 也會檢查 `plugins/figloo/.claude-plugin/plugin.json` 的版本與 bundle 網址是否和伺服器的版本一致，所以升版時要一起改。Plugin 的評估要加 `--mocks off`，因為 `claude plugin eval` 無法替以 bundle 宣告的伺服器提供替身；評估案例沒有開放任何 Figloo 工具，所以不會動到 Figma。
 
 `docs/mcp-tools.md` 與伺服器註冊的工具不一致時，`pnpm test` 會失敗。
 
@@ -195,6 +222,8 @@ apps/mcp/            透過 stdio 溝通的本機 MCP 伺服器與 WebSocket bri
 packages/protocol/   共用的 zod schema、型別與常數：@figloo/protocol
 docs/plans/          規劃文件
 docs/compatibility/  在真實 Figma 頁面上驗證過的項目與已知限制
+plugins/figloo/      Claude Code plugin：figloo-implement skill、它的評估案例，以及它下載的伺服器 bundle 的設定
+.claude-plugin/      Marketplace 的 manifest，讓這個 repo 可以用 /plugin marketplace add 加入
 scripts/             release 打包與 release 檢查
 tests/fixtures/      回歸測試用的 Figma markup 擷取與匯出檔案
 tests/integration/   對真實 Chromium 與 Figma 執行的端對端測試
@@ -226,3 +255,5 @@ release/             pnpm package 的輸出（不提交）
 - 工具回報 `BUSY` 並寫出另一個工作階段：Figloo 正在服務那個工作階段，它正在工作，或在 10 秒內用過 Figloo。稍後再試，或先在那個工作階段完成工作。
 - `get_status` 或工具說連接埠由執行舊版 Figloo 的工作階段持有：那個工作階段啟動的是 Figloo 0.1.0，無法交接。請重新啟動或關閉那個工作階段。
 - 工具說持有 Figloo 的工作階段沒有回應：那個工作階段的伺服器卡住了。請關閉那個工作階段。
+- 安裝 plugin 後看不到 Figloo 的工具：plugin 無法下載對應版本的伺服器 bundle。`/plugin` 會列出錯誤；請確認那個版本的 GitHub release 有 `.mcpb` 檔案，而且你的電腦可以存取。
+- Agent 看到兩組 Figloo 工具：手動註冊的 Figloo 伺服器和 plugin 的同時在執行。請用 `claude mcp remove figloo -s user` 移除手動的註冊。
