@@ -191,7 +191,7 @@ claude plugin validate --strict plugins/figloo   # check the plugin; run it on .
 claude plugin eval plugins/figloo --mocks off --ablation none   # whether the skill fires when it should, and only then
 ```
 
-`pnpm package` also checks that `plugins/figloo/.claude-plugin/plugin.json` carries the server's version and the URL of that version's bundle, so bump them together. The plugin evals need `--mocks off`, since `claude plugin eval` cannot stand in for a server declared through a bundle; the cases grant no Figloo tools, so nothing reaches Figma.
+`pnpm package` also checks that `plugins/figloo/.claude-plugin/plugin.json` carries the server's version and the URL of that version's bundle, and that [CHANGELOG.md](CHANGELOG.md) has a section for the version, so bump them together. The plugin evals need `--mocks off`, since `claude plugin eval` cannot stand in for a server declared through a bundle; the cases grant no Figloo tools, so nothing reaches Figma.
 
 `pnpm test` fails when `docs/mcp-tools.md` no longer matches the tools the server registers.
 

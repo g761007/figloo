@@ -193,7 +193,7 @@ claude plugin validate --strict plugins/figloo   # 檢查 plugin；對 . 執行�
 claude plugin eval plugins/figloo --mocks off --ablation none   # skill 是否只在該觸發時觸發
 ```
 
-`pnpm package` 也會檢查 `plugins/figloo/.claude-plugin/plugin.json` 的版本與 bundle 網址是否和伺服器的版本一致，所以升版時要一起改。Plugin 的評估要加 `--mocks off`，因為 `claude plugin eval` 無法替以 bundle 宣告的伺服器提供替身；評估案例沒有開放任何 Figloo 工具，所以不會動到 Figma。
+`pnpm package` 也會檢查 `plugins/figloo/.claude-plugin/plugin.json` 的版本與 bundle 網址是否和伺服器的版本一致，以及 [CHANGELOG.md](CHANGELOG.md) 有沒有這個版本的段落，所以升版時要一起改。Plugin 的評估要加 `--mocks off`，因為 `claude plugin eval` 無法替以 bundle 宣告的伺服器提供替身；評估案例沒有開放任何 Figloo 工具，所以不會動到 Figma。
 
 `docs/mcp-tools.md` 與伺服器註冊的工具不一致時，`pnpm test` 會失敗。
 

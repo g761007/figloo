@@ -26,6 +26,11 @@ if (plugin.version !== mcpVersion || plugin.mcpServers !== bundleUrl) {
   throw new Error(`plugins/figloo/.claude-plugin/plugin.json needs "version": "${mcpVersion}" and "mcpServers": "${bundleUrl}"`);
 }
 
+// Every published version gets its own CHANGELOG.md section.
+if (!readFileSync(join(ROOT, "CHANGELOG.md"), "utf8").includes(`\n## [${mcpVersion}] - `)) {
+  throw new Error(`CHANGELOG.md needs a "## [${mcpVersion}] - <date>" section before this version is packaged`);
+}
+
 mkdirSync(RELEASE, { recursive: true });
 for (const file of [extensionZip, mcpBundle, mcpb]) rmSync(file, { force: true });
 
