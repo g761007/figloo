@@ -638,7 +638,7 @@ export class Explorer {
         } catch (error) {
           // Leave the layer as it was: drop a half-configured temporary setting and reselect.
           if (temporary) await this.removeTemporaryRow(original);
-          await this.restoreSelection(tree, source, before).catch(() => false);
+          await tree.whileRestoring(() => this.restoreSelection(tree, source, before)).catch(() => false);
           throw error;
         }
       });
@@ -849,7 +849,8 @@ export class Explorer {
   private async putBack(tree: LayerTree, source: DomRowSource, finish?: (tree: LayerTree, source: DomRowSource) => Promise<void>): Promise<void> {
     try {
       await tree.restore();
-      if (finish) await finish(tree, source);
+      // A read that ran out of time or UI operations still finds the user's layers to select them again.
+      if (finish) await tree.whileRestoring(() => finish(tree, source));
       source.restoreScroll();
     } catch {
       // Interrupted while restoring; the user's own actions win.

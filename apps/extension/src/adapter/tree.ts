@@ -380,8 +380,7 @@ export class LayerTree {
 
   /** Collapses what this exploration expanded, deepest first. Only user input stops it. */
   async restore(): Promise<void> {
-    this.restoring = true;
-    try {
+    await this.whileRestoring(async () => {
       for (const id of this.expandedByUs.splice(0).reverse()) {
         const row = await this.find(id);
         if (row?.expanded) {
@@ -389,8 +388,17 @@ export class LayerTree {
           this.snapshot = await this.source.toggle(row);
         }
       }
+    });
+  }
+
+  /** Runs put-back work, such as selecting the user's layers again, as restore runs: only user input stops it. */
+  async whileRestoring<T>(work: () => Promise<T>): Promise<T> {
+    const was = this.restoring;
+    this.restoring = true;
+    try {
+      return await work();
     } finally {
-      this.restoring = false;
+      this.restoring = was;
     }
   }
 

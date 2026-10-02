@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DomRowSource } from "../src/adapter/dom-source.js";
 import { Explorer, OpError } from "../src/adapter/ops.js";
 import { ReadingOverlay } from "../src/adapter/overlay.js";
@@ -149,6 +149,30 @@ describe("the reading overlay during an operation", () => {
     await expect(run).rejects.toMatchObject({ code: "USER_INTERRUPTED", message: expect.stringMatching(/stopped the read with Stop or Esc/) });
     expect(putBack).toBe(true);
     expect(document.querySelector("figloo-reading-overlay")).toBeNull();
+  });
+
+  it("still puts the selection back when the read ran out of time", async () => {
+    vi.setSystemTime(Date.now());
+    try {
+      let putBack = false;
+      const run = new OverlayRun("page-1", document, window).start(
+        new ReadingOverlay(document),
+        (tree) => {
+          vi.setSystemTime(Date.now() + 6_000);
+          tree.check();
+          return "read";
+        },
+        // Finding the user's layers again reads the panel, which checks the budgets like any other step.
+        (tree) => {
+          tree.check();
+          putBack = true;
+        },
+      );
+      await expect(run).rejects.toMatchObject({ code: "BUDGET_EXCEEDED", message: expect.stringMatching(/time budget/) });
+      expect(putBack).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not take a click on the overlay for the user stepping in, but a click in Figma still is", async () => {

@@ -13,6 +13,10 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 - A new icon: an igloo built from rows like a layers panel, white on an indigo tile, in place of the gradient igloo. Tabs Figloo cannot use still show it in gray.
 
+### Fixed
+
+- A read that ran out of time or UI operations could leave the last layer it read selected and the layers panel scrolled away, when the layer the user had selected was out of view in the panel. Figloo now selects the user's layers again and scrolls the panel back.
+
 ## [0.3.1] - 2026-10-02
 
 The first published release since 0.1.0. It includes the changes made as 0.2.0 and 0.3.0, which were not released on their own.

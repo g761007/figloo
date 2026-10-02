@@ -248,6 +248,24 @@ describe("LayerTree robustness", () => {
     expect(found?.id).toBe("c3-button");
     expect(found?.rowIndex).toBe(oldIndex + 2);
   });
+
+  it("finds the user's layer to put it back after both budgets ran out, but still stops for the user", async () => {
+    const source = new FakeLayers(cardScreen(3));
+    const index = new Map<string, IndexEntry>();
+    const reader = makeTree(source, index);
+    await reader.climb((await reader.selectionRoot())!);
+    source.top = 1; // The selected button is scrolled out of view, so finding it takes a reveal.
+
+    const spent = makeTree(source, index, { deadline: 0, maxUiOps: 0 });
+    await expect(spent.find("c3-button")).rejects.toMatchObject({ cause: "time_budget" });
+    expect((await spent.whileRestoring(() => spent.find("c3-button")))?.id).toBe("c3-button");
+    // Outside the put-back the budgets apply again.
+    expect(() => spent.check()).toThrow(StopExploration);
+
+    source.top = 1;
+    const interrupted = makeTree(source, index, { deadline: 0, maxUiOps: 0, interrupted: () => true });
+    await expect(interrupted.whileRestoring(() => interrupted.find("c3-button"))).rejects.toMatchObject({ cause: "user_interrupted" });
+  });
 });
 
 describe("LayerTree subtree", () => {
