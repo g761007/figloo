@@ -1,4 +1,4 @@
-import type { Rect, SnapshotBounds } from "@figloo/protocol";
+import type { PlacedLayer, Rect, SnapshotBounds } from "@figloo/protocol";
 
 export type Side = "right" | "left" | "below" | "above" | "overlaps";
 
@@ -171,13 +171,16 @@ const NOT_A_FRAME = new Set(["Group"]);
  * the mirror shows is measured on screen and divided by the zoom. Otherwise, as for text layers, the
  * panel's Top and Left are relative to the nearest frame, which groups do not count as, so they add
  * to that frame's place. With neither, only the size is known. `layers` lists parents before their
- * children and the root first; `zoom` is screen pixels per design pixel.
+ * children and the root first; `zoom` is screen pixels per design pixel. `placed` are layers earlier
+ * calls of the same snapshot placed, which the frame of a layer read now may be.
  */
-export function boundsInRoot(layers: SnapshotMeasure[], zoom: number | null): Map<string, SnapshotBounds> {
-  const out = new Map<string, SnapshotBounds>();
+export function boundsInRoot(layers: SnapshotMeasure[], zoom: number | null, placed: PlacedLayer[] = []): Map<string, SnapshotBounds> {
+  const out = new Map<string, SnapshotBounds>(placed.map((layer) => [layer.ref, layer.bounds]));
   const root = layers[0];
   if (!root) return out;
-  const byId = new Map(layers.map((layer) => [layer.id, layer]));
+  // What this call measured wins over what earlier calls placed, the root included.
+  const byId = new Map<string, SnapshotMeasure>(placed.map((layer) => [layer.ref, { id: layer.ref, parentId: layer.parentRef, type: layer.type, rect: null, box: null }]));
+  for (const layer of layers) byId.set(layer.id, layer);
   const origin = root.rect;
   for (const layer of layers) {
     const size = { width: layer.box?.width ?? null, height: layer.box?.height ?? null };

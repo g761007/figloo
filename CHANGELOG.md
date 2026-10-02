@@ -12,6 +12,7 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ### Changed
 
+- `snapshot_layer` reads layers of up to 2,000 layers, up from 400. A call still reads for at most three minutes; when layers are left, it returns `complete: false` with its progress, and calling it again with the same root reads on where it stopped. Until the snapshot is whole, `query_snapshot`, `summarize_snapshot`, and `export_assets` answer `SNAPSHOT_INCOMPLETE`.
 - A saved snapshot works after the Figma tab reloads: pass its root to `snapshot_layer` with a new context, and every ref of the snapshot works in that context again. Figloo now tells the tab the way down to these layers, so `inspect_nodes`, `capture`, `export_asset`, and the other tools find them even though the page has not shown them since it loaded.
 - `export_asset` and `export_assets` report `LAYER_HIDDEN` at once for a hidden layer, or one inside a hidden layer, which Figma does not export, instead of `EXPORT_BLOCKED` after 12 seconds. An `EXPORT_BLOCKED` message now says what Figma did in the page, such as making no file.
 - The extension and the MCP server speak bridge protocol 0.3.0, so both must be replaced together; a mismatched pair reports `PROTOCOL_MISMATCH` in `get_status`.

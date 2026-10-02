@@ -154,10 +154,18 @@ describe("snapshot schemas", () => {
 
   it("keeps the size of a layer Figma shows no position for", () => {
     const image = { data: "", mimeType: "image/jpeg", width: 748, height: 1568 };
-    const complete = { status: "complete", identity, layers: [layer], rootPath: ["1:1"], rootOnScreen: null, zoom: null, walkMs: 4_000, ...counts, image, crop: { x: 1, y: 2, width: 388, height: 813 }, rootInImage: null, imageScale: null, alignment: "unconfirmed" };
+    const complete = { status: "complete", identity, layers: [layer], readFrom: 1, walked: [{ ref: "1:2", parentRef: null }, { ref: "1:3", parentRef: "1:2" }], restarted: false, rootPath: ["1:1"], rootOnScreen: null, zoom: null, walkMs: 4_000, ...counts, image, crop: { x: 1, y: 2, width: 388, height: 813 }, rootInImage: null, imageScale: null, alignment: "unconfirmed" };
     const parsed = SnapshotResultSchema.parse(complete);
     expect(parsed.status === "complete" && parsed.layers[0]!.bounds).toEqual({ x: null, y: null, width: 120, height: 24, source: "unknown" });
     expect(SnapshotResultSchema.safeParse({ ...complete, layers: [{ ...layer, bounds: { ...layer.bounds, source: "guess" } }] }).success).toBe(false);
+  });
+
+  it("tells a partial read apart, with where it started and the whole walk to go on from", () => {
+    const image = { data: "", mimeType: "image/jpeg", width: 748, height: 1568 };
+    const partial = { status: "partial", identity, layers: [layer], readFrom: 1, walked: [{ ref: "1:2", parentRef: null }, { ref: "1:3", parentRef: "1:2" }, { ref: "1:4", parentRef: "1:2" }], restarted: false, rootPath: [], rootOnScreen: null, zoom: null, walkMs: 4_000, ...counts, image, crop: { x: 1, y: 2, width: 388, height: 813 }, rootInImage: null, imageScale: null, alignment: "unconfirmed" };
+    const parsed = SnapshotResultSchema.parse(partial);
+    expect(parsed.status === "partial" && parsed.walked.length - (parsed.readFrom + parsed.layers.length)).toBe(1);
+    expect(SnapshotResultSchema.safeParse({ ...partial, walked: undefined }).success).toBe(false);
   });
 
   it("caps the parents an op carries, so a request stays small", () => {

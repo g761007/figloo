@@ -173,7 +173,7 @@ pnpm --filter @figloo/extension icons
 | `capture` | 截取縮放到剛好容納的圖層，或整個頁面。回傳長邊最多 1568 px 的 JPEG。 |
 | `export_asset` | 以 Figma 的 Export 按鈕的方式匯出圖層，格式可以是 SVG、PNG、JPG 或 PDF，讓 agent 依專案需要選擇格式與倍率，例如網頁用 SVG，iOS 用 PDF 或 1x、2x、3x 的 PNG。SVG 以文字回傳，長邊最多 1568 px 的 PNG 或 JPG 以圖片回傳。加上 `saveTo` 時，也會把檔案寫到專案目錄中的該路徑；專案目錄是 Claude Code 設定的 `CLAUDE_PROJECT_DIR`，沒有時則是伺服器的工作目錄。既有檔案只在加上 `overwrite: true` 時取代。Figma 的檔名是圖層名稱，不含倍率後綴，所以每種倍率請存成不同的檔名。沒有 `format` 時，圖層有自己的匯出設定就沿用，沒有設定的圖層則匯出成 SVG。有 `format` 時，會加上一組該格式與 `scale`（預設 1x）的臨時設定，匯出後再移除；圖層已有完全相同的設定時則直接沿用。圖層本身的設定絕不會被改動。Figma 把多個檔案打包成的 ZIP 會自動解開。隱藏圖層或位在隱藏群組中的圖層會立刻回報 `LAYER_HIDDEN`，因為 Figma 不匯出它們。 |
 | `export_assets` | 以 `export_asset` 的方式依序匯出多個圖層，存進專案中的同一個資料夾：可以指定 ref，或匯出快照中所有有匯出設定的圖層，也可以只匯出其中一個圖層裡面的部分。檔名沿用 Figma 的命名，名稱重複時加上圖層的 ref。每次呼叫最多 50 個圖層，約 150 秒後不再開始新的匯出，其餘的放在 `remaining` 回傳。Figma 分頁進入背景或使用者介入時會提早停下；其他失敗會列出來，其餘圖層照常匯出。 |
-| `snapshot_layer` | 一次讀取一個圖層與其中的所有圖層，最多 400 個；300 個圖層約 40 秒，最多三分鐘。內容包括截圖，以及每個圖層相對這個圖層的位置與大小、是否隱藏、匯出設定，與 `inspect_nodes` 讀得到的全部內容。Instance 視為一個圖層。回傳截圖與每個圖層一行的大綱，並把快照存在 `~/.figloo/snapshots/`。24 小時內再次呼叫會直接回傳存好的快照，不再讀取 Figma，時間可用設定檔的 `snapshotTtlHours` 調整；加上 `refresh: true` 則重新讀取。讀取期間 Figma 上會顯示有進度與「Stop」按鈕的遮罩，其他視窗可以照常使用。按「Stop」或 Esc 會中止讀取並收回圖層面板；在 Figma 其他地方點一下也會中止。分頁進入背景時，讀取會暫停，回到畫面後繼續。頁面重新整理後，可以用新的 context 再次傳入已存快照的 root，快照中的每個 ref 在這個 context 都能使用。 |
+| `snapshot_layer` | 讀取一個圖層與其中的所有圖層，最多 2,000 個，300 個圖層約 40 秒。每次呼叫最多讀三分鐘；還有圖層沒讀時，會回傳 `complete: false` 與進度，用同一個 root 再呼叫一次，就會從停下的地方接著讀。內容包括截圖，以及每個圖層相對這個圖層的位置與大小、是否隱藏、匯出設定，與 `inspect_nodes` 讀得到的全部內容。Instance 視為一個圖層。回傳截圖與每個圖層一行的大綱，並把快照存在 `~/.figloo/snapshots/`。24 小時內再次呼叫會直接回傳存好的快照，不再讀取 Figma，時間可用設定檔的 `snapshotTtlHours` 調整；加上 `refresh: true` 則重新讀取。讀取期間 Figma 上會顯示有進度與「Stop」按鈕的遮罩，其他視窗可以照常使用。按「Stop」或 Esc 會中止讀取並收回圖層面板；在 Figma 其他地方點一下也會中止。分頁進入背景時，讀取會暫停，回到畫面後繼續。頁面重新整理後，可以用新的 context 再次傳入已存快照的 root，快照中的每個 ref 在這個 context 都能使用。 |
 | `query_snapshot` | 不需要 Figma 分頁，就能在存好的快照中查詢圖層，頁面重新整理後也可以。可以依 ref 取得完整內容，或依文字、類型與所在的圖層篩選，結果以大綱或完整內容分頁回傳。 |
 | `summarize_snapshot` | 不需要 Figma 分頁，就能摘要存好的快照或其中一個區塊：每個顏色與它的用途、文字樣式、間距、padding、圓角、線寬與陰影，各自有多少圖層使用，以及依名稱分組的 instance 與它們的元件屬性。用來把設計對應到專案的 token 與元件。 |
 | `release_context` | 捨棄一個 context 與其中的圖層 ref。 |
@@ -286,7 +286,8 @@ Figloo 以 [MIT 授權](LICENSE)釋出。
 - `export_asset` 回報 `EXPORT_BLOCKED`：Figma 沒有交出任何檔案，瀏覽器也沒有開始下載。如果瀏覽器擋下了 figma.com 的連續下載，請在網站設定中允許，再試一次。
 - `export_asset` 回報 `LAYER_HIDDEN`：這個圖層或它所在的上層在 Figma 中是隱藏的，Figma 不會匯出它，在 Figma 裡直接按 Export 也一樣。
 - `export_asset` 回報 `EXPORT_PENDING`：瀏覽器正在等待儲存備援的下載，通常是停在另存新檔的對話框。請確認儲存，或關閉「每次下載前詢問儲存位置」。
-- `snapshot_layer` 回報 `SUBTREE_TOO_LARGE`：這個圖層中有超過 400 個圖層。請改為對訊息中列出的某個子層建立快照。
+- `snapshot_layer` 回傳 `complete: false`：這個圖層超過一次呼叫在三分鐘內讀得完的量。請用同一個 root 再呼叫，直到 `complete` 為 true；在那之前，`query_snapshot` 會回報 `SNAPSHOT_INCOMPLETE`。
+- `snapshot_layer` 回報 `SUBTREE_TOO_LARGE`：這個圖層中有超過 2,000 個圖層。請改為對訊息中列出的某個子層建立快照。
 - 在 Codex 中，`snapshot_layer` 在 60 秒後失敗：請調高 `tool_timeout_sec`，見[在 agent 中註冊 MCP 伺服器](#2-在-agent-中註冊-mcp-伺服器)。
 - 工具回報 `BUSY` 並寫出另一個工作階段：Figloo 正在服務那個工作階段，它正在工作，或在 10 秒內用過 Figloo。稍後再試，或先在那個工作階段完成工作。
 - `get_status` 或工具說連接埠由執行舊版 Figloo 的工作階段持有：那個工作階段啟動的是 Figloo 0.1.0，無法交接。請重新啟動或關閉那個工作階段。

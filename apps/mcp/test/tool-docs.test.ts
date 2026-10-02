@@ -13,7 +13,7 @@ import { startBridge } from "./helpers.js";
 
 const DOC = resolve(import.meta.dirname, "../../../docs/mcp-tools.md");
 /** Codes the server raises itself, next to the protocol's. */
-const SERVER_CODES = ["INVALID_ARGUMENT", "SAVE_REFUSED", "SNAPSHOT_EXPIRED", "SNAPSHOT_NOT_FOUND", "SUBTREE_TOO_LARGE"];
+const SERVER_CODES = ["INVALID_ARGUMENT", "SAVE_REFUSED", "SNAPSHOT_EXPIRED", "SNAPSHOT_INCOMPLETE", "SNAPSHOT_NOT_FOUND", "SUBTREE_TOO_LARGE"];
 
 interface JsonSchema {
   type?: string | string[];

@@ -446,14 +446,14 @@ const SNAPSHOT_CLEANUP_MS = 15_000;
  */
 async function snapshotTab(tabId: number, params: unknown): Promise<TabOpResponse> {
   const started = Date.now();
-  const { expect, ref, known } = SnapshotParamsSchema.parse(params);
+  const { expect, ref, known, resume, timeBudgetMs: shorter } = SnapshotParamsSchema.parse(params);
   const shot = await takeCapture(tabId, { expect, ref, known });
   if (!shot.response.ok) return shot.response;
   if (shot.interrupted) return { ok: false, error: { code: "USER_INTERRUPTED", message: "the user interacted with Figma during the screenshot" } };
   let { image, crop } = shot.response.result as CaptureResult;
-  const timeBudgetMs = Math.round(SNAPSHOT_TIME_BUDGET_MS - SNAPSHOT_CLEANUP_MS - (Date.now() - started));
+  const timeBudgetMs = Math.round((shorter ?? SNAPSHOT_TIME_BUDGET_MS) - SNAPSHOT_CLEANUP_MS - (Date.now() - started));
   if (timeBudgetMs <= 0) return { ok: false, error: { code: "BUDGET_EXCEEDED", message: "the screenshot used up the snapshot's time budget" } };
-  const read = await sendToTab(tabId, "read_subtree", { expect, ref, known, maxLayers: MAX_SNAPSHOT_LAYERS, timeBudgetMs });
+  const read = await sendToTab(tabId, "read_subtree", { expect, ref, known, ...(resume ? { resume } : {}), maxLayers: MAX_SNAPSHOT_LAYERS, timeBudgetMs });
   if (!read.ok) return read;
   const result = SnapshotReadResultSchema.parse(read.result);
   const elapsedMs = Date.now() - started;
@@ -473,7 +473,9 @@ async function snapshotTab(tabId: number, params: unknown): Promise<TabOpRespons
   }
   const rootInImage = root ? placeInImage(root, crop, image) : null;
   // The read measures the root where the screenshot was taken; a root outside the image means the view moved in between.
-  if (rootInImage && !insideImage(rootInImage, image)) {
+  // A call that goes on with a snapshot keeps the first call's screenshot, so its own does not matter.
+  const keepsImage = result.readFrom === 0;
+  if (keepsImage && rootInImage && !insideImage(rootInImage, image)) {
     return { ok: false, error: { code: "UI_NOT_READY", message: "the screenshot does not show the whole root, so the view moved while it was taken; take the snapshot again" } };
   }
   return {

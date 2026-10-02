@@ -52,6 +52,9 @@ function complete(layers: SnapshotLayer[]) {
     status: "complete",
     identity,
     layers,
+    readFrom: 0,
+    walked: layers.map(({ ref, parentRef }) => ({ ref, parentRef })),
+    restarted: false,
     // The screen sits right on the page.
     rootPath: [],
     rootOnScreen: { x: 421.28, y: 40.27, width: 363.94, height: 788.99 },
@@ -426,5 +429,105 @@ describe("summarize_snapshot", () => {
     expect(tools.errorOf(await tools.call("summarize_snapshot", { snapshot: "abc/1-1" })).code).toBe("SNAPSHOT_NOT_FOUND");
     tools.clock.now += 24 * HOUR;
     expect(tools.errorOf(await tools.call("summarize_snapshot", { snapshot })).code).toBe("SNAPSHOT_EXPIRED");
+  });
+});
+
+describe("snapshot_layer over several calls", () => {
+  const imageOf = (text: string) => ({ ...image, data: Buffer.from(text).toString("base64") });
+  const walked = screen.map(({ ref, parentRef }) => ({ ref, parentRef }));
+  /** What the tab answers when a call reads layers [from, to) of the screen. */
+  function reply(status: "partial" | "complete", from: number, to: number, shot: string, restarted = false): Reply {
+    return { ok: true, result: { ...complete(screen), status, layers: screen.slice(from, to), readFrom: from, walked, restarted, image: imageOf(shot) } };
+  }
+
+  it("goes on where the last call stopped, and keeps the first call's screenshot", async () => {
+    const calls: { readFrom: number; structure: string[]; placed: { ref: string }[] }[] = [];
+    const tools = await setup({
+      snapshot: (request) => {
+        const resume = request.params!.resume as (typeof calls)[number];
+        calls.push(resume);
+        return resume.readFrom === 0 ? reply("partial", 0, 3, "first shot") : reply("complete", resume.readFrom, screen.length, "second shot");
+      },
+    });
+    const contextId = await tools.anchor();
+
+    const first = await tools.call("snapshot_layer", { contextId, ref: "570:1" });
+    const progress = SnapshotOutputSchema.parse(first.structuredContent);
+    expect(progress).toMatchObject({ complete: false, progress: { read: 3, total: 7 }, outline: "", outlineLayers: 0, layerCount: 7 });
+    // No screenshot until the snapshot is whole, so a long read does not fill the agent's context.
+    expect((first.content as { type: string }[]).map((part) => part.type)).toEqual(["text"]);
+    expect(readdirSync(join(tools.dir, "abc")).sort()).toEqual(["570-1.partial.jpg", "570-1.partial.json"]);
+
+    const done = await tools.call("snapshot_layer", { contextId, ref: "570:1" });
+    const whole = SnapshotOutputSchema.parse(done.structuredContent);
+    expect(whole).toMatchObject({ complete: true, progress: { read: 7, total: 7 }, layerCount: 7, outlineLayers: 7, createdAt: progress.createdAt });
+    expect((done.content as { data?: string }[])[0]!.data).toBe(imageOf("first shot").data);
+    expect(readdirSync(join(tools.dir, "abc")).sort()).toEqual(["570-1.jpg", "570-1.json"]);
+
+    expect(calls[1]).toMatchObject({ readFrom: 3, structure: screen.map(({ ref, parentRef }) => `${ref}|${parentRef}`) });
+    // The layers left sit in the header and the screen, which the first call read; the hidden group was not read yet.
+    expect(calls[1]!.placed.map((layer) => layer.ref).sort()).toEqual(["570:1", "570:2"]);
+    expect((await tools.query({ snapshot: whole.snapshot })).matched).toBe(7);
+  });
+
+  it("starts over with the new walk and its screenshot when the design changed between calls", async () => {
+    const tools = await setup({
+      snapshot: (request) => ((request.params!.resume as { readFrom: number }).readFrom === 0 ? reply("partial", 0, 3, "old shot") : reply("complete", 0, screen.length, "new shot", true)),
+    });
+    const contextId = await tools.anchor();
+    await tools.snap({ contextId, ref: "570:1" });
+    const done = await tools.call("snapshot_layer", { contextId, ref: "570:1" });
+    expect(SnapshotOutputSchema.parse(done.structuredContent)).toMatchObject({ complete: true, layerCount: 7 });
+    expect((done.content as { data?: string }[])[0]!.data).toBe(imageOf("new shot").data);
+  });
+
+  it("goes on with a refresh read over several calls instead of answering from the older snapshot meanwhile", async () => {
+    const resumes: number[] = [];
+    let partial = false;
+    const tools = await setup({
+      snapshot: (request) => {
+        const { readFrom } = request.params!.resume as { readFrom: number };
+        resumes.push(readFrom);
+        if (!partial) return { ok: true, result: complete(screen) };
+        return readFrom === 0 ? reply("partial", 0, 3, "new shot") : reply("complete", readFrom, screen.length, "unused");
+      },
+    });
+    const contextId = await tools.anchor();
+    const { snapshot } = await tools.snap({ contextId, ref: "570:1" });
+    partial = true;
+    expect(await tools.snap({ contextId, ref: "570:1", refresh: true })).toMatchObject({ complete: false });
+    // Until the new read is whole, the older snapshot is not handed out as if it were current.
+    expect(tools.errorOf(await tools.call("query_snapshot", { snapshot })).code).toBe("SNAPSHOT_INCOMPLETE");
+    expect(await tools.snap({ contextId, ref: "570:1" })).toMatchObject({ complete: true, fromCache: false });
+    expect(resumes).toEqual([0, 0, 3]);
+  });
+
+  it("answers SNAPSHOT_INCOMPLETE for a snapshot still being read, and drops it on refresh", async () => {
+    const resumes: number[] = [];
+    const tools = await setup({
+      snapshot: (request) => {
+        resumes.push((request.params!.resume as { readFrom: number }).readFrom);
+        return reply("partial", 0, 3, "shot");
+      },
+    });
+    const contextId = await tools.anchor();
+    const { snapshot } = await tools.snap({ contextId, ref: "570:1" });
+    for (const name of ["query_snapshot", "summarize_snapshot"]) {
+      const error = tools.errorOf(await tools.call(name, { snapshot }));
+      expect(error).toMatchObject({ code: "SNAPSHOT_INCOMPLETE", message: expect.stringContaining("3 of 7") });
+      expect(error.hint).toMatch(/snapshot_layer again/);
+    }
+    await tools.snap({ contextId, ref: "570:1", refresh: true });
+    expect(resumes).toEqual([0, 0]);
+  });
+
+  it("lets a snapshot still being read expire like a finished one, and removes it then", async () => {
+    let call = 0;
+    const tools = await setup({ snapshot: (request) => (call++ === 0 ? reply("partial", 0, 3, "shot") : { ok: true, result: complete(screen) }) });
+    await tools.snap({ contextId: await tools.anchor(), ref: "570:1" });
+    tools.clock.now += 25 * HOUR;
+    // Another root of the same file is snapshotted, which sweeps the expired files of the file.
+    await tools.snap({ contextId: await tools.anchor("570:7"), ref: "570:7" });
+    expect(readdirSync(join(tools.dir, "abc")).sort()).toEqual(["570-7.jpg", "570-7.json"]);
   });
 });

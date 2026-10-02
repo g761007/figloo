@@ -724,25 +724,10 @@ export const ExportAssetsOutputSchema = z.object({
 });
 export type ExportAssetsOutput = z.infer<typeof ExportAssetsOutputSchema>;
 
-/** Most layers a page snapshot reads, the root included: about two minutes of reading. */
-export const MAX_SNAPSHOT_LAYERS = 400;
-/** Time a page snapshot may take, screenshot included; below the five minutes Chrome allows one extension request. */
+/** Most layers a page snapshot holds, the root included; a call reads what fits its time and the next one goes on. */
+export const MAX_SNAPSHOT_LAYERS = 2_000;
+/** Time one snapshot call may take, screenshot included; below the five minutes Chrome allows one extension request. */
 export const SNAPSHOT_TIME_BUDGET_MS = 180_000;
-
-export const SnapshotParamsSchema = z.object({
-  expect: PageIdentitySchema,
-  /** The root layer; it must not be inside an instance. */
-  ref: z.string(),
-  known: KnownLayersSchema.optional(),
-});
-export type SnapshotParams = z.infer<typeof SnapshotParamsSchema>;
-
-/** What the service worker asks the tab to read once it has captured the root. */
-export const ReadSubtreeParamsSchema = SnapshotParamsSchema.extend({
-  maxLayers: z.number().int().positive(),
-  timeBudgetMs: z.number().int().positive(),
-});
-export type ReadSubtreeParams = z.infer<typeof ReadSubtreeParamsSchema>;
 
 export const BoundsSourceSchema = z.enum(["mirror", "panel", "unknown"]);
 export type BoundsSource = z.infer<typeof BoundsSourceSchema>;
@@ -758,6 +743,39 @@ export const SnapshotBoundsSchema = z.object({
   source: BoundsSourceSchema,
 });
 export type SnapshotBounds = z.infer<typeof SnapshotBoundsSchema>;
+
+/** A layer earlier calls of a snapshot placed, which layers still to read sit inside. */
+export const PlacedLayerSchema = z.object({ ref: z.string(), parentRef: z.string().nullable(), type: z.string().nullable(), bounds: SnapshotBoundsSchema });
+export type PlacedLayer = z.infer<typeof PlacedLayerSchema>;
+
+/** Where earlier calls of a snapshot stopped, so the tab reads on from there. */
+export const SnapshotResumeSchema = z.object({
+  /** Layers read so far in walk order, the root first; 0 for the first call. */
+  readFrom: z.number().int().nonnegative(),
+  /** Every layer the earlier walk found, as "ref|parentRef"; when the walk differs now, reading starts over. */
+  structure: z.array(z.string()).max(MAX_SNAPSHOT_LAYERS),
+  placed: z.array(PlacedLayerSchema).max(MAX_SNAPSHOT_LAYERS),
+});
+export type SnapshotResume = z.infer<typeof SnapshotResumeSchema>;
+
+export const SnapshotParamsSchema = z.object({
+  expect: PageIdentitySchema,
+  /** The root layer; it must not be inside an instance. */
+  ref: z.string(),
+  known: KnownLayersSchema.optional(),
+  /** Without it the subtree is read in one call or not at all. */
+  resume: SnapshotResumeSchema.optional(),
+  /** A shorter time for this call than SNAPSHOT_TIME_BUDGET_MS, for tests. */
+  timeBudgetMs: z.number().int().positive().max(SNAPSHOT_TIME_BUDGET_MS).optional(),
+});
+export type SnapshotParams = z.infer<typeof SnapshotParamsSchema>;
+
+/** What the service worker asks the tab to read once it has captured the root. */
+export const ReadSubtreeParamsSchema = SnapshotParamsSchema.extend({
+  maxLayers: z.number().int().positive(),
+  timeBudgetMs: z.number().int().positive(),
+});
+export type ReadSubtreeParams = z.infer<typeof ReadSubtreeParamsSchema>;
 
 /** One layer of a snapshot: where it sits in the tree, where it sits in the root, and its inspection panel. */
 export const SnapshotLayerSchema = z.object({
@@ -782,11 +800,16 @@ export const SnapshotLayerSchema = z.object({
 });
 export type SnapshotLayer = z.infer<typeof SnapshotLayerSchema>;
 
-const SnapshotReadCompleteSchema = z.object({
-  status: z.literal("complete"),
+const SnapshotReadSchema = z.object({
   identity: PageIdentitySchema,
-  /** Every layer in layers panel order, the root first. */
+  /** The layers this call read, in layers panel order: from readFrom on, so the root comes first only from 0. */
   layers: z.array(SnapshotLayerSchema),
+  /** Where `layers` start among the walked layers. */
+  readFrom: z.number().int().nonnegative(),
+  /** Every layer of the subtree, in walk order, the root first. */
+  walked: z.array(z.object({ ref: z.string(), parentRef: z.string().nullable() })),
+  /** The walk no longer matched resume.structure, so reading started over from the root. */
+  restarted: z.boolean(),
   /** The root's ancestors, from the layer on the page down to its parent; empty for a layer on the page. */
   rootPath: z.array(z.string()),
   /** The root on screen, in viewport CSS pixels; null without Figma's screen reader mirror. */
@@ -799,6 +822,11 @@ const SnapshotReadCompleteSchema = z.object({
   uiOps: z.number().int().nonnegative(),
   elapsedMs: z.number().nonnegative(),
 });
+
+/** Every layer from readFrom to the end was read. */
+const SnapshotReadCompleteSchema = SnapshotReadSchema.extend({ status: z.literal("complete") });
+/** The call ran out of time; a next call with resume goes on after the last layer in `layers`. */
+const SnapshotReadPartialSchema = SnapshotReadSchema.extend({ status: z.literal("partial") });
 
 /** The subtree has more layers than a snapshot reads; nothing was read. */
 const SnapshotTooLargeSchema = z.object({
@@ -818,21 +846,25 @@ export const ImageAlignmentSchema = z.enum(["confirmed", "corrected", "unconfirm
 export type ImageAlignment = z.infer<typeof ImageAlignmentSchema>;
 
 /** Result of the tab's `read_subtree` op. */
-export const SnapshotReadResultSchema = z.discriminatedUnion("status", [SnapshotReadCompleteSchema, SnapshotTooLargeSchema]);
+export const SnapshotReadResultSchema = z.discriminatedUnion("status", [SnapshotReadCompleteSchema, SnapshotReadPartialSchema, SnapshotTooLargeSchema]);
 export type SnapshotReadResult = z.infer<typeof SnapshotReadResultSchema>;
 
-/** Result of the `snapshot_layer` op: the root's screenshot and every layer below it. */
+/** The screenshot each call of a snapshot takes of the root. */
+const SnapshotImageFieldsSchema = {
+  image: CaptureImageSchema,
+  /** The part of the viewport the image shows, in CSS pixels. */
+  crop: RectSchema,
+  /** The root in the image, in image pixels; null when its place on screen is unknown. */
+  rootInImage: RectSchema.nullable(),
+  /** Image pixels per design pixel, to place a layer's bounds in the image; null when the zoom is unknown. */
+  imageScale: z.number().positive().nullable(),
+  alignment: ImageAlignmentSchema,
+};
+
+/** Result of the `snapshot_layer` op: the root's screenshot and the layers this call read. */
 export const SnapshotResultSchema = z.discriminatedUnion("status", [
-  SnapshotReadCompleteSchema.extend({
-    image: CaptureImageSchema,
-    /** The part of the viewport the image shows, in CSS pixels. */
-    crop: RectSchema,
-    /** The root in the image, in image pixels; null when its place on screen is unknown. */
-    rootInImage: RectSchema.nullable(),
-    /** Image pixels per design pixel, to place a layer's bounds in the image; null when the zoom is unknown. */
-    imageScale: z.number().positive().nullable(),
-    alignment: ImageAlignmentSchema,
-  }),
+  SnapshotReadCompleteSchema.extend(SnapshotImageFieldsSchema),
+  SnapshotReadPartialSchema.extend(SnapshotImageFieldsSchema),
   SnapshotTooLargeSchema,
 ]);
 export type SnapshotResult = z.infer<typeof SnapshotResultSchema>;
@@ -861,6 +893,10 @@ export const SnapshotOutputSchema = z.object({
   expiresAt: z.string(),
   /** True when an earlier snapshot was returned without reading Figma again. */
   fromCache: z.boolean(),
+  /** False while layers are left to read: call snapshot_layer again with the same ref to go on. */
+  complete: z.boolean(),
+  /** Layers read so far and in all. */
+  progress: z.object({ read: z.number().int().nonnegative(), total: z.number().int().positive() }),
   layerCount: z.number().int().positive(),
   image: SnapshotImageInfoSchema,
   /** One line per layer in layers panel order, indented by depth. */

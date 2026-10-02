@@ -8,6 +8,7 @@ import {
   SnapshotOutputSchema,
   SnapshotResultSchema,
   SummarizeSnapshotOutputSchema,
+  type PlacedLayer,
   type QuerySnapshotOutput,
   type Rect,
   type SnapshotLayer,
@@ -18,15 +19,21 @@ import { BridgeError, type Bridge } from "./bridge.js";
 import { knownParents, type ContextStore, type ExplorationContext } from "./contexts.js";
 import type { ToolErrorResult } from "./export-asset.js";
 import { summarizeLayers } from "./snapshot-summary.js";
-import { isPlainRef, outlineLine, snapshotId, type SnapshotFile, type SnapshotStore } from "./snapshots.js";
+import { isPlainRef, outlineLine, snapshotId, type PartialSnapshot, type SnapshotFile, type SnapshotStore } from "./snapshots.js";
 
 /** The tab gets 180 s, the rest covers messaging; one long request, no polling. */
 const SNAPSHOT_TIMEOUT_MS = SNAPSHOT_TIME_BUDGET_MS + 20_000;
+/** For tests on real Figma: a shorter call, so a page of a few hundred layers takes several calls. */
+const testTimeBudgetMs = (() => {
+  const ms = Number(process.env.FIGLOO_SNAPSHOT_TIME_BUDGET_MS);
+  return Number.isInteger(ms) && ms > 0 && ms < SNAPSHOT_TIME_BUDGET_MS ? ms : null;
+})();
 
 export const SNAPSHOT_HINTS: Record<string, string> = {
   SUBTREE_TOO_LARGE: "Snapshot a smaller root: call snapshot_layer on one of the children listed in the message, or on a layer further down.",
   SNAPSHOT_NOT_FOUND: "Pass the snapshot id exactly as snapshot_layer returned it; without one, take a snapshot with snapshot_layer.",
   SNAPSHOT_EXPIRED: "Take a new snapshot with snapshot_layer, which needs a contextId from get_anchor or explore_page.",
+  SNAPSHOT_INCOMPLETE: "Call snapshot_layer again with the same root until it returns complete: true; each call reads on where the last one stopped.",
 };
 
 /** Hints that differ for query_snapshot, which knows snapshots rather than contexts. */
@@ -101,12 +108,38 @@ export function adoptSnapshot(context: ExplorationContext, file: SnapshotFile): 
 }
 
 /** The root and the way down to it; the snapshot itself names no parent for its root. */
-function adoptRoot(context: ExplorationContext, file: SnapshotFile): void {
+function adoptRoot(context: ExplorationContext, file: { rootRef: string; rootPath?: string[] }): void {
   context.knownRefs.add(file.rootRef);
   const path = file.rootPath;
   if (!path) return;
   path.forEach((ref, i) => context.parents.set(ref, i === 0 ? null : path[i - 1]!));
   context.parents.set(file.rootRef, path.at(-1) ?? null);
+}
+
+/** The finished snapshot `id`, or why there is none to read: still being read, expired, or missing. */
+export async function finishedSnapshot(snapshots: SnapshotStore, id: string): Promise<{ file: SnapshotFile } | { code: string; message: string }> {
+  // A root being read again, after a refresh, answers nothing until the new snapshot is whole.
+  const partial = await snapshots.readPartial(id);
+  if (partial) return { code: "SNAPSHOT_INCOMPLETE", message: `snapshot ${id} is still being read: ${partial.file.layers.length} of ${partial.file.walked.length} layers so far` };
+  const found = await snapshots.read(id);
+  if (found.status === "expired") return { code: "SNAPSHOT_EXPIRED", message: `snapshot ${id} expired at ${found.expiresAt}` };
+  if (found.status === "missing") return { code: "SNAPSHOT_NOT_FOUND", message: `there is no snapshot ${id}` };
+  return { file: found.file };
+}
+
+/** Layers earlier calls read that layers still to read sit inside, so the tab can place those inside them. */
+function placedAncestors(partial: PartialSnapshot): PlacedLayer[] {
+  const parentOf = new Map(partial.walked.map((layer) => [layer.ref, layer.parentRef]));
+  const read = new Map(partial.layers.map((layer) => [layer.ref, layer]));
+  const placed = new Map<string, PlacedLayer>();
+  for (const { ref } of partial.walked.slice(partial.layers.length)) {
+    // Once an ancestor is in, so are the ones above it.
+    for (let at = parentOf.get(ref) ?? null; at !== null && !placed.has(at); at = parentOf.get(at) ?? null) {
+      const layer = read.get(at);
+      if (layer) placed.set(at, { ref: at, parentRef: layer.parentRef, type: layer.type, bounds: layer.bounds });
+    }
+  }
+  return [...placed.values()];
 }
 
 /** The layers inside the layer at `at`: in panel order they follow it until the depth comes back up. */
@@ -126,15 +159,16 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
     "snapshot_layer",
     {
       description:
-        "Read a layer and everything inside it in one go, for implementing a page: a screenshot, and for each layer its place, size, and all that inspect_nodes shows, saved as a snapshot that query_snapshot reads without Figma. " +
+        "Read a layer and everything inside it, for implementing a page: a screenshot, and for each layer its place, size, and all that inspect_nodes shows, saved as a snapshot that query_snapshot reads without Figma. " +
         "Use it on the page's root, such as the frame the user selected (get_anchor). Instances count as one layer; read inside them with get_neighbors. " +
         "A root snapshotted before can be passed with any context of the same file, even after the page reloaded; every ref of its snapshot then works in that context. " +
         "Returns the screenshot, the snapshot id, and an outline with one line per layer: ref, type, name, x,y and width×height in design pixels from the root's top-left corner (? when Figma shows no place), the start of its text, and marks for hidden layers, instances with layers of their own, and export settings. " +
         "A layer at (x, y) shows at image.rootInImage + (x, y) × image.scale in the screenshot. image.alignment says whether rootInImage was checked against the screenshot: confirmed, corrected (Figma reported a stale place), or unconfirmed (it may be off by a few dozen pixels; the outline's places, relative to the root, are not affected). " +
         "A saved snapshot comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. " +
-        `Reading takes about 40 s for 300 layers, at most 3 minutes, for up to ${MAX_SNAPSHOT_LAYERS} layers; a larger subtree fails and lists the root's children. ` +
+        `Reading takes about 40 s for 300 layers, for up to ${MAX_SNAPSHOT_LAYERS} layers; a larger subtree fails and lists the root's children. ` +
+        "One call reads for at most 3 minutes. When it runs out of time first, it returns complete: false with progress and no outline: call snapshot_layer again with the same contextId and ref, and it goes on where it stopped, until complete is true. " +
         "The Figma tab must be on screen to start. Meanwhile Figma shows an overlay with the progress and a Stop button, and the user can use other windows; " +
-        "if the tab goes to the background, reading pauses and goes on when it is back, within the 3 minutes. " +
+        "if the tab goes to the background, reading pauses and goes on when it is back, within the call's 3 minutes. " +
         "To cancel, the user should press Stop or Esc on the overlay, which puts the layers panel back; a click elsewhere in Figma also stops it but keeps the user's new selection. " +
         "The user's selection is put back; the view stays zoomed to the root.",
       inputSchema: {
@@ -151,21 +185,34 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         if (!context) throw new SnapshotFailure("CONTEXT_NOT_FOUND", `no context ${contextId}`);
         if (!context.knownRefs.has(ref)) {
           // The root of an earlier snapshot of this file, for example from before the page reloaded, may be used again.
-          const earlier = isPlainRef(ref) ? await snapshots.readSaved(snapshotId(context.identity.fileKey, ref)) : null;
+          const earlierId = isPlainRef(ref) ? snapshotId(context.identity.fileKey, ref) : null;
+          const earlier = earlierId ? ((await snapshots.readSaved(earlierId)) ?? (await snapshots.readPartial(earlierId))?.file ?? null) : null;
           if (!earlier) throw new SnapshotFailure("UNKNOWN_REF", `ref ${ref} was not returned in context ${contextId}`);
           adoptRoot(context, earlier);
         }
         if (!isPlainRef(ref)) throw new SnapshotFailure("INSIDE_INSTANCE", `layer ${ref} is inside an instance, whose layer IDs only hold until the page reloads`);
         const id = snapshotId(context.identity.fileKey, ref);
-        const saved = refresh ? null : await snapshots.read(id);
+        if (refresh) await snapshots.removePartial(id);
+        // A read in progress goes on before any saved snapshot is answered, even an older finished one.
+        const earlier = refresh ? null : await snapshots.readPartial(id);
+        const saved = refresh || earlier ? null : await snapshots.read(id);
         let file: SnapshotFile | null = saved?.status === "found" ? saved.file : null;
         let jpeg = file ? await snapshots.readImage(id) : null;
         const fromCache = file !== null && jpeg !== null;
         if (!file || !jpeg) {
+          // Earlier calls that ran out of time left how far they got.
+          const resume = earlier
+            ? { readFrom: earlier.file.layers.length, structure: earlier.file.walked.map((layer) => `${layer.ref}|${layer.parentRef}`), placed: placedAncestors(earlier.file) }
+            : { readFrom: 0, structure: [], placed: [] };
           let result;
           try {
             result = SnapshotResultSchema.parse(
-              await bridge.request("snapshot_layer", { expect: context.identity, ref, ...knownParents(context, [ref]) }, SNAPSHOT_TIMEOUT_MS, context.tabId),
+              await bridge.request(
+                "snapshot_layer",
+                { expect: context.identity, ref, ...knownParents(context, [ref]), resume, ...(testTimeBudgetMs ? { timeBudgetMs: testTimeBudgetMs } : {}) },
+                SNAPSHOT_TIMEOUT_MS,
+                context.tabId,
+              ),
             );
           } catch (error) {
             if (error instanceof BridgeError && error.code === "CONTEXT_EXPIRED") contexts.release(contextId);
@@ -179,27 +226,57 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
               `layer ${ref} holds more than ${result.maxLayers} layers; its direct children${result.childrenHasMore ? " (first 50)" : ""}: ${children}`,
             );
           }
-          jpeg = Buffer.from(result.image.data, "base64");
-          file = await snapshots.write(
-            {
-              fileKey: context.identity.fileKey,
-              page: context.identity.page,
-              rootRef: ref,
-              elapsedMs: result.elapsedMs,
-              image: {
-                alignment: result.alignment,
-                width: result.image.width,
-                height: result.image.height,
-                rootInImage: round(result.rootInImage),
-                scale: result.imageScale && Math.round(result.imageScale * 10_000) / 10_000,
-              },
-              zoom: result.zoom,
-              rootPath: result.rootPath,
-              layers: result.layers,
-            },
-            jpeg,
+          // A call that goes on keeps the first call's screenshot; one that started over brings its own.
+          const going = earlier !== null && !result.restarted ? earlier : null;
+          const shot = going ? going.jpeg : Buffer.from(result.image.data, "base64");
+          const snapshot = {
+            fileKey: context.identity.fileKey,
+            page: context.identity.page,
+            rootRef: ref,
+            elapsedMs: (going?.file.elapsedMs ?? 0) + result.elapsedMs,
+            image: going
+              ? going.file.image
+              : {
+                  alignment: result.alignment,
+                  width: result.image.width,
+                  height: result.image.height,
+                  rootInImage: round(result.rootInImage),
+                  scale: result.imageScale && Math.round(result.imageScale * 10_000) / 10_000,
+                },
+            zoom: going ? going.file.zoom : result.zoom,
+            rootPath: result.rootPath,
+            layers: going ? [...going.file.layers, ...result.layers] : result.layers,
+          };
+          log(
+            `snapshot_layer ${result.status} read=${result.layers.length} from=${result.readFrom} total=${result.walked.length} restarted=${result.restarted} ` +
+              `walkMs=${Math.round(result.walkMs)} uiOps=${result.uiOps} alignment=${result.alignment} ms=${Math.round(result.elapsedMs)}`,
           );
-          log(`snapshot_layer layers=${result.layers.length} walkMs=${Math.round(result.walkMs)} uiOps=${result.uiOps} alignment=${result.alignment} ms=${Math.round(result.elapsedMs)}`);
+          if (result.status === "partial") {
+            const partial = await snapshots.writePartial({ ...snapshot, walked: result.walked }, shot, going?.file.createdAt);
+            for (const layer of partial.layers) context.knownRefs.add(layer.ref);
+            const output: SnapshotOutput = {
+              contextId,
+              snapshot: id,
+              fileKey: partial.fileKey,
+              page: partial.page,
+              rootRef: ref,
+              createdAt: partial.createdAt,
+              expiresAt: partial.expiresAt,
+              fromCache: false,
+              complete: false,
+              progress: { read: partial.layers.length, total: partial.walked.length },
+              layerCount: partial.walked.length,
+              image: partial.image,
+              outline: "",
+              outlineLayers: 0,
+              nextCursor: null,
+              elapsedMs: Date.now() - started,
+            };
+            return { content: [{ type: "text" as const, text: JSON.stringify(output) }], structuredContent: output as unknown as Record<string, unknown> };
+          }
+          jpeg = shot;
+          file = await snapshots.write(snapshot, jpeg);
+          await snapshots.removePartial(id);
         }
         adoptSnapshot(context, file);
         const snapshotFile = file;
@@ -212,6 +289,8 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
           createdAt: snapshotFile.createdAt,
           expiresAt: snapshotFile.expiresAt,
           fromCache,
+          complete: true,
+          progress: { read: snapshotFile.layers.length, total: snapshotFile.layers.length },
           layerCount: snapshotFile.layers.length,
           image: snapshotFile.image,
           outline: page.map(outlineLine).join("\n"),
@@ -254,9 +333,8 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
     },
     async ({ snapshot, refs, text, type, under, details = false, cursor }) => {
       try {
-        const found = await snapshots.read(snapshot);
-        if (found.status === "missing") throw new SnapshotFailure("SNAPSHOT_NOT_FOUND", `there is no snapshot ${snapshot}`);
-        if (found.status === "expired") throw new SnapshotFailure("SNAPSHOT_EXPIRED", `snapshot ${snapshot} expired at ${found.expiresAt}`);
+        const found = await finishedSnapshot(snapshots, snapshot);
+        if (!("file" in found)) throw new SnapshotFailure(found.code, found.message);
         const { file } = found;
         const base = { snapshot, expiresAt: file.expiresAt };
         if (refs) {
@@ -323,9 +401,8 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
     },
     async ({ snapshot, under }) => {
       try {
-        const found = await snapshots.read(snapshot);
-        if (found.status === "missing") throw new SnapshotFailure("SNAPSHOT_NOT_FOUND", `there is no snapshot ${snapshot}`);
-        if (found.status === "expired") throw new SnapshotFailure("SNAPSHOT_EXPIRED", `snapshot ${snapshot} expired at ${found.expiresAt}`);
+        const found = await finishedSnapshot(snapshots, snapshot);
+        if (!("file" in found)) throw new SnapshotFailure(found.code, found.message);
         const { file } = found;
         let layers = file.layers;
         if (under !== undefined) {

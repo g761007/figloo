@@ -133,6 +133,22 @@ describe("boundsInRoot", () => {
     expect(bounds.get("label")).toEqual({ x: 60, y: 310, width: 120, height: 24, source: "panel" });
   });
 
+  it("places text inside frames an earlier call of the snapshot placed, through groups it placed too", () => {
+    // The card and its group were read by an earlier call; this call read the root again and two text layers.
+    const placed = [
+      { ref: "card", parentRef: "screen", type: "Frame", bounds: { x: 20, y: 200, width: 353, height: 200, source: "mirror" as const } },
+      { ref: "group", parentRef: "card", type: "Group", bounds: { x: 30, y: 300, width: 100, height: 40, source: "mirror" as const } },
+    ];
+    const bounds = boundsInRoot([screen, text("title", "card", { left: 16, top: 12 }), text("label", "group", { left: 40, top: 110 })], 0.5, placed);
+    expect(bounds.get("title")).toEqual({ x: 36, y: 212, width: 120, height: 24, source: "panel" });
+    expect(bounds.get("label")).toEqual({ x: 60, y: 310, width: 120, height: 24, source: "panel" });
+  });
+
+  it("measures the root again in every call instead of taking an earlier call's place for it", () => {
+    const placed = [{ ref: "screen", parentRef: null, type: "Frame", bounds: { x: 5, y: 5, width: 1, height: 1, source: "panel" as const } }];
+    expect(boundsInRoot([screen, card], 0.5, placed).get("screen")).toEqual({ x: 0, y: 0, width: 393, height: 852, source: "mirror" });
+  });
+
   it("measures a line, which has no height on screen", () => {
     const line: SnapshotMeasure = { id: "line", parentId: "screen", type: "Line", rect: { x: 592.5, y: 203, width: 65, height: 0 }, box: { width: 130, height: 0, position: { left: 185, top: 206 } } };
     expect(boundsInRoot([screen, line], 0.5).get("line")).toEqual({ x: 185, y: 206, width: 130, height: 0, source: "mirror" });

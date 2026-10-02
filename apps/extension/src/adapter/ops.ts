@@ -37,14 +37,16 @@ import { inspectionHeader, inspectionRoot, inspectionSignature, readInspection }
 import { ReadingOverlay, estimateRemainingMs } from "./overlay.js";
 import { readPagesList } from "./pages.js";
 import { layersPanel, readRenderedRows, type Row } from "./row.js";
-import { LayerTree, StopExploration, hiddenLayers, learnParents, type IndexEntry, type Page, type WalkedLayer } from "./tree.js";
+import { readInTurn, resumePoint } from "./resume.js";
+import { LayerTree, StopExploration, hiddenLayers, learnParents, type IndexEntry, type Page } from "./tree.js";
 import { BackgroundPause } from "./visibility.js";
 
 /** Per-operation budgets from the plan: 15 s of UI work and a bounded number of UI operations. */
 export const OP_TIME_BUDGET_MS = 15_000;
 export const OP_MAX_UI_OPS = 300;
 const MAX_NAME_LENGTH = 200;
-const INDEX_LIMIT = 5_000;
+/** Layers remembered per page load; several snapshots of up to 2,000 layers fit. */
+const INDEX_LIMIT = 50_000;
 const ALL_GROUPS: InspectGroup[] = ["layout", "appearance", "typography", "component"];
 const PAGE_SWITCH_TIMEOUT_MS = 8_000;
 /** How long the pages list must stay the same before it is reported, and the most list_pages waits for that. */
@@ -61,6 +63,9 @@ const BACKGROUND_MESSAGE = "the Figma tab is in the background, where Figma does
 const SNAPSHOT_UI_OPS_PER_LAYER = 3;
 /** How long a snapshot waits for the mirror to place a selected layer; it never places hidden ones. */
 const SNAPSHOT_MIRROR_WAIT_MS = 300;
+/** A resumable snapshot stops reading this long before its deadline, plus time to close each layer it opened. */
+const SNAPSHOT_RESERVE_MS = 5_000;
+const COLLAPSE_MS_PER_ROW = 100;
 
 /** Budgets of one operation, and what happens to the layers panel when the user steps in. */
 interface RunLimits {
@@ -449,6 +454,8 @@ export class Explorer {
    * its inspection panel and where the mirror shows it. The view must not move meanwhile, so the
    * screen positions match the screenshot taken just before. Closes what it opened and puts the
    * user's selection back. A subtree above `maxLayers` is not read; its root's children are listed.
+   * With `resume`, a call that runs short of time stops between layers and reports how far it got,
+   * and a later call goes on from there after walking the panel again.
    */
   async readSubtree(params: ReadSubtreeParams): Promise<SnapshotReadResult> {
     const identity = this.checkExpected(params.expect);
@@ -458,9 +465,10 @@ export class Explorer {
     let before: UserSelection = { kind: "none" };
     let restored = false;
     let rootPath: string[] = [];
+    const deadline = Date.now() + params.timeBudgetMs;
     // The screenshot was taken before this op, so the overlay cannot end up in it.
     const overlay = new ReadingOverlay(this.doc);
-    const pause = new BackgroundPause(this.doc, Date.now() + params.timeBudgetMs, (paused) => overlay.setPaused(paused));
+    const pause = new BackgroundPause(this.doc, deadline, (paused) => overlay.setPaused(paused));
     const ran = await this.run(
       async (tree, source) => {
         overlay.show();
@@ -481,15 +489,24 @@ export class Explorer {
           return { status: "too_large" as const, children: page.rows, childrenHasMore: page.hasMore };
         }
         const walkMs = Date.now() - started;
+        const walked = walk.layers.map(({ row, parentRef }) => ({ ref: row.id, parentRef }));
+        const { start, restarted } = resumePoint(
+          walked.map(({ ref, parentRef }) => `${ref}|${parentRef}`),
+          params.resume,
+        );
+        // Every call reads the root first: its place on screen and its width give this call's zoom.
+        const indexes = [0, ...walk.layers.map((_, i) => i).slice(Math.max(1, start))];
         // The view stays put, so every layer the mirror places on the way is measured on the same screen.
         const rects = new Map<string, Rect>();
         const collect = () => {
           for (const [id, rect] of source.mirrorRects()) rects.set(id, rect);
         };
-        const read: { layer: WalkedLayer; sections: InspectedSection[]; exports: string[] | null }[] = [];
         const durations: number[] = [];
-        for (const layer of walk.layers) {
-          overlay.update({ phase: "reading", done: read.length, total: walk.layers.length, remainingMs: estimateRemainingMs(durations, walk.layers.length - read.length) });
+        let fresh = 0;
+        const readOne = async (index: number) => {
+          const layer = walk.layers[index]!;
+          const done = Math.max(start, 0) + fresh;
+          overlay.update({ phase: "reading", done, total: walk.layers.length, remainingMs: estimateRemainingMs(durations, walk.layers.length - done) });
           // A layer read while the tab went to the background may show a stale panel, so it is read again once the tab is back.
           for (;;) {
             const layerStarted = Date.now();
@@ -509,15 +526,31 @@ export class Explorer {
             // The mirror does not place text layers.
             if (row.type !== "Text" && !rects.has(row.id) && (await source.settle(() => source.mirrorRects().has(row.id), SNAPSHOT_MIRROR_WAIT_MS))) collect();
             if (!pause.hidSince(mark)) {
-              read.push({ layer, sections, exports: switched ? designerExports(this.doc, row.name) : null });
               durations.push(Date.now() - layerStarted);
-              break;
+              // The root read again by a later call is not a new layer.
+              if (index > 0 || start === 0) fresh += 1;
+              return { layer, sections, exports: switched ? designerExports(this.doc, row.name) : null };
             }
             await pause.untilVisible();
           }
-        }
+        };
+        // Only a resumable read stops early, while there is still time to close what the walk opened and to answer.
+        const timeIsUp = () => Date.now() > deadline - SNAPSHOT_RESERVE_MS - COLLAPSE_MS_PER_ROW * tree.expandedCount();
+        const { read, stoppedAt } = await readInTurn(indexes, readOne, { canStop: params.resume !== undefined, timeIsUp });
+        if (stoppedAt !== null && fresh === 0) throw new OpError("BUDGET_EXCEEDED", "the snapshot ran out of time before it could read a layer");
         overlay.update({ phase: "finishing" });
-        return { status: "complete" as const, read, rects, walkMs, zoomLabel: parseZoom(source.zoomLabel()) };
+        return {
+          status: stoppedAt === null ? ("complete" as const) : ("partial" as const),
+          read,
+          rects,
+          walkMs,
+          zoomLabel: parseZoom(source.zoomLabel()),
+          start,
+          walked,
+          restarted,
+          // A row's color alone can miss a layer inside a hidden one, so hidden parents count too, read in this call or not.
+          hidden: hiddenLayers(walk.layers),
+        };
       },
       async (tree, source) => {
         restored = await this.restoreSelection(tree, source, before);
@@ -550,10 +583,10 @@ export class Explorer {
     // The root's width on screen over its width in the panel, as for visual neighbors.
     const zoom = chooseZoom(root.rect && root.box ? root.rect.width / root.box.width : null, value.zoomLabel);
     const rootOnScreen = root.rect && root.rect.width > 0 && root.rect.height > 0 ? root.rect : null;
-    const bounds = boundsInRoot(measures, zoom);
-    // A row's color alone can miss a layer inside a hidden one, so hidden parents count too.
-    const hidden = hiddenLayers(value.read.map(({ layer }) => layer));
-    const layers: SnapshotLayer[] = value.read.map(({ layer: { row, parentRef, depth }, sections, exports }) => ({
+    // Layers read now may sit in frames earlier calls placed.
+    const bounds = boundsInRoot(measures, zoom, value.start > 0 ? (params.resume?.placed ?? []) : []);
+    const own = value.start > 0 ? value.read.slice(1) : value.read;
+    const layers: SnapshotLayer[] = own.map(({ layer: { row, parentRef, depth }, sections, exports }) => ({
       ref: row.id,
       name: row.name.slice(0, MAX_NAME_LENGTH),
       type: row.type,
@@ -562,15 +595,18 @@ export class Explorer {
       position: row.position,
       siblingCount: row.setSize,
       hasChildren: row.hasChildren,
-      hidden: hidden.has(row.id),
+      hidden: value.hidden.has(row.id),
       bounds: bounds.get(row.id)!,
       sections,
       exports,
     }));
     return {
-      status: "complete",
+      status: value.status,
       identity,
       layers,
+      readFrom: value.start,
+      walked: value.walked,
+      restarted: value.restarted,
       rootPath,
       rootOnScreen,
       zoom,
@@ -827,6 +863,11 @@ export class Explorer {
         throw translate(error);
       }
       stopped = user.interrupted;
+      if (limits.pause && this.doc.hidden) {
+        // Figma ignores clicks in the background, so a read that ends there puts the panel back once the tab is on screen.
+        this.putBackLater(tree, source, finish, (watch) => (stopped = watch.interrupted));
+        return { value, uiOps: tree.uiOps + source.actions, elapsedMs: Date.now() - started };
+      }
       await this.putBack(tree, source, finish);
       return { value, uiOps: tree.uiOps + source.actions, elapsedMs: Date.now() - started };
     } finally {

@@ -112,6 +112,11 @@ export class LayerTree {
     this.snapshot = source.rows();
   }
 
+  /** Layers this exploration opened and has not closed yet. */
+  expandedCount(): number {
+    return this.expandedByUs.length;
+  }
+
   /** Stops on user input or an exhausted budget; while restoring only user input stops it. */
   check(): void {
     if (this.limits.interrupted()) throw new StopExploration("user_interrupted");

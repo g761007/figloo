@@ -18,7 +18,7 @@ import {
 } from "@figloo/protocol";
 import { BridgeError, type Bridge } from "./bridge.js";
 import { knownParents, type ContextStore, type ExplorationContext } from "./contexts.js";
-import { SNAPSHOT_HINTS, adoptSnapshot, inside } from "./snapshot-tools.js";
+import { SNAPSHOT_HINTS, adoptSnapshot, finishedSnapshot, inside } from "./snapshot-tools.js";
 import type { SnapshotStore } from "./snapshots.js";
 
 const EXPORT_TIMEOUT_MS = 70_000;
@@ -292,9 +292,8 @@ export function registerExportAssetsTool(server: McpServer, deps: ExportDeps, to
         const skipped: ExportAssetsOutput["skipped"] = [];
         let queue: string[];
         if (snapshot !== undefined) {
-          const found = await snapshots.read(snapshot);
-          if (found.status === "missing") throw new ExportFailure("SNAPSHOT_NOT_FOUND", `there is no snapshot ${snapshot}`);
-          if (found.status === "expired") throw new ExportFailure("SNAPSHOT_EXPIRED", `snapshot ${snapshot} expired at ${found.expiresAt}`);
+          const found = await finishedSnapshot(snapshots, snapshot);
+          if (!("file" in found)) throw new ExportFailure(found.code, found.message);
           const { file } = found;
           if (file.fileKey !== context.identity.fileKey) throw new ExportFailure("INVALID_ARGUMENT", `snapshot ${snapshot} is of another file than context ${contextId}`);
           if (file.page !== null && context.identity.page !== null && file.page !== context.identity.page) {

@@ -25,6 +25,26 @@ const SnapshotFileSchema = z.object({
 });
 export type SnapshotFile = z.infer<typeof SnapshotFileSchema>;
 
+/** A snapshot still being read: the layers read so far, and the whole walk to read on from. */
+const PartialFileSchema = z.object({
+  formatVersion: z.literal(SNAPSHOT_FORMAT_VERSION),
+  id: z.string(),
+  fileKey: z.string(),
+  page: z.string().nullable(),
+  rootRef: z.string(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  elapsedMs: z.number().nonnegative(),
+  /** The first call's screenshot, which the finished snapshot keeps. */
+  image: SnapshotImageInfoSchema,
+  zoom: z.number().positive().nullable(),
+  rootPath: z.array(z.string()),
+  /** Every layer of the subtree in walk order; the layers read so far are the first ones. */
+  walked: z.array(z.object({ ref: z.string(), parentRef: z.string().nullable() })),
+  layers: z.array(SnapshotLayerSchema).min(1),
+});
+export type PartialSnapshot = z.infer<typeof PartialFileSchema>;
+
 const FILE_KEY = /^[A-Za-z0-9]+$/;
 /** Layers outside instances have plain IDs such as 570:14192; those inside look like I570:1;2:3. */
 const PLAIN_REF = /^\d+:\d+$/;
@@ -59,11 +79,11 @@ export class SnapshotStore {
     private readonly now: () => number = Date.now,
   ) {}
 
-  paths(id: string): { json: string; jpg: string } {
+  paths(id: string): { json: string; jpg: string; partialJson: string; partialJpg: string } {
     const parsed = parseSnapshotId(id);
     if (!parsed) throw new Error(`${id} is not a snapshot id`);
     const base = join(this.dir, parsed.fileKey, parsed.ref.replace(":", "-"));
-    return { json: `${base}.json`, jpg: `${base}.jpg` };
+    return { json: `${base}.json`, jpg: `${base}.jpg`, partialJson: `${base}.partial.json`, partialJpg: `${base}.partial.jpg` };
   }
 
   async read(id: string): Promise<SnapshotLookup> {
@@ -90,16 +110,41 @@ export class SnapshotStore {
     return readFile(this.paths(id).jpg).catch(() => null);
   }
 
+  /** The snapshot still being read, with its screenshot, until it expires like a finished one. */
+  async readPartial(id: string): Promise<{ file: PartialSnapshot; jpeg: Buffer } | null> {
+    if (!parseSnapshotId(id)) return null;
+    const { partialJson, partialJpg } = this.paths(id);
+    const parsed = PartialFileSchema.safeParse(await readFile(partialJson, "utf8").then(JSON.parse, () => null));
+    if (!parsed.success || parsed.data.id !== id || Date.parse(parsed.data.expiresAt) <= this.now()) return null;
+    const jpeg = await readFile(partialJpg).catch(() => null);
+    return jpeg ? { file: parsed.data, jpeg } : null;
+  }
+
+  /** Saves how far a snapshot got; it lives as long as a snapshot from its first call, `createdAt`. */
+  async writePartial(snapshot: Omit<PartialSnapshot, "formatVersion" | "id" | "createdAt" | "expiresAt">, jpeg: Buffer, createdAt?: string): Promise<PartialSnapshot> {
+    const id = snapshotId(snapshot.fileKey, snapshot.rootRef);
+    const started = createdAt ? Date.parse(createdAt) : this.now();
+    const file: PartialSnapshot = { formatVersion: SNAPSHOT_FORMAT_VERSION, id, ...snapshot, createdAt: new Date(started).toISOString(), expiresAt: new Date(started + this.ttlMs).toISOString() };
+    await this.privateFolder(snapshot.fileKey);
+    const { partialJson, partialJpg } = this.paths(id);
+    await writePrivate(partialJpg, jpeg);
+    await writePrivate(partialJson, JSON.stringify(file));
+    return file;
+  }
+
+  async removePartial(id: string): Promise<void> {
+    if (!parseSnapshotId(id)) return;
+    const { partialJson, partialJpg } = this.paths(id);
+    await unlink(partialJson).catch(() => undefined);
+    await unlink(partialJpg).catch(() => undefined);
+  }
+
   /** Saves a snapshot read just now and removes the expired ones of the same file. */
   async write(snapshot: Omit<SnapshotFile, "formatVersion" | "id" | "createdAt" | "expiresAt">, jpeg: Buffer): Promise<SnapshotFile> {
     const id = snapshotId(snapshot.fileKey, snapshot.rootRef);
     const now = this.now();
     const file: SnapshotFile = { formatVersion: SNAPSHOT_FORMAT_VERSION, id, ...snapshot, createdAt: new Date(now).toISOString(), expiresAt: new Date(now + this.ttlMs).toISOString() };
-    const folder = join(this.dir, snapshot.fileKey);
-    await mkdir(folder, { recursive: true, mode: 0o700 });
-    // mkdir only sets the mode of folders it creates.
-    await chmod(this.dir, 0o700);
-    await chmod(folder, 0o700);
+    await this.privateFolder(snapshot.fileKey);
     const { json, jpg } = this.paths(id);
     // The screenshot goes first: a snapshot file always has its screenshot.
     await writePrivate(jpg, jpeg);
@@ -108,9 +153,22 @@ export class SnapshotStore {
     return file;
   }
 
+  private async privateFolder(fileKey: string): Promise<void> {
+    const folder = join(this.dir, fileKey);
+    await mkdir(folder, { recursive: true, mode: 0o700 });
+    // mkdir only sets the mode of folders it creates.
+    await chmod(this.dir, 0o700);
+    await chmod(folder, 0o700);
+  }
+
   private async sweep(fileKey: string): Promise<void> {
     const folder = join(this.dir, fileKey);
     for (const name of await readdir(folder).catch(() => [])) {
+      if (name.endsWith(".partial.json")) {
+        const id = `${fileKey}/${name.slice(0, -".partial.json".length)}`;
+        if (!(await this.readPartial(id))) await this.removePartial(id);
+        continue;
+      }
       if (!name.endsWith(".json")) continue;
       const id = `${fileKey}/${name.slice(0, -".json".length)}`;
       if ((await this.read(id)).status !== "expired") continue;

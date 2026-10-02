@@ -33,11 +33,13 @@ Call `get_anchor` with the `tabId`. Done when you and the user agree on the one 
 
 ### 3. Snapshot
 
-Tell the user first: reading takes about 40 seconds per 300 layers and at most 3 minutes, the Figma tab has to be on screen when it starts, and Stop or Esc on Figma's overlay cancels it cleanly. Then call `snapshot_layer` with the context and the layer's ref.
+Tell the user first: reading takes about 40 seconds per 300 layers, the Figma tab has to be on screen when it starts, and Stop or Esc on Figma's overlay cancels it cleanly. Then call `snapshot_layer` with the context and the layer's ref.
+
+- One call reads for at most 3 minutes. While it returns `complete: false`, tell the user the progress and call it again with the same context and ref; it reads on where the last call stopped.
 
 - The snapshot is saved for 24 hours and comes back without reading Figma again; pass `refresh: true` only when the user says the design changed.
 - After Figma reloaded, a context from before fails with `CONTEXT_EXPIRED`: get a new one with `get_anchor` or `explore_page` and pass the same root to `snapshot_layer`. The saved snapshot comes back, and its refs work in the new context.
-- `SUBTREE_TOO_LARGE`: snapshot the children it lists, one at a time, and treat each as a section.
+- `SUBTREE_TOO_LARGE`, above 2,000 layers: snapshot the children it lists, one at a time, and treat each as a section.
 
 Done when you hold the snapshot id, the screenshot, and the whole outline. When `outlineLayers` is below `layerCount`, page through the rest with `query_snapshot` and `nextCursor`.
 
