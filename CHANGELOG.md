@@ -7,6 +7,7 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 ### Added
 
 - Figloo is released under the MIT License.
+- A Quickstart in the README: one sentence to paste into Claude Code or Codex, which installs Figloo by following `docs/agent-install.md` and walks the user through the steps only they can do.
 
 ## [0.3.1] - 2026-10-02
 

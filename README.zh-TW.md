@@ -13,6 +13,22 @@ MVP 已完成，也就是[計畫](docs/plans/2026-09-30-figloo-mvp-plan.md)中�
 - [docs/mcp-tools.md](docs/mcp-tools.md)：每個工具的參數、回傳結果與錯誤碼。
 - [docs/compatibility/](docs/compatibility/README.md)：支援的瀏覽器與 Figma 設定、已知限制，以及在真實 Figma 頁面上驗證過的項目。
 
+## 快速開始
+
+把這句話貼給你的 coding agent，Claude Code 或 Codex 都可以：
+
+```text
+Install Figloo for me by following https://raw.githubusercontent.com/g761007/figloo/main/docs/agent-install.md
+```
+
+Agent 會檢查 Node.js、下載最新版本並核對檢查碼、註冊 MCP 伺服器（Claude Code 會安裝 plugin），再給你配對 token。接著它會引導你完成三件只能由你做的事：
+
+1. 載入擴充功能：在 `chrome://extensions`（或 `arc://extensions`）開啟開發人員模式，按「載入未封裝項目」，選擇 agent 告訴你的資料夾。
+2. 在擴充功能的選項頁面貼上 token 與連接埠。
+3. 在 Figma 中使用英文介面，並開啟「Adapt content for screen readers」。
+
+最後開一個新的 agent 工作階段，打開 Figma 設計檔，請 agent 呼叫 `get_status`。[安裝](#安裝)與[設定](#設定)兩節是同樣步驟的手動版本。
+
 ## 需求
 
 - Node.js 24，用來執行 MCP 伺服器（見 `.node-version`）

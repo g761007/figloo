@@ -11,6 +11,22 @@ The MVP (milestones M0 to M4 of the [plan](docs/plans/2026-09-30-figloo-mvp-plan
 - [docs/mcp-tools.md](docs/mcp-tools.md): every tool's parameters, results, and error codes.
 - [docs/compatibility/](docs/compatibility/README.md): supported browsers and Figma settings, known limitations, and what was verified on real Figma pages.
 
+## Quickstart
+
+Paste this into your coding agent, Claude Code or Codex:
+
+```text
+Install Figloo for me by following https://raw.githubusercontent.com/g761007/figloo/main/docs/agent-install.md
+```
+
+The agent checks Node.js, downloads the latest release and verifies its checksums, registers the MCP server (as a plugin in Claude Code), and gives you a pairing token. It then walks you through the three steps only you can do:
+
+1. Load the extension: on `chrome://extensions` (or `arc://extensions`), turn on Developer mode, click "Load unpacked", and pick the folder the agent names.
+2. Paste the token and port into the extension's options page.
+3. In Figma, use the English UI and turn on "Adapt content for screen readers".
+
+Then start a new agent session, open a Figma design file, and ask the agent to call `get_status`. [Install](#install) and [Set up](#set-up) describe the same steps by hand.
+
 ## Requirements
 
 - Node.js 24 to run the MCP server (see `.node-version`)
