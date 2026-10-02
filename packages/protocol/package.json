@@ -1,10 +1,20 @@
 {
   "name": "@figloo/protocol",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./session-label": {
+      "types": "./dist/session-label.d.ts",
+      "default": "./dist/session-label.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",

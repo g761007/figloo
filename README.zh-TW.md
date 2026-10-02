@@ -65,7 +65,7 @@ pnpm build
 claude mcp add -s user figloo -- node /absolute/path/to/figloo/apps/mcp/dist/index.js
 ```
 
-使用 release 檔案時，改用它的路徑，例如 `node /absolute/path/to/figloo-mcp-0.1.0.mjs`。在工作階段中，`/mcp` 會顯示伺服器是否已連線。
+使用 release 檔案時，改用它的路徑，例如 `node /absolute/path/to/figloo-mcp-0.2.0.mjs`。在工作階段中，`/mcp` 會顯示伺服器是否已連線。
 
 其他 MCP client 可以用類似下面的設定啟動伺服器（請替換路徑）：
 
@@ -89,7 +89,9 @@ args = ["/absolute/path/to/figloo/apps/mcp/dist/index.js"]
 tool_timeout_sec = 300
 ```
 
-伺服器透過 stdio 使用 MCP，並在同一個程序中監聽 `ws://127.0.0.1:47129`，等候擴充功能連線。要改用其他連接埠，請設定 `FIGLOO_PORT`，或修改設定檔中的 `port`。連接埠已被占用時，`get_status` 會回報錯誤，伺服器不會因此當掉。
+伺服器透過 stdio 使用 MCP，並在同一個程序中監聽 `ws://127.0.0.1:47129`，等候擴充功能連線。要改用其他連接埠，請設定 `FIGLOO_PORT`，或修改設定檔中的 `port`。連接埠被其他程式占用時，`get_status` 會回報，伺服器不會因此當掉。
+
+多個 agent 工作階段可以輪流使用 Figloo。每個工作階段各自啟動一個伺服器，同一時間由其中一個，也就是持有者，監聽連接埠並服務擴充功能，其他的則待命。待命的工作階段呼叫需要 Figma 的工具時，會在持有者閒置 10 秒後接手。持有者正在工作時，工具會回報 `BUSY`，並寫出 Figloo 正在服務的工作階段。持有者結束後，待命的工作階段會在幾秒內自動接手。工作階段以 agent、專案資料夾與啟動時間命名，例如 `Claude Code · shop (started 09:15)`；`get_status`、工具列圖示、popup 視窗與選項頁面都會顯示 Figloo 正在服務哪一個。Figloo 0.1.0 的伺服器無法交接，仍在執行它的工作階段需要重新啟動。
 
 ### 3. 配對一次
 
@@ -110,7 +112,7 @@ node apps/mcp/dist/index.js pair
 
 ## 工具列圖示
 
-圖示會顯示 Figloo 能否使用你目前正在看的分頁。把游標移到圖示上，可以看到原因，以及是否有 coding agent 連線。
+圖示會顯示 Figloo 能否使用你目前正在看的分頁。把游標移到圖示上，可以看到原因，以及 Figloo 正在服務哪個 coding agent 工作階段。
 
 | 圖示 | 意思 |
 |---|---|
@@ -119,7 +121,7 @@ node apps/mcp/dist/index.js pair
 | 灰色 | 不是 Figma 設計稿，或檔案仍在載入中。 |
 | 灰色加上紅色 `!` | Figloo 無法讀取的 Figma 設計稿頁面。 |
 
-點擊圖示會開啟 popup 視窗。它會顯示檔案、頁面，以及 Figloo 與 coding agent 是否就緒。在 Figma 中選取一個圖層時，它還會顯示這個圖層從頁面開始的路徑，以及它的直接子層。讀取子層時，圖層面板中的這個圖層可能會短暫展開，Figloo 會再把它收合。
+點擊圖示會開啟 popup 視窗。它會顯示檔案、頁面、Figloo 是否就緒，以及正在服務的 coding agent 工作階段。在 Figma 中選取一個圖層時，它還會顯示這個圖層從頁面開始的路徑，以及它的直接子層。讀取子層時，圖層面板中的這個圖層可能會短暫展開，Figloo 會再把它收合。
 
 「Copy prompt for the agent」會複製一段文字，讓你在描述任務之前貼到 coding agent 中。這段文字寫出檔案、分頁與選取的圖層，並告訴 agent 先使用哪些 Figloo 工具。選取的圖層是畫布上或 section 中的 frame，例如一個畫面時，提示會說明你要實作這一頁，並請 agent 先為它建立快照。沒有選取時，這段提示會請 agent 自行探索檔案。複製之前，popup 視窗會先顯示提示內容。
 
@@ -150,6 +152,8 @@ pnpm --filter @figloo/extension icons
 
 典型的流程是：先呼叫 `get_status`，接著用 `list_pages` 與 `explore_page`，使用者有選取時改用 `get_anchor`。然後用 `capture` 看頁面或 frame，用 `get_neighbors` 找出重要的部分，用 `inspect_nodes` 取得精確數值，再用 `export_asset` 取得 icon 與圖片。每次呼叫都有上限，並回報用了多少次 UI 操作。要實作整個頁面時，改為對頁面的 frame 呼叫 `snapshot_layer`，再用 `query_snapshot` 查詢細節。
 
+開著多個 Figma 分頁時，從分頁開始的工具要指定分頁的 `tabId`。從 popup 視窗複製的提示會寫出分頁；沒有提示時，`get_status` 會請 agent 向使用者確認要用哪個檔案。
+
 Figma 只在分頁可見時套用選取、展開、縮放與切換頁面。讀取頁面、選取與已展開的圖層，在背景分頁也能運作；`get_visual_neighbors`、`inspect_nodes`、`capture`、`export_asset`、`snapshot_layer`、切換頁面與展開收合的圖層，則會回報 `TAB_IN_BACKGROUND`，直到 Figma 分頁回到畫面上。把 Figma 放在 agent 視窗旁邊就夠了。這些工具會依序選取圖層，`capture` 還會縮放畫面；之後會還原使用者的選取，包括同時選取的多個圖層，但不會還原縮放。
 
 ## 開發
@@ -166,7 +170,7 @@ pnpm --filter @figloo/mcp docs:tools   # 修改工具後重新產生 docs/mcp-to
 
 `docs/mcp-tools.md` 與伺服器註冊的工具不一致時，`pnpm test` 會失敗。
 
-整合測試 `tests/integration/get-status.e2e.mjs` 會以建置好的擴充功能啟動 Playwright 的 Chromium，透過選項頁面配對，以訪客身分開啟 Figma 檔案，並在 MCP 程序重新啟動前後檢查 `get_status`。它需要網路連線、已建置的 workspace、先下載瀏覽器，以及一個知道連結就能檢視的 Figma 設計檔。連結不進版控：把範例檔複製成 git 會忽略的 `tests/integration/.env.local` 並填入連結，或改設定 `FIGLOO_E2E_FIGMA_URL`：
+整合測試 `tests/integration/get-status.e2e.mjs` 會以建置好的擴充功能啟動 Playwright 的 Chromium，透過選項頁面配對，以訪客身分開啟 Figma 檔案，並在 MCP 程序重新啟動前後，以及第二個伺服器接手又結束時，檢查 `get_status`。它需要網路連線、已建置的 workspace、先下載瀏覽器，以及一個知道連結就能檢視的 Figma 設計檔。連結不進版控：把範例檔複製成 git 會忽略的 `tests/integration/.env.local` 並填入連結，或改設定 `FIGLOO_E2E_FIGMA_URL`：
 
 ```sh
 pnpm exec playwright install chromium
@@ -204,7 +208,7 @@ release/             pnpm package 的輸出（不提交）
 
 - **`get_status`**：請 agent 呼叫它。它會回報 bridge、擴充功能的連線，以及每個 Figma 分頁的就緒狀態與原因，並附上說明下一步的 `hint`。
 - **工具列圖示與 popup 視窗**：提示文字與 popup 視窗會顯示目前分頁的就緒狀態與 agent 連線，兩者內容相同。
-- **選項頁面**：顯示連線狀態與最後一次的連線錯誤。
+- **選項頁面**：顯示連線狀態、Figloo 正在服務的 agent 工作階段、最近一次在工作階段之間交接的時間，以及最後一次的連線錯誤。
 - **Service worker 主控台**：在 `chrome://extensions`（或 `arc://extensions`）的 Figloo 卡片上點「service worker」。
 - **伺服器日誌**：伺服器每次被呼叫時，會在 stderr 寫一行，包含數量、UI 操作次數與耗時，但不含圖層名稱。要查看時，請在沒有 agent 工作階段執行伺服器的情況下，在終端機手動執行，例如 `node apps/mcp/dist/index.js`。
 
@@ -219,4 +223,6 @@ release/             pnpm package 的輸出（不提交）
 - `export_asset` 回報 `EXPORT_PENDING`：瀏覽器正在等待儲存備援的下載，通常是停在另存新檔的對話框。請確認儲存，或關閉「每次下載前詢問儲存位置」。
 - `snapshot_layer` 回報 `SUBTREE_TOO_LARGE`：這個圖層中有超過 400 個圖層。請改為對訊息中列出的某個子層建立快照。
 - 在 Codex 中，`snapshot_layer` 在 60 秒後失敗：請調高 `tool_timeout_sec`，見[在 agent 中註冊 MCP 伺服器](#2-在-agent-中註冊-mcp-伺服器)。
-- `get_status` 回報連接埠 47129 已被占用：另一個 agent 工作階段已經在執行 Figloo，而同一時間只能有一個伺服器服務擴充功能。請關閉另一個工作階段，再重新啟動 agent。
+- 工具回報 `BUSY` 並寫出另一個工作階段：Figloo 正在服務那個工作階段，它正在工作，或在 10 秒內用過 Figloo。稍後再試，或先在那個工作階段完成工作。
+- `get_status` 或工具說連接埠由執行舊版 Figloo 的工作階段持有：那個工作階段啟動的是 Figloo 0.1.0，無法交接。請重新啟動或關閉那個工作階段。
+- 工具說持有 Figloo 的工作階段沒有回應：那個工作階段的伺服器卡住了。請關閉那個工作階段。

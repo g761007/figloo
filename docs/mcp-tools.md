@@ -22,11 +22,11 @@ No parameters.
 
 ## get_anchor
 
-Start exploring from the layers the user selected in a Figma tab. Returns the selected layers (the anchors) and a contextId for get_neighbors. anchor is the first selected layer; anchors lists every selected layer found, in layers panel order, at most 20. Fewer anchors than selectionCount means the rest are hidden in collapsed groups; ask the user to reveal them if they matter. Use a tabId from get_status.
+Start exploring from the layers the user selected in a Figma tab. Returns the selected layers (the anchors) and a contextId for get_neighbors. anchor is the first selected layer; anchors lists every selected layer found, in layers panel order, at most 20. Fewer anchors than selectionCount means the rest are hidden in collapsed groups; ask the user to reveal them if they matter. When the user pasted a Figloo prompt, use its tabId; otherwise take one from get_status.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `tabId` | integer | yes | Figma tab from get_status |
+| `tabId` | integer | yes | Figma tab: the tabId in the prompt the user pasted, or one from get_status |
 
 | Result field | Type |
 |---|---|
@@ -70,7 +70,7 @@ List the pages of the Figma file open in a tab and which one is shown. Works whi
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `tabId` | integer | yes | Figma tab from get_status |
+| `tabId` | integer | yes | Figma tab: the tabId in the prompt the user pasted, or one from get_status |
 
 | Result field | Type |
 |---|---|
@@ -84,7 +84,7 @@ Open a page of the Figma file (the shown page when page is omitted) and list the
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `tabId` | integer | yes | Figma tab from get_status |
+| `tabId` | integer | yes | Figma tab: the tabId in the prompt the user pasted, or one from get_status |
 | `page` | string | no | Page name from list_pages |
 | `limit` | integer 1 to 50 | no |  |
 

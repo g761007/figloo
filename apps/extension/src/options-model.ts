@@ -1,4 +1,4 @@
-import { sessionLabel } from "@figloo/protocol";
+import { sessionLabel } from "@figloo/protocol/session-label";
 import type { ConnectionState } from "./state.js";
 
 /** The connection details the options page shows. */

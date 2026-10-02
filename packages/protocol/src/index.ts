@@ -150,12 +150,8 @@ export type SessionIdentity = z.infer<typeof SessionIdentitySchema>;
 /** Close code telling the extension the port moved to another session's server, which it should reconnect to right away. */
 export const HANDED_OVER_CLOSE_CODE = 4010;
 
-/** Names a session the way the user sees it: client · project folder (start time). */
-export function sessionLabel(session: SessionIdentity): string {
-  const started = new Date(session.startedAt);
-  const time = `${String(started.getHours()).padStart(2, "0")}:${String(started.getMinutes()).padStart(2, "0")}`;
-  return `${session.client ? `${session.client} · ` : ""}${session.project} (started ${time})`;
-}
+// Also exported as @figloo/protocol/session-label, so that the popup and options pages can use it without bundling zod.
+export { sessionLabel } from "./session-label.js";
 
 // Messages sent by the extension to the local bridge.
 export const HelloMessageSchema = z.object({

@@ -155,7 +155,7 @@ describe("handover between sessions", () => {
 describe("holder endpoints", () => {
   it("reports the holder's session and whether it is busy", async () => {
     const alpha = await bridgeOn(0, "alpha");
-    expect(await call(alpha.port, "GET", "/holder", auth)).toEqual({ status: 200, body: { session: alpha.session, busy: false, lastActivityAt: null } });
+    expect(await call(alpha.port, "GET", "/holder", auth)).toEqual({ status: 200, body: { session: alpha.session, busy: false, lastActivityAt: null, tabs: [] } });
     await expect(alpha.request("refresh_tabs")).rejects.toMatchObject({ code: "NOT_CONNECTED" });
     expect((await call(alpha.port, "GET", "/holder", auth)).body).toMatchObject({ busy: true, lastActivityAt: expect.any(Number) });
   });

@@ -12,9 +12,12 @@ export function overallStatus(connected: boolean, tabs: TabStatus[]): Connection
 
 /** A one-line next step for the agent, or null when nothing needs attention. */
 export function statusHint(report: StatusReport): string | null {
+  const usable = report.tabs.filter((tab) => tab.readiness === "READY" || tab.readiness === "DEGRADED").length;
+  const choose = usable > 1 ? `${usable} Figma design tabs are open: use the tabId in the prompt the user pasted, or ask the user which file to work on.` : null;
   if (report.bridge.role === "standby") {
     if (report.bridge.holder) {
-      return `Figloo is serving ${sessionLabel(report.bridge.holder)} right now. Any Figloo tool that needs Figma takes over once that session has been idle for 10 seconds.`;
+      const serving = `Figloo is serving ${sessionLabel(report.bridge.holder)} right now; tabs are as that session last saw them. Any Figloo tool that needs Figma takes over once that session has been idle for 10 seconds.`;
+      return [serving, choose].filter(Boolean).join(" ");
     }
     return `The local bridge is not listening on port ${report.bridge.port}${report.bridge.error ? `: ${report.bridge.error}` : ""}.`;
   }
@@ -27,8 +30,8 @@ export function statusHint(report: StatusReport): string | null {
       return "A Figma tab is still loading. Call get_status again in a few seconds.";
     case "DEGRADED":
     case "INCOMPATIBLE":
-      return report.tabs.find((tab) => tab.readiness === report.status)?.detail ?? null;
+      return [report.tabs.find((tab) => tab.readiness === report.status)?.detail, choose].filter(Boolean).join(" ") || null;
     default:
-      return null;
+      return choose;
   }
 }

@@ -63,7 +63,7 @@ For Claude Code, register it once for all your projects, then start a new sessio
 claude mcp add -s user figloo -- node /absolute/path/to/figloo/apps/mcp/dist/index.js
 ```
 
-With the release file, use its path instead, for example `node /absolute/path/to/figloo-mcp-0.1.0.mjs`. In a session, `/mcp` shows whether the server connected.
+With the release file, use its path instead, for example `node /absolute/path/to/figloo-mcp-0.2.0.mjs`. In a session, `/mcp` shows whether the server connected.
 
 For other MCP clients, a configuration like this starts the server (replace the path):
 
@@ -87,7 +87,9 @@ args = ["/absolute/path/to/figloo/apps/mcp/dist/index.js"]
 tool_timeout_sec = 300
 ```
 
-The server speaks MCP over stdio and, in the same process, listens on `ws://127.0.0.1:47129` for the extension. Set `FIGLOO_PORT` or edit `port` in the config file to change the port. If the port is taken, `get_status` reports the error instead of the server crashing.
+The server speaks MCP over stdio and, in the same process, listens on `ws://127.0.0.1:47129` for the extension. Set `FIGLOO_PORT` or edit `port` in the config file to change the port. If another program holds the port, `get_status` reports it instead of the server crashing.
+
+Several agent sessions can use Figloo, one at a time. Each session starts its own server; one of them, the holder, listens on the port and serves the extension, and the others stand by. When a tool in a standby session needs Figma, that session takes the extension over once the holder has been idle for 10 seconds. While the holder is working, the tool returns `BUSY` and names the session Figloo is working for. When the holder exits, a standby session takes over on its own within a few seconds. Sessions are named after the agent, the project folder, and when they started, for example `Claude Code · shop (started 09:15)`; `get_status`, the toolbar icon, the popup, and the options page show which one Figloo serves. Servers from Figloo 0.1.0 cannot hand over, so restart sessions that still run one.
 
 ### 3. Pair once
 
@@ -108,7 +110,7 @@ This prints the pairing token and port stored in `~/.figloo/config.json` (create
 
 ## Toolbar icon
 
-The icon shows, for the tab you are looking at, whether Figloo can use it. Hover over it for the reason and for whether a coding agent is connected.
+The icon shows, for the tab you are looking at, whether Figloo can use it. Hover over it for the reason and for which coding agent session Figloo serves, if any.
 
 | Icon | Meaning |
 |---|---|
@@ -117,7 +119,7 @@ The icon shows, for the tab you are looking at, whether Figloo can use it. Hover
 | Gray | Not a Figma design file, or the file is still loading. |
 | Gray with a red `!` | A Figma design page Figloo cannot read. |
 
-Click the icon to open the popup. It shows the file, the page, and whether Figloo and the coding agent are ready. When one layer is selected in Figma, it also shows the layer's path from the page and its direct children. Reading the children can briefly expand that layer in the layers panel; Figloo collapses it again.
+Click the icon to open the popup. It shows the file, the page, whether Figloo is ready, and which coding agent session it serves. When one layer is selected in Figma, it also shows the layer's path from the page and its direct children. Reading the children can briefly expand that layer in the layers panel; Figloo collapses it again.
 
 "Copy prompt for the agent" copies text to paste into your coding agent before you describe the task. It names the file, the tab, and the selected layer, and tells the agent which Figloo tools to start with. When the selected layer is a frame on the canvas or in a section, such as a screen, the prompt says you want to implement that page and asks the agent for a snapshot of it first. Without a selection, the prompt asks the agent to explore the file on its own. The popup shows the prompt before you copy it.
 
@@ -148,6 +150,8 @@ The full contract, with every parameter, result field, and error code, is in [do
 
 A typical request goes: `get_status`, then `list_pages` and `explore_page` (or `get_anchor` when the user selected something), `capture` to see a page or frame, `get_neighbors` to find the parts that matter, `inspect_nodes` for their exact values, and `export_asset` for icons and images. Each call is bounded and reports how many UI operations it used. To implement a whole page, call `snapshot_layer` on its frame instead, then `query_snapshot` for the details.
 
+When several Figma tabs are open, the tools that start from a tab take its `tabId`. The prompt copied from the popup names its tab; without one, `get_status` asks the agent to check with the user which file to use.
+
 Figma applies selection, expansion, zoom, and page changes only while its tab is visible. Reading pages, the selection, and already expanded layers works from a background tab; `get_visual_neighbors`, `inspect_nodes`, `capture`, `export_asset`, `snapshot_layer`, page switches, and expanding collapsed layers return `TAB_IN_BACKGROUND` until the Figma tab is on screen. Keeping Figma beside the agent window is enough. These tools select layers one after another, and `capture` zooms the view; the user's selection, including several selected layers, is put back afterwards, the zoom is not.
 
 ## Development
@@ -164,7 +168,7 @@ pnpm --filter @figloo/mcp docs:tools   # regenerate docs/mcp-tools.md after chan
 
 `pnpm test` fails when `docs/mcp-tools.md` no longer matches the tools the server registers.
 
-The integration test (`tests/integration/get-status.e2e.mjs`) launches Playwright's Chromium with the built extension, pairs it through the options page, opens a Figma file as a guest, and checks `get_status` before and after restarting the MCP process. It needs network access, a built workspace, the browser download, and a Figma design file that anyone with the link can view. The link is not committed: copy the example file to `tests/integration/.env.local`, which git ignores, and fill it in, or set `FIGLOO_E2E_FIGMA_URL` instead:
+The integration test (`tests/integration/get-status.e2e.mjs`) launches Playwright's Chromium with the built extension, pairs it through the options page, opens a Figma file as a guest, and checks `get_status` before and after restarting the MCP process, and while a second server takes the extension over and exits again. It needs network access, a built workspace, the browser download, and a Figma design file that anyone with the link can view. The link is not committed: copy the example file to `tests/integration/.env.local`, which git ignores, and fill it in, or set `FIGLOO_E2E_FIGMA_URL` instead:
 
 ```sh
 pnpm exec playwright install chromium
@@ -202,7 +206,7 @@ Where to look:
 
 - **`get_status`**: ask the agent to call it. It reports the bridge, the extension connection, and each Figma tab's readiness with the reason, plus a `hint` with the next step.
 - **Toolbar icon and popup**: the tooltip and the popup show the same readiness and agent connection for the current tab.
-- **Options page**: shows the connection state and the last connection error.
+- **Options page**: shows the connection state, the agent session Figloo serves, the last handover between sessions, and the last connection error.
 - **Service worker console**: on `chrome://extensions` (or `arc://extensions`), click "service worker" on the Figloo card.
 - **Server log**: the server writes one line per call to stderr, with counts, UI operations, and time, but no layer names. To read it, run the server by hand in a terminal, for example `node apps/mcp/dist/index.js`, while no agent session runs one.
 
@@ -217,4 +221,6 @@ Common problems:
 - `export_asset` returns `EXPORT_PENDING`: the browser is waiting to save the fallback download, usually behind a Save dialog. Confirm it, or turn off asking where to save each file.
 - `snapshot_layer` returns `SUBTREE_TOO_LARGE`: the layer holds more than 400 layers. Snapshot one of the children the message lists instead.
 - `snapshot_layer` fails after 60 seconds in Codex: raise `tool_timeout_sec`, see [Register the MCP server](#2-register-the-mcp-server-with-your-agent).
-- `get_status` reports that port 47129 is already in use: another agent session already runs Figloo, and only one server can serve the extension at a time. Close the other session, then start the agent again.
+- A tool returns `BUSY` and names another session: Figloo is serving that session, which is working or used Figloo in the last 10 seconds. Retry in a moment, or finish the work there first.
+- `get_status` or a tool says the port is held by a session running an older Figloo: that session started Figloo 0.1.0, which cannot hand over. Restart that session, or close it.
+- A tool says the session holding Figloo did not answer: that session's server is stuck. Close that session.

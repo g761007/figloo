@@ -1,4 +1,5 @@
-import { sessionLabel, type TabStatus } from "@figloo/protocol";
+import type { TabStatus } from "@figloo/protocol";
+import { sessionLabel } from "@figloo/protocol/session-label";
 import type { ConnectionState } from "./state.js";
 
 /** Toolbar icon sets. Gray is also the manifest default, so tabs without a design file show it. */

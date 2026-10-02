@@ -72,6 +72,8 @@ describe("get_status", () => {
     const holder = await startBridge({ project: "alpha" });
     bridges.push(holder);
     const ext = await pairFakeExtension(holder.port);
+    ext.send({ type: "tabs", tabs: [sampleTab()] });
+    await new Promise((r) => setTimeout(r, 20));
     const standby = await startBridge({ port: holder.port, project: "beta" });
     bridges.push(standby);
 
@@ -79,7 +81,11 @@ describe("get_status", () => {
 
     expect(report.bridge).toMatchObject({ listening: false, role: "standby", holder: holder.session, error: null });
     expect(report.hint).toContain(`Figloo is serving ${sessionLabel(holder.session)}`);
+    // The holder's tabs give the agent a tabId to call a tool with, which then takes over.
+    expect(report.tabs.map((tab) => tab.tabId)).toEqual([7]);
+    expect(report.tabsFresh).toBe(false);
     expect(holder.connected).toBe(true);
+    expect(ext.messages.filter((m) => m.type === "request")).toEqual([]);
     ext.ws.close();
   });
 
@@ -97,6 +103,22 @@ describe("get_status", () => {
     expect(report.bridge).toMatchObject({ role: "standby", holder: null });
     expect(report.hint).toMatch(/older Figloo.*restart that session/);
     await new Promise((resolve) => old.close(resolve));
+  });
+
+  it("asks which file to use when several design tabs are open", async () => {
+    const bridge = await startBridge();
+    bridges.push(bridge);
+    const ext = await pairFakeExtension(bridge.port);
+    void ext.next((m) => m.type === "request").then((request) => {
+      const tabs = [sampleTab(), sampleTab({ tabId: 8, fileKey: "def" }), sampleTab({ tabId: 9, readiness: "LOADING" })];
+      ext.send({ type: "response", id: (request as { id: string }).id, ok: true, result: { tabs } });
+    });
+
+    const report = await callGetStatus(bridge);
+
+    expect(report.status).toBe("READY");
+    expect(report.hint).toBe("2 Figma design tabs are open: use the tabId in the prompt the user pasted, or ask the user which file to work on.");
+    ext.ws.close();
   });
 
   it("reports NO_DESIGN_TAB when the extension is connected without Figma tabs", async () => {

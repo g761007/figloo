@@ -105,8 +105,9 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
       description:
         "Start exploring from the layers the user selected in a Figma tab. Returns the selected layers (the anchors) and a contextId for get_neighbors. " +
         `anchor is the first selected layer; anchors lists every selected layer found, in layers panel order, at most ${MAX_ANCHORS}. ` +
-        "Fewer anchors than selectionCount means the rest are hidden in collapsed groups; ask the user to reveal them if they matter. Use a tabId from get_status.",
-      inputSchema: { tabId: z.number().int().describe("Figma tab from get_status") },
+        "Fewer anchors than selectionCount means the rest are hidden in collapsed groups; ask the user to reveal them if they matter. " +
+          "When the user pasted a Figloo prompt, use its tabId; otherwise take one from get_status.",
+      inputSchema: { tabId: z.number().int().describe("Figma tab: the tabId in the prompt the user pasted, or one from get_status") },
       outputSchema: GetAnchorOutputSchema,
     },
     async ({ tabId }) => {
@@ -217,7 +218,7 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
     "list_pages",
     {
       description: "List the pages of the Figma file open in a tab and which one is shown. Works while the tab is in the background.",
-      inputSchema: { tabId: z.number().int().describe("Figma tab from get_status") },
+      inputSchema: { tabId: z.number().int().describe("Figma tab: the tabId in the prompt the user pasted, or one from get_status") },
       outputSchema: z.object({ tabId: z.number().int(), fileKey: z.string(), pages: ListPagesResultSchema.shape.pages }),
     },
     async ({ tabId }) => {
@@ -239,7 +240,7 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
         "Switching pages needs the Figma tab visible on screen and changes the page the user sees. " +
         "When hasMore is true, continue with get_neighbors(ref = nodes[0].ref, relation = siblings, cursor = nextCursor).",
       inputSchema: {
-        tabId: z.number().int().describe("Figma tab from get_status"),
+        tabId: z.number().int().describe("Figma tab: the tabId in the prompt the user pasted, or one from get_status"),
         page: z.string().optional().describe("Page name from list_pages"),
         limit: z.number().int().min(1).max(MAX_NEIGHBOR_LIMIT).optional(),
       },

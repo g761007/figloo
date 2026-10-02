@@ -9,7 +9,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { chromium } from "playwright";
 import { FIGMA_URL } from "./figma-url.mjs";
-import { EXTENSION_ID } from "../../packages/protocol/dist/index.js";
+import { EXTENSION_ID, sessionLabel } from "../../packages/protocol/dist/index.js";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 // `pnpm test:release` points these at the unzipped extension and the bundled server in release/.
@@ -36,11 +36,12 @@ function freePort() {
   });
 }
 
-async function startMcp(configDir, port) {
+/** Starts a server the way an agent session in the project folder `project` would. */
+async function startMcp(configDir, port, project = "first") {
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [MCP_ENTRY],
-    env: { ...process.env, FIGLOO_CONFIG_DIR: configDir, FIGLOO_PORT: String(port) },
+    env: { ...process.env, FIGLOO_CONFIG_DIR: configDir, FIGLOO_PORT: String(port), CLAUDE_PROJECT_DIR: `/figloo-e2e/${project}` },
     stderr: "pipe",
   });
   transport.stderr?.on("data", (chunk) => process.stderr.write(`[mcp] ${chunk}`));
@@ -110,6 +111,9 @@ try {
   let status = await getStatus(client);
   assert(status.status === "DISCONNECTED", `initial status is ${status.status}`);
   assert(status.bridge.listening === true, "bridge is listening");
+  assert(status.bridge.role === "holder" && status.bridge.holder?.client === "figloo-e2e" && status.bridge.holder.project === "first", `the server holds the bridge and names its session (got ${JSON.stringify(status.bridge)})`);
+  // The extension names the session it serves wherever it shows the agent connection.
+  let agentLine = `Agent: ${sessionLabel(status.bridge.holder)}`;
   log(`mcp up on port ${port}, status ${status.status}`);
 
   context = await launchBrowser();
@@ -175,7 +179,7 @@ try {
   action = await actionState(worker, figmaTabId);
   log(`toolbar (guest default): badge=${JSON.stringify(action.badge)} title=${JSON.stringify(action.title)}`);
   assert(action.badge === "!" && action.title.startsWith("Figloo: limited on"), "a degraded tab gets the colored icon with a warning badge");
-  assert(action.title.includes("minimized") && action.title.endsWith("Agent: connected"), "the tooltip says why and that the agent is connected");
+  assert(action.title.includes("minimized") && action.title.endsWith(agentLine), `the tooltip says why and which agent session is connected (got ${JSON.stringify(action.title)})`);
 
   // Expand the UI the way a user would. No tab event fires for this, so only the content script's
   // change notification can update the toolbar; get_status is not called until it has.
@@ -259,7 +263,7 @@ try {
   }));
   assert(shown.file.length > 0 && shown.prompt.includes(`File: ${shown.file} (tab ${figmaTabId})`), `the popup names the file and its tab (got ${JSON.stringify(shown)})`);
   assert(/guest session cannot select layers/.test(shown.readiness), `the popup shows the guest limitation (got ${shown.readiness})`);
-  assert(shown.agent === "Agent: connected", `the popup shows the agent connection (got ${shown.agent})`);
+  assert(shown.agent === agentLine, `the popup names the agent session (got ${shown.agent})`);
   assert(/No layer is selected/.test(shown.hint) && shown.prompt.includes(`Call list_pages and explore_page with tabId ${figmaTabId}`), `without a selection the popup offers a prompt to explore the file (got ${JSON.stringify(shown)})`);
   await popup.click("button.copy");
   const copyOutcome = await popup
@@ -317,13 +321,59 @@ try {
     { timeoutMs: 90_000, intervalMs: 3_000, label: "the extension to reconnect after the MCP restart" },
   );
   log(`reconnected after restart, status ${status.status}`);
+  agentLine = `Agent: ${sessionLabel(status.bridge.holder)}`;
   action = await waitFor(
     async () => {
       const value = await actionState(worker, figmaTabId);
-      return { ok: value.title.endsWith("Agent: connected"), value };
+      return { ok: value.title.endsWith(agentLine), value };
     },
     { timeoutMs: 10_000, intervalMs: 500, label: "the tooltip to report the agent as connected again" },
   );
+
+  // A second session's server stands by, takes the extension over once the first session has been
+  // idle for 10 seconds, and the first takes it back on its own when the second exits.
+  const second = await startMcp(configDir, port, "second");
+  try {
+    const standby = await getStatus(second);
+    assert(standby.bridge.role === "standby" && standby.bridge.holder?.project === "first", `the second server stands by and names the holder (got ${JSON.stringify(standby.bridge)})`);
+    assert(standby.tabs.some((t) => t.tabId === figmaTabId) && standby.tabsFresh === false, `the second server lists the holder's tabs without taking over (got ${JSON.stringify(standby.tabs.map((t) => t.tabId))})`);
+    await new Promise((r) => setTimeout(r, 10_500));
+    const started = Date.now();
+    // After the reload the guest's Figma UI is minimized again, so the tab may answer UI_NOT_READY;
+    // any answer from the tab shows that the request went through the second server.
+    const taken = toolErrorOf(await second.callTool({ name: "list_pages", arguments: { tabId: figmaTabId } }));
+    assert(!["NOT_CONNECTED", "BUSY", "TIMEOUT"].includes(taken?.code), `the second session takes the extension over and reaches the tab (got ${JSON.stringify(taken)})`);
+    log(`second session took the extension over in ${Date.now() - started} ms`);
+    const busy = toolErrorOf(await client.callTool({ name: "list_pages", arguments: { tabId: figmaTabId } }));
+    assert(busy?.code === "BUSY" && busy.message.includes("second"), `the first session hears that Figloo is working for the second (got ${JSON.stringify(busy)})`);
+    const secondLabel = sessionLabel((await getStatus(second)).bridge.holder);
+    action = await waitFor(
+      async () => {
+        const value = await actionState(worker, figmaTabId);
+        return { ok: value.title.endsWith(`Agent: ${secondLabel}`), value };
+      },
+      { timeoutMs: 10_000, intervalMs: 500, label: "the tooltip to name the second session" },
+    );
+    const optionsText = await waitFor(
+      async () => {
+        const value = await options.evaluate(() => document.querySelector("#status")?.textContent ?? "");
+        return { ok: value.includes(`Agent session: ${secondLabel}`) && value.includes("Last handover between sessions:"), value };
+      },
+      { timeoutMs: 10_000, intervalMs: 500, label: "the options page to name the second session and the handover" },
+    );
+    log(`options page after the handover: ${JSON.stringify(optionsText)}`);
+  } finally {
+    await second.close();
+  }
+  // Without calling get_status, which would take the free port itself: the first server's retry must.
+  action = await waitFor(
+    async () => {
+      const value = await actionState(worker, figmaTabId);
+      return { ok: value.title.endsWith(agentLine), value };
+    },
+    { timeoutMs: 15_000, intervalMs: 500, label: "the first session to take the extension back after the second exits" },
+  );
+  log("the first session took the extension back after the second exited");
 
   // Leaving the design file must restore the default icon for that tab.
   await figma.goto("about:blank");

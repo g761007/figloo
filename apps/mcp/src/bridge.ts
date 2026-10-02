@@ -9,6 +9,7 @@ import {
   HANDED_OVER_CLOSE_CODE,
   PROTOCOL_VERSION,
   SessionIdentitySchema,
+  TabStatusSchema,
   protocolCompatible,
   sessionLabel,
   type BridgeErrorCode,
@@ -60,7 +61,13 @@ interface Pending {
 }
 
 /** What the holder reports about itself on GET /holder and in answer to POST /handover. */
-const HolderInfoSchema = z.object({ session: SessionIdentitySchema, busy: z.boolean(), lastActivityAt: z.number().nullable() });
+const HolderInfoSchema = z.object({
+  session: SessionIdentitySchema,
+  busy: z.boolean(),
+  lastActivityAt: z.number().nullable(),
+  /** The tabs the extension last pushed to the holder, so a standby session can name a tabId. */
+  tabs: z.array(TabStatusSchema).default([]),
+});
 type HolderInfo = z.infer<typeof HolderInfoSchema>;
 
 type HolderAnswer = { status: number; body: unknown } | "unreachable" | "timeout";
@@ -100,8 +107,9 @@ export class Bridge {
   private lastSeen = 0;
   private heartbeat: NodeJS.Timeout | null = null;
   private readonly pending = new Map<string, Pending>();
-  /** The session holding the port while this server stands by, when known. */
+  /** The session holding the port while this server stands by, when known, and its tabs. */
   private otherHolder: SessionIdentity | null = null;
+  private otherTabs: TabStatus[] = [];
   private inflight = 0;
   private lastActivityAt: number | null = null;
   private retryTimer: NodeJS.Timeout | null = null;
@@ -141,7 +149,9 @@ export class Bridge {
     return this.info;
   }
 
+  /** While standing by, the holder's tabs as of the last lookupHolder. */
   getTabs(): { tabs: TabStatus[]; updatedAt: number | null } {
+    if (!this.listening) return { tabs: this.otherTabs, updatedAt: null };
     return { tabs: this.tabs, updatedAt: this.tabsUpdatedAt };
   }
 
@@ -197,10 +207,12 @@ export class Bridge {
     const info = typeof answer === "object" && answer.status === 200 ? HolderInfoSchema.safeParse(answer.body) : null;
     if (info?.success) {
       this.otherHolder = info.data.session;
+      this.otherTabs = info.data.tabs;
       this.listenError = null;
       return;
     }
     this.otherHolder = null;
+    this.otherTabs = [];
     this.listenError = this.holderProblem(answer).message;
   }
 
@@ -209,7 +221,7 @@ export class Bridge {
   }
 
   private holderInfo(): HolderInfo {
-    return { session: this.session, busy: this.busy, lastActivityAt: this.lastActivityAt };
+    return { session: this.session, busy: this.busy, lastActivityAt: this.lastActivityAt, tabs: this.tabs };
   }
 
   /** Listens on the port once; concurrent callers share the attempt. */
@@ -248,6 +260,7 @@ export class Bridge {
         this.listening = true;
         this.listenError = null;
         this.otherHolder = null;
+        this.otherTabs = [];
         if (this.retryTimer) clearTimeout(this.retryTimer);
         this.retryTimer = null;
         this.options.log(`bridge listening on ws://127.0.0.1:${this.port}`);
