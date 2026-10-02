@@ -48,7 +48,9 @@ Done when every top-level layer belongs to a section of the plan.
 
 ### 5. Map to the project
 
-Search the project for what it already has: components, color and typography tokens, the spacing scale, radii, icons and images, and how it adds new ones (its README, contributing notes, or existing code). Then map the plan onto them:
+Call `summarize_snapshot` with the snapshot id. It lists every color with what it colors, every text style, gap, padding side, corner radius, border width, and shadow, each with how many layers use it, and the instances by name with their component properties.
+
+Search the project for what it already has: components, color and typography tokens, the spacing scale, radii, icons and images, and how it adds new ones (its README, contributing notes, or existing code). Then map the summary and the plan onto them:
 
 - Every color, text style, spacing value, and radius goes through a token: the existing one with that value or meaning (a color given as a style name maps to the token of that name), or a new token added the way the project adds them.
 - Every repeated pattern uses an existing component, extended the way the project extends them, or a new component in the project's style.
@@ -89,6 +91,7 @@ Use steps 1 and 2 to reach the layer, then:
 - `capture` for a picture of a layer or the page.
 - `get_neighbors` for structure, a page at a time; `get_visual_neighbors` for what sits beside a layer on screen.
 - `inspect_nodes` for the exact values of up to 5 layers. For more than that, or a whole page, take a snapshot and use `query_snapshot`.
+- `summarize_snapshot` on a snapshot for what a page uses overall: its colors, text styles, spacing, radii, shadows, and components.
 
 Quote values as Figma shows them.
 

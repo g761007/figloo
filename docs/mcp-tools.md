@@ -238,6 +238,31 @@ Look layers up in a snapshot from snapshot_layer. Reads the saved file only, so 
 | `hasMore` | boolean |
 | `nextCursor` | string or null |
 
+## summarize_snapshot
+
+Summarize the design values of a snapshot from snapshot_layer, to map them onto the project's tokens and components before writing code: colors with what they color (fill, text, border, shadow), text styles, auto layout gaps, padding sides, corner radii, border widths, shadows, and the instances it uses by name with each combination of their component properties. Figma names an instance after its component unless the designer renamed it. Reads the saved file only, like query_snapshot. Values are exactly as Figma shows them; a color is a hex code, or the name of a color style where the panel shows one. Each value says how many layers use it and gives a few of their refs to look up with query_snapshot. Hidden layers are left out. Long lists are cut to fit, the values fewest layers use first, and truncated says so; pass under to summarize one section.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `snapshot` | string | yes | The snapshot id from snapshot_layer |
+| `under` | string | no | A ref in the snapshot: only that layer and the layers inside it |
+
+| Result field | Type |
+|---|---|
+| `snapshot` | string |
+| `expiresAt` | string |
+| `layers` | integer, at least 0 |
+| `hiddenSkipped` | integer, at least 0 |
+| `colors` | array of object with value, count, refs, opacity, uses |
+| `typography` | array of object with font, weight, style, size, lineHeight, letterSpacing, count, refs |
+| `gaps` | array of object with value, count, refs |
+| `paddings` | array of object with value, count, refs |
+| `radii` | array of object with value, count, refs |
+| `borders` | array of object with value, count, refs |
+| `shadows` | array of object with properties, colors, count, refs |
+| `components` | array of object with name, count, refs, variants |
+| `truncated` | boolean |
+
 ## release_context
 
 Forget an exploration context and the refs it returned.

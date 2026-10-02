@@ -844,3 +844,45 @@ export const QuerySnapshotOutputSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 export type QuerySnapshotOutput = z.infer<typeof QuerySnapshotOutputSchema>;
+
+/** Layers with one value, as many as `count`, and a few of their refs to look up with query_snapshot. */
+const SummaryUseSchema = { count: z.number().int().positive(), refs: z.array(z.string()) };
+const SummaryValueSchema = z.object({ value: z.string(), ...SummaryUseSchema });
+
+export const SummaryColorUseSchema = z.enum(["fill", "text", "border", "shadow"]);
+export type SummaryColorUse = z.infer<typeof SummaryColorUseSchema>;
+
+/** What `summarize_snapshot` returns: a snapshot's design values and the instances it uses. */
+export const SummarizeSnapshotOutputSchema = z.object({
+  snapshot: z.string(),
+  expiresAt: z.string(),
+  /** Layers summarized: the snapshot's, or the `under` layer and those inside it, hidden ones left out. */
+  layers: z.number().int().nonnegative(),
+  hiddenSkipped: z.number().int().nonnegative(),
+  /** A hex code, or the name of a color style where the panel shows one, and what the layers use it for. */
+  colors: z.array(SummaryValueSchema.extend({ opacity: z.string().nullable(), uses: z.array(SummaryColorUseSchema) })),
+  /** Text styles, one per combination the panel shows for a text layer or one of its style runs. */
+  typography: z.array(
+    z.object({
+      font: z.string().nullable(),
+      weight: z.string().nullable(),
+      style: z.string().nullable(),
+      size: z.string().nullable(),
+      lineHeight: z.string().nullable(),
+      letterSpacing: z.string().nullable(),
+      ...SummaryUseSchema,
+    }),
+  ),
+  /** Auto layout gaps, padding sides, corner radii, and border widths, smallest first. */
+  gaps: z.array(SummaryValueSchema),
+  paddings: z.array(SummaryValueSchema),
+  radii: z.array(SummaryValueSchema),
+  borders: z.array(SummaryValueSchema),
+  /** Shadow and blur blocks of the panel, with their properties and colors as it shows them. */
+  shadows: z.array(z.object({ properties: z.array(InspectedPropertySchema), colors: z.array(InspectedColorSchema), ...SummaryUseSchema })),
+  /** Instances by name, which is their component's unless the designer renamed them, with each combination of component properties. */
+  components: z.array(z.object({ name: z.string(), ...SummaryUseSchema, variants: z.array(z.object({ properties: z.record(z.string(), z.string()), count: z.number().int().positive() })) })),
+  /** True when lists were cut to fit the result, the values fewest layers use first. */
+  truncated: z.boolean(),
+});
+export type SummarizeSnapshotOutput = z.infer<typeof SummarizeSnapshotOutputSchema>;

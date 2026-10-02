@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, describe, expect, it } from "vitest";
-import { GetAnchorOutputSchema, QuerySnapshotOutputSchema, SnapshotOutputSchema, type LayerNode, type RequestMessage, type SnapshotLayer } from "@figloo/protocol";
+import { GetAnchorOutputSchema, QuerySnapshotOutputSchema, SnapshotOutputSchema, SummarizeSnapshotOutputSchema, type LayerNode, type RequestMessage, type SnapshotLayer } from "@figloo/protocol";
 import type { Bridge } from "../src/bridge.js";
 import { MAX_OUTPUT_BYTES } from "../src/exploration.js";
 import { createServer } from "../src/server.js";
@@ -120,7 +120,7 @@ async function setup({ layers = screen, snapshot }: { layers?: SnapshotLayer[]; 
   const snap = async (args: Record<string, unknown>) => SnapshotOutputSchema.parse((await call("snapshot_layer", args)).structuredContent);
   const query = async (args: Record<string, unknown>) => QuerySnapshotOutputSchema.parse((await call("query_snapshot", args)).structuredContent);
   const snapshotsOf = () => requests.filter((request) => request.op === "snapshot_layer");
-  return { dir: join(dir, "snapshots"), clock, call, errorOf, anchor, snap, query, snapshotsOf };
+  return { dir: join(dir, "snapshots"), clock, requests, call, errorOf, anchor, snap, query, snapshotsOf };
 }
 
 describe("snapshot ids and files", () => {
@@ -324,5 +324,58 @@ describe("query_snapshot", () => {
     const error = errorOf(await call("query_snapshot", { snapshot, under: "999:1" }));
     expect(error.code).toBe("UNKNOWN_REF");
     expect(error.hint).toMatch(/outline/);
+  });
+});
+
+describe("summarize_snapshot", () => {
+  const colors = (value: string) => ({ kind: "colors", group: "appearance" as const, title: "Colors", properties: [], colors: [{ value, opacity: null }], text: null });
+  const styled: SnapshotLayer[] = [
+    screen[0]!,
+    layer("570:2", { name: "Header", type: "Auto layout", hasChildren: true, sections: [colors("#FFFFFF")] }),
+    layer("570:3", { name: "Title", type: "Text", depth: 2, parentRef: "570:2", sections: [colors("#111111")] }),
+    layer("570:4", { name: "Button", type: "Instance", depth: 2, parentRef: "570:2", position: 2, hasChildren: true, sections: [colors("#0055FF")] }),
+    layer("570:5", { name: "Marks", type: "Group", position: 2, hidden: true, sections: [colors("#FF0000")] }),
+  ];
+  const summarize = async (tools: Awaited<ReturnType<typeof setup>>, args: Record<string, unknown>) =>
+    SummarizeSnapshotOutputSchema.parse((await tools.call("summarize_snapshot", args)).structuredContent);
+
+  it("summarizes a saved snapshot without asking Figma, or one section of it with under", async () => {
+    const tools = await setup({ layers: styled });
+    const { snapshot } = await tools.snap({ contextId: await tools.anchor(), ref: "570:1" });
+    const asked = tools.requests.length;
+
+    const all = await summarize(tools, { snapshot });
+    expect(all).toMatchObject({ snapshot, layers: 4, hiddenSkipped: 1, truncated: false });
+    expect(all.colors.map((c) => [c.value, c.uses])).toEqual([
+      ["#0055FF", ["fill"]],
+      ["#111111", ["text"]],
+      ["#FFFFFF", ["fill"]],
+    ]);
+    expect(all.components).toEqual([{ name: "Button", count: 1, refs: ["570:4"], variants: [] }]);
+
+    // The section's own layer counts, as its background is part of the section.
+    const header = await summarize(tools, { snapshot, under: "570:2" });
+    expect(header.layers).toBe(3);
+    expect(header.colors.map((c) => c.value)).toEqual(["#0055FF", "#111111", "#FFFFFF"]);
+    expect(tools.requests.length).toBe(asked);
+  });
+
+  it("fits a large snapshot into one result, cutting the rarest values", async () => {
+    const many = [screen[0]!, ...Array.from({ length: 600 }, (_, i) => layer(`600:${i + 1}`, { name: `Row ${i + 1}`, position: i + 1, siblingCount: 600, sections: [colors(`#${String(i).padStart(6, "0")}`)] }))];
+    const tools = await setup({ layers: many });
+    const { snapshot } = await tools.snap({ contextId: await tools.anchor(), ref: "570:1" });
+    const result = await tools.call("summarize_snapshot", { snapshot });
+    expect(Buffer.byteLength((result.content as { text: string }[])[0]!.text)).toBeLessThanOrEqual(MAX_OUTPUT_BYTES);
+    expect(SummarizeSnapshotOutputSchema.parse(result.structuredContent)).toMatchObject({ layers: 601, truncated: true });
+  });
+
+  it("refuses an unknown section, a missing snapshot, and an expired one", async () => {
+    const tools = await setup({ layers: styled });
+    const { snapshot } = await tools.snap({ contextId: await tools.anchor(), ref: "570:1" });
+    const unknown = tools.errorOf(await tools.call("summarize_snapshot", { snapshot, under: "999:1" }));
+    expect(unknown).toMatchObject({ code: "UNKNOWN_REF", hint: expect.stringMatching(/outline/) });
+    expect(tools.errorOf(await tools.call("summarize_snapshot", { snapshot: "abc/1-1" })).code).toBe("SNAPSHOT_NOT_FOUND");
+    tools.clock.now += 24 * HOUR;
+    expect(tools.errorOf(await tools.call("summarize_snapshot", { snapshot })).code).toBe("SNAPSHOT_EXPIRED");
   });
 });

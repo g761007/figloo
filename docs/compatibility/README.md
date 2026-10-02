@@ -40,6 +40,7 @@
 | `export_asset` | 已驗證 SVG 與 PNG、設計師的設定、臨時設定與 ZIP；PDF 與 JPG 未驗證 | 需要 |
 | `snapshot_layer` | 已驗證，278 個圖層約 35 秒；需要開啟「Adapt content for screen readers」才能量到大部分圖層的位置。讀取期間顯示遮罩，可用「Stop」或 Esc 中止 | 開始時需要；讀取中進入背景會暫停，回到畫面後繼續 |
 | `query_snapshot` | 已驗證，只讀快照檔 | 否 |
+| `summarize_snapshot` | 已驗證，只讀快照檔；以本機三份真實快照核對，顏色、文字樣式與 instance 的數量都與另外統計的結果相同 | 否 |
 | 工具列圖示與 popup | 已驗證 | 點圖示時分頁本來就在畫面上 |
 | 多個 agent 工作階段的交接 | 已驗證，見驗證紀錄 | 否 |
 

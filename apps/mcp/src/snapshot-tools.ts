@@ -7,14 +7,17 @@ import {
   SNAPSHOT_TIME_BUDGET_MS,
   SnapshotOutputSchema,
   SnapshotResultSchema,
+  SummarizeSnapshotOutputSchema,
   type QuerySnapshotOutput,
   type Rect,
   type SnapshotLayer,
   type SnapshotOutput,
+  type SummarizeSnapshotOutput,
 } from "@figloo/protocol";
 import { BridgeError, type Bridge } from "./bridge.js";
 import type { ContextStore } from "./contexts.js";
 import type { ToolErrorResult } from "./export-asset.js";
+import { summarizeLayers } from "./snapshot-summary.js";
 import { isPlainRef, outlineLine, snapshotId, type SnapshotFile, type SnapshotStore } from "./snapshots.js";
 
 /** The tab gets 180 s, the rest covers messaging; one long request, no polling. */
@@ -84,6 +87,13 @@ function fitPage<T>(items: T[], offset: number, max: number, budget: number, bui
 }
 
 const textOf = (layer: SnapshotLayer) => layer.sections.find((section) => section.kind === "content")?.text ?? "";
+
+/** The layers inside the layer at `at`: in panel order they follow it until the depth comes back up. */
+function inside(layers: SnapshotLayer[], at: number): SnapshotLayer[] {
+  const depth = layers[at]!.depth;
+  const end = layers.findIndex((layer, index) => index > at && layer.depth <= depth);
+  return layers.slice(at + 1, end < 0 ? undefined : end);
+}
 const round = (rect: Rect | null): Rect | null =>
   rect && { x: Math.round(rect.x * 10) / 10, y: Math.round(rect.y * 10) / 10, width: Math.round(rect.width * 10) / 10, height: Math.round(rect.height * 10) / 10 };
 
@@ -233,10 +243,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         if (under !== undefined) {
           const at = matches.findIndex((layer) => layer.ref === under);
           if (at < 0) throw new SnapshotFailure("UNKNOWN_REF", `snapshot ${snapshot} has no layer ${under}`);
-          // Layers are in panel order, so the ones inside a layer follow it until the depth comes back up.
-          const depth = matches[at]!.depth;
-          const end = matches.findIndex((layer, index) => index > at && layer.depth <= depth);
-          matches = matches.slice(at + 1, end < 0 ? undefined : end);
+          matches = inside(matches, at);
         }
         if (type !== undefined) matches = matches.filter((layer) => layer.type?.toLowerCase() === type.toLowerCase());
         if (text !== undefined) {
@@ -262,6 +269,45 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
           hasMore: next !== null,
           nextCursor: next === null ? null : encodeQueryCursor(snapshot, next, query),
         }));
+        return { content: [{ type: "text" as const, text: JSON.stringify(output) }], structuredContent: output as unknown as Record<string, unknown> };
+      } catch (error) {
+        return toolError(error, QUERY_HINTS);
+      }
+    },
+  );
+
+  server.registerTool(
+    "summarize_snapshot",
+    {
+      description:
+        "Summarize the design values of a snapshot from snapshot_layer, to map them onto the project's tokens and components before writing code: " +
+        "colors with what they color (fill, text, border, shadow), text styles, auto layout gaps, padding sides, corner radii, border widths, shadows, " +
+        "and the instances it uses by name with each combination of their component properties. Figma names an instance after its component unless the designer renamed it. " +
+        "Reads the saved file only, like query_snapshot. Values are exactly as Figma shows them; a color is a hex code, or the name of a color style where the panel shows one. " +
+        "Each value says how many layers use it and gives a few of their refs to look up with query_snapshot. Hidden layers are left out. " +
+        "Long lists are cut to fit, the values fewest layers use first, and truncated says so; pass under to summarize one section.",
+      inputSchema: {
+        snapshot: z.string().describe("The snapshot id from snapshot_layer"),
+        under: z.string().optional().describe("A ref in the snapshot: only that layer and the layers inside it"),
+      },
+      outputSchema: SummarizeSnapshotOutputSchema,
+    },
+    async ({ snapshot, under }) => {
+      try {
+        const found = await snapshots.read(snapshot);
+        if (found.status === "missing") throw new SnapshotFailure("SNAPSHOT_NOT_FOUND", `there is no snapshot ${snapshot}`);
+        if (found.status === "expired") throw new SnapshotFailure("SNAPSHOT_EXPIRED", `snapshot ${snapshot} expired at ${found.expiresAt}`);
+        const { file } = found;
+        let layers = file.layers;
+        if (under !== undefined) {
+          const at = layers.findIndex((layer) => layer.ref === under);
+          if (at < 0) throw new SnapshotFailure("UNKNOWN_REF", `snapshot ${snapshot} has no layer ${under}`);
+          layers = [layers[at]!, ...inside(layers, at)];
+        }
+        const base = { snapshot, expiresAt: file.expiresAt };
+        const summary = summarizeLayers(layers, (candidate) => Buffer.byteLength(JSON.stringify({ ...base, ...candidate })) <= maxOutputBytes);
+        const output: SummarizeSnapshotOutput = { ...base, ...summary };
+        log(`summarize_snapshot layers=${summary.layers} truncated=${summary.truncated} bytes=${Buffer.byteLength(JSON.stringify(output))}`);
         return { content: [{ type: "text" as const, text: JSON.stringify(output) }], structuredContent: output as unknown as Record<string, unknown> };
       } catch (error) {
         return toolError(error, QUERY_HINTS);

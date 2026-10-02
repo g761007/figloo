@@ -172,11 +172,12 @@ pnpm --filter @figloo/extension icons
 | `export_asset` | 以 Figma 的 Export 按鈕的方式匯出圖層，格式可以是 SVG、PNG、JPG 或 PDF，讓 agent 依專案需要選擇格式與倍率，例如網頁用 SVG，iOS 用 PDF 或 1x、2x、3x 的 PNG。SVG 以文字回傳，長邊最多 1568 px 的 PNG 或 JPG 以圖片回傳。加上 `saveTo` 時，也會把檔案寫到專案目錄中的該路徑；專案目錄是 Claude Code 設定的 `CLAUDE_PROJECT_DIR`，沒有時則是伺服器的工作目錄。既有檔案只在加上 `overwrite: true` 時取代。Figma 的檔名是圖層名稱，不含倍率後綴，所以每種倍率請存成不同的檔名。沒有 `format` 時，圖層有自己的匯出設定就沿用，沒有設定的圖層則匯出成 SVG。有 `format` 時，會加上一組該格式與 `scale`（預設 1x）的臨時設定，匯出後再移除；圖層已有完全相同的設定時則直接沿用。圖層本身的設定絕不會被改動。Figma 把多個檔案打包成的 ZIP 會自動解開。 |
 | `snapshot_layer` | 一次讀取一個圖層與其中的所有圖層，最多 400 個；300 個圖層約 40 秒，最多三分鐘。內容包括截圖，以及每個圖層相對這個圖層的位置與大小、是否隱藏、匯出設定，與 `inspect_nodes` 讀得到的全部內容。Instance 視為一個圖層。回傳截圖與每個圖層一行的大綱，並把快照存在 `~/.figloo/snapshots/`。24 小時內再次呼叫會直接回傳存好的快照，不再讀取 Figma，時間可用設定檔的 `snapshotTtlHours` 調整；加上 `refresh: true` 則重新讀取。讀取期間 Figma 上會顯示有進度與「Stop」按鈕的遮罩，其他視窗可以照常使用。按「Stop」或 Esc 會中止讀取並收回圖層面板；在 Figma 其他地方點一下也會中止。分頁進入背景時，讀取會暫停，回到畫面後繼續。 |
 | `query_snapshot` | 不需要 Figma 分頁，就能在存好的快照中查詢圖層，頁面重新整理後也可以。可以依 ref 取得完整內容，或依文字、類型與所在的圖層篩選，結果以大綱或完整內容分頁回傳。 |
+| `summarize_snapshot` | 不需要 Figma 分頁，就能摘要存好的快照或其中一個區塊：每個顏色與它的用途、文字樣式、間距、padding、圓角、線寬與陰影，各自有多少圖層使用，以及依名稱分組的 instance 與它們的元件屬性。用來把設計對應到專案的 token 與元件。 |
 | `release_context` | 捨棄一個 context 與其中的圖層 ref。 |
 
 完整的契約，包括每個參數、回傳欄位與錯誤碼，見 [docs/mcp-tools.md](docs/mcp-tools.md)。
 
-典型的流程是：先呼叫 `get_status`，接著用 `list_pages` 與 `explore_page`，使用者有選取時改用 `get_anchor`。然後用 `capture` 看頁面或 frame，用 `get_neighbors` 找出重要的部分，用 `inspect_nodes` 取得精確數值，再用 `export_asset` 取得 icon 與圖片。每次呼叫都有上限，並回報用了多少次 UI 操作。要實作整個頁面時，改為對頁面的 frame 呼叫 `snapshot_layer`，再用 `query_snapshot` 查詢細節。
+典型的流程是：先呼叫 `get_status`，接著用 `list_pages` 與 `explore_page`，使用者有選取時改用 `get_anchor`。然後用 `capture` 看頁面或 frame，用 `get_neighbors` 找出重要的部分，用 `inspect_nodes` 取得精確數值，再用 `export_asset` 取得 icon 與圖片。每次呼叫都有上限，並回報用了多少次 UI 操作。要實作整個頁面時，改為對頁面的 frame 呼叫 `snapshot_layer`，用 `summarize_snapshot` 看它用了哪些數值與元件，再用 `query_snapshot` 查詢細節。
 
 開著多個 Figma 分頁時，從分頁開始的工具要指定分頁的 `tabId`。從 popup 視窗複製的提示會寫出分頁；沒有提示時，`get_status` 會請 agent 向使用者確認要用哪個檔案。
 

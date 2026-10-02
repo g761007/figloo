@@ -4,6 +4,10 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+### Added
+
+- `summarize_snapshot` lists the design values of a saved snapshot, or of one section of it, without the Figma tab: every color with what it colors, text style, gap, padding side, corner radius, border width, and shadow, each with how many layers use it, and the instances by name with each combination of their component properties. The figloo-implement skill calls it before mapping a design onto the project's tokens and components.
+
 ### Changed
 
 - GitHub Actions builds and publishes each release from its version tag, and computes the checksum table in the release notes from the files it uploads. Every push and pull request runs the build, type checks, and unit tests.
