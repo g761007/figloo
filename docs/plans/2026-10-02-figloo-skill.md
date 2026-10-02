@@ -1,7 +1,7 @@
 # Figloo 的 skill 與 plugin
 
 日期：2026-10-02  
-狀態：企劃，待 review；排在[多工作階段](2026-10-02-multi-session-handover.md)與[讀取時的遮罩](2026-10-02-reading-overlay.md)之後  
+狀態：待決定事項已確認，第一階段實作中  
 依據：使用者提議提供 skill，讓使用者搭配 Figloo 使用
 
 ## 背景
@@ -105,3 +105,10 @@ Repo 目前是 private，marketplace 安裝要有存取權；公開之後一般�
 1. Skill 的名稱：`figloo-implement`，或更短的 `figloo`。
 2. Plugin 裡 MCP 伺服器的來源：`.mcpb` 的 release URL，或 commit 建置好的檔案。
 3. 範圍：只涵蓋實作頁面與元件，還是也涵蓋單純的查看與切圖。這份企劃建議三者都涵蓋，以實作為主。
+
+## 使用者的決定，2026-10-02
+
+1. Skill 的名稱：`figloo-implement`。
+2. Plugin 裡 MCP 伺服器的來源：GitHub release 的 `.mcpb` bundle，plugin 指向它的 URL。
+3. 範圍：實作、查看與切圖三者都涵蓋，以實作為主。
+4. 版本：讀取時的遮罩與這份 skill 完成後，一起升到 0.3.0 並打包。
