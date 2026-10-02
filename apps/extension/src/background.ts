@@ -298,7 +298,7 @@ async function exportTab(tabId: number, params: unknown): Promise<TabOpResponse>
     const plan = ExportPlanSchema.parse(prepared.result);
     const finished = await sendToTab(tabId, "finish_export", { token, expected: plan.settings.length, waitMs: EXPORT_CAPTURE_WAIT_MS });
     if (!finished.ok) return finished;
-    const { files, userSelectionRestored } = ExportFinishSchema.parse(finished.result);
+    const { files, notes, userSelectionRestored } = ExportFinishSchema.parse(finished.result);
     // The MCP server opens any ZIP and keeps only plan.onlyFormat, so every file goes along as is.
     const base = { identity: plan.identity, onlyFormat: plan.onlyFormat, usedExistingSettings: !plan.temporary, userSelectionRestored };
     if (files.length > 0) {
@@ -306,7 +306,9 @@ async function exportTab(tabId: number, params: unknown): Promise<TabOpResponse>
     }
     for (let waited = 0; downloads.length === 0 && waited < 3_000; waited += 200) await delay(200);
     if (downloads.length === 0) {
-      return { ok: false, error: { code: "EXPORT_BLOCKED", message: "Figma produced no file that Figloo could receive, and the browser started no download" } };
+      // What the page hook saw tells a layer Figma does not export apart from a file handed over another way.
+      const seen = notes.length > 0 ? `Figma made ${notes.join("; ")}` : "Figma made no Blob and clicked no download link";
+      return { ok: false, error: { code: "EXPORT_BLOCKED", message: `Figma produced no file that Figloo could receive, and the browser started no download; ${seen}` } };
     }
     const items = await Promise.all(downloads.map((id) => waitForDownload(id, EXPORT_DOWNLOAD_WAIT_MS)));
     if (items.some((item) => !item || item.state === "in_progress")) {
@@ -409,14 +411,14 @@ const SNAPSHOT_CLEANUP_MS = 15_000;
  */
 async function snapshotTab(tabId: number, params: unknown): Promise<TabOpResponse> {
   const started = Date.now();
-  const { expect, ref } = SnapshotParamsSchema.parse(params);
-  const shot = await takeCapture(tabId, { expect, ref });
+  const { expect, ref, known } = SnapshotParamsSchema.parse(params);
+  const shot = await takeCapture(tabId, { expect, ref, known });
   if (!shot.response.ok) return shot.response;
   if (shot.interrupted) return { ok: false, error: { code: "USER_INTERRUPTED", message: "the user interacted with Figma during the screenshot" } };
   let { image, crop } = shot.response.result as CaptureResult;
   const timeBudgetMs = Math.round(SNAPSHOT_TIME_BUDGET_MS - SNAPSHOT_CLEANUP_MS - (Date.now() - started));
   if (timeBudgetMs <= 0) return { ok: false, error: { code: "BUDGET_EXCEEDED", message: "the screenshot used up the snapshot's time budget" } };
-  const read = await sendToTab(tabId, "read_subtree", { expect, ref, maxLayers: MAX_SNAPSHOT_LAYERS, timeBudgetMs });
+  const read = await sendToTab(tabId, "read_subtree", { expect, ref, known, maxLayers: MAX_SNAPSHOT_LAYERS, timeBudgetMs });
   if (!read.ok) return read;
   const result = SnapshotReadResultSchema.parse(read.result);
   const elapsedMs = Date.now() - started;

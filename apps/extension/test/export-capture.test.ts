@@ -38,6 +38,21 @@ describe("installExportCapture", () => {
     expect(followed).toBe(false);
   });
 
+  it("notes how Figma tries to hand a file over, so an export that brings none can say what happened", async () => {
+    const received = listen();
+    serialized("token-4", 5_000);
+    URL.createObjectURL(new Blob(["png"], { type: "image/png" }));
+    const link = document.createElement("a");
+    link.href = "https://example.com/file.png";
+    link.download = "file.png";
+    link.addEventListener("click", (event) => event.preventDefault());
+    link.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const notes = received.filter((data) => (data as { __figlooExportNote?: string } | null)?.__figlooExportNote === "token-4").map((data) => (data as { note: string }).note);
+    expect(notes).toEqual(["a Blob of image/png, 3 bytes", "click() on a link with download to https:"]);
+  });
+
   it("leaves ordinary links and clicks alone", () => {
     serialized("token-2", 5_000);
     const link = document.createElement("a");
@@ -55,11 +70,13 @@ describe("installExportCapture", () => {
   it("puts the page's functions back when it is removed", () => {
     const click = HTMLAnchorElement.prototype.click;
     const create = URL.createObjectURL;
+    const open = window.open;
     serialized("token-3", 5_000);
     expect(HTMLAnchorElement.prototype.click).not.toBe(click);
     (window as unknown as { __figlooExportCapture: { restore(): void } }).__figlooExportCapture.restore();
     expect(HTMLAnchorElement.prototype.click).toBe(click);
     expect(URL.createObjectURL).toBe(create);
+    expect(window.open).toBe(open);
   });
 
   it("keeps a later export's hook when an earlier export's time runs out", async () => {

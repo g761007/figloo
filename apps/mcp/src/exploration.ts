@@ -35,9 +35,9 @@ import {
   type NeighborRelation,
 } from "@figloo/protocol";
 import { BridgeError, type Bridge } from "./bridge.js";
-import type { ContextStore } from "./contexts.js";
+import { knownParents, type ContextStore } from "./contexts.js";
 import { decodeCursor, encodeCursor } from "./cursor.js";
-import { registerExportTool } from "./export-asset.js";
+import { registerExportAssetsTool, registerExportTool } from "./export-asset.js";
 import { registerSnapshotTools } from "./snapshot-tools.js";
 import type { SnapshotStore } from "./snapshots.js";
 
@@ -94,6 +94,8 @@ export interface ExplorationDeps {
   /** Directory export_asset may write into; defaults to the working directory. */
   root?: string;
   snapshots: SnapshotStore;
+  /** Clock for the time budget of export_assets. */
+  now?: () => number;
 }
 
 export function registerExplorationTools(server: McpServer, deps: ExplorationDeps): void {
@@ -177,7 +179,16 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
           result = NeighborsResultSchema.parse(
             await bridge.request(
               "list_neighbors",
-              { expect: context.identity, ref, relation, from, limit: limit ?? DEFAULT_NEIGHBOR_LIMIT, ...(after ? { after } : {}), ...(depth !== undefined && depth > 1 ? { depth } : {}) },
+              {
+                expect: context.identity,
+                ref,
+                relation,
+                from,
+                limit: limit ?? DEFAULT_NEIGHBOR_LIMIT,
+                ...(after ? { after } : {}),
+                ...(depth !== undefined && depth > 1 ? { depth } : {}),
+                ...knownParents(context, [ref]),
+              },
               OP_TIMEOUT_MS,
               context.tabId,
             ),
@@ -302,7 +313,7 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
         let result;
         try {
           result = VisualNeighborsResultSchema.parse(
-            await bridge.request("visual_neighbors", { expect: context.identity, ref, direction, limit }, OP_TIMEOUT_MS, context.tabId),
+            await bridge.request("visual_neighbors", { expect: context.identity, ref, direction, limit, ...knownParents(context, [ref]) }, OP_TIMEOUT_MS, context.tabId),
           );
         } catch (error) {
           if (error instanceof BridgeError && error.code === "CONTEXT_EXPIRED") contexts.release(contextId);
@@ -356,7 +367,7 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
         let result;
         try {
           result = InspectResultSchema.parse(
-            await bridge.request("inspect_nodes", { expect: context.identity, refs, ...(groups ? { groups } : {}) }, OP_TIMEOUT_MS, context.tabId),
+            await bridge.request("inspect_nodes", { expect: context.identity, refs, ...(groups ? { groups } : {}), ...knownParents(context, refs) }, OP_TIMEOUT_MS, context.tabId),
           );
         } catch (error) {
           if (error instanceof BridgeError && error.code === "CONTEXT_EXPIRED") contexts.release(contextId);
@@ -391,7 +402,9 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
         if (ref !== undefined && !context.knownRefs.has(ref)) throw new ToolFailure("UNKNOWN_REF", `ref ${ref} was not returned in context ${contextId}`);
         let result;
         try {
-          result = CaptureResultSchema.parse(await bridge.request("capture", { expect: context.identity, ref: ref ?? null }, OP_TIMEOUT_MS, context.tabId));
+          result = CaptureResultSchema.parse(
+            await bridge.request("capture", { expect: context.identity, ref: ref ?? null, ...knownParents(context, ref === undefined ? [] : [ref]) }, OP_TIMEOUT_MS, context.tabId),
+          );
         } catch (error) {
           if (error instanceof BridgeError && error.code === "CONTEXT_EXPIRED") contexts.release(contextId);
           throw error;
@@ -420,6 +433,7 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
   );
 
   registerExportTool(server, deps, toolError);
+  registerExportAssetsTool(server, deps, toolError);
   registerSnapshotTools(server, { bridge, contexts, snapshots: deps.snapshots, log, maxOutputBytes: MAX_OUTPUT_BYTES }, toolError);
 
   server.registerTool(

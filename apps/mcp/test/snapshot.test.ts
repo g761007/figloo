@@ -52,6 +52,8 @@ function complete(layers: SnapshotLayer[]) {
     status: "complete",
     identity,
     layers,
+    // The screen sits right on the page.
+    rootPath: [],
     rootOnScreen: { x: 421.28, y: 40.27, width: 363.94, height: 788.99 },
     zoom: 0.926,
     walkMs: 5_600,
@@ -182,6 +184,53 @@ describe("snapshot_layer", () => {
     await snap({ contextId, ref: "570:1" });
     const inspected = await call("inspect_nodes", { contextId, refs: ["570:6"] });
     expect(inspected.isError).toBeFalsy();
+  });
+
+  it("sends the tab the way down to a snapshot's layers, so it finds them after the page reloaded", async () => {
+    const nested = { ok: true as const, result: { ...complete(screen), rootPath: ["500:1", "500:2"] } };
+    const { anchor, snap, call, requests } = await setup({ snapshot: () => nested });
+    const contextId = await anchor();
+    await snap({ contextId, ref: "570:1" });
+    await call("inspect_nodes", { contextId, refs: ["570:6"] });
+    const inspect = requests.find((request) => request.op === "inspect_nodes")!;
+    expect(inspect.params).toMatchObject({ refs: ["570:6"] });
+    expect(new Map((inspect.params!.known as { ref: string; parentRef: string | null }[]).map((k) => [k.ref, k.parentRef]))).toEqual(
+      new Map([
+        ["570:6", "570:5"],
+        ["570:5", "570:1"],
+        ["570:1", "500:2"],
+        ["500:2", "500:1"],
+        ["500:1", null],
+      ]),
+    );
+  });
+
+  it("takes the root of an earlier snapshot from a new context, as after a reload, and lets it use every ref", async () => {
+    const { anchor, snap, call, errorOf, requests, snapshotsOf } = await setup();
+    await snap({ contextId: await anchor("570:1"), ref: "570:1" });
+    // The page reloaded: the new context starts from another layer and has never seen the screen.
+    const fresh = await anchor("570:7");
+    expect(await snap({ contextId: fresh, ref: "570:1" })).toMatchObject({ fromCache: true });
+    expect(snapshotsOf()).toHaveLength(1);
+    expect((await call("inspect_nodes", { contextId: fresh, refs: ["570:3"] })).isError).toBeFalsy();
+    expect(requests.at(-1)!.params).toMatchObject({ known: expect.arrayContaining([{ ref: "570:3", parentRef: "570:2" }, { ref: "570:1", parentRef: null }]) });
+    // A ref no snapshot vouches for is still refused.
+    expect(errorOf(await call("snapshot_layer", { contextId: fresh, ref: "570:9" })).code).toBe("UNKNOWN_REF");
+  });
+
+  it("reads an expired snapshot's root again with the way down to it that the old file kept", async () => {
+    const nested = { ok: true as const, result: { ...complete(screen), rootPath: ["500:1"] } };
+    const { clock, anchor, snap, snapshotsOf } = await setup({ snapshot: () => nested });
+    await snap({ contextId: await anchor("570:1"), ref: "570:1" });
+    clock.now += 25 * HOUR;
+    expect(await snap({ contextId: await anchor("570:7"), ref: "570:1" })).toMatchObject({ fromCache: false });
+    expect(snapshotsOf().at(-1)!.params).toMatchObject({
+      ref: "570:1",
+      known: [
+        { ref: "500:1", parentRef: null },
+        { ref: "570:1", parentRef: "500:1" },
+      ].reverse(),
+    });
   });
 
   it("reads Figma again with refresh, and once the snapshot expired", async () => {

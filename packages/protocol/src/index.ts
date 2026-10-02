@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = "0.2.0";
+export const PROTOCOL_VERSION = "0.3.0";
 
 /** Chrome extension ID pinned by the `key` field in apps/extension/static/manifest.json. */
 export const EXTENSION_ID = "offikfnknfkgijgianpfcghbccmkcjnb";
@@ -55,6 +55,7 @@ export const ErrorCodeSchema = z.enum([
   "EXPORT_BLOCKED",
   "EXPORT_PENDING",
   "INSIDE_INSTANCE",
+  "LAYER_HIDDEN",
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 
@@ -257,6 +258,17 @@ export const PageIdentitySchema = z.object({
 });
 export type PageIdentity = z.infer<typeof PageIdentitySchema>;
 
+/** Most entries a `known` list carries; inspect_nodes, with five layers, needs the most. */
+export const MAX_KNOWN_LAYERS = 256;
+
+/**
+ * Layers the server learned from a saved snapshot, each with its parent (null for a layer directly on
+ * the page), from the top of the page down to the layers an op works on. A tab that has not met
+ * these layers since the page loaded opens the way to them through their parents.
+ */
+export const KnownLayersSchema = z.array(z.object({ ref: z.string(), parentRef: z.string().nullable() })).max(MAX_KNOWN_LAYERS);
+export type KnownLayers = z.infer<typeof KnownLayersSchema>;
+
 /** A layer as the layers panel shows it. */
 export const LayerNodeSchema = z.object({
   /** Layer ID from the layers panel. IDs of layers inside an instance only hold for one page load. */
@@ -302,6 +314,7 @@ export const ListNeighborsParamsSchema = z.object({
   after: z.string().optional(),
   /** For children only: levels below the ref to include, breadth first, within the same limit. */
   depth: z.number().int().min(1).max(MAX_NEIGHBOR_DEPTH).optional(),
+  known: KnownLayersSchema.optional(),
 });
 export type ListNeighborsParams = z.infer<typeof ListNeighborsParamsSchema>;
 
@@ -409,6 +422,7 @@ export const InspectParamsSchema = z.object({
   expect: PageIdentitySchema,
   refs: z.array(z.string()).min(1).max(MAX_INSPECT_REFS),
   groups: z.array(InspectGroupSchema).min(1).optional(),
+  known: KnownLayersSchema.optional(),
 });
 export type InspectParams = z.infer<typeof InspectParamsSchema>;
 
@@ -461,6 +475,7 @@ export const CaptureParamsSchema = z.object({
   expect: PageIdentitySchema,
   /** Layer to capture; the whole page when null. */
   ref: z.string().nullable(),
+  known: KnownLayersSchema.optional(),
 });
 export type CaptureParams = z.infer<typeof CaptureParamsSchema>;
 
@@ -543,6 +558,7 @@ export const VisualNeighborsParamsSchema = z.object({
   ref: z.string(),
   direction: VisualDirectionSchema,
   limit: z.number().int().positive().max(MAX_VISUAL_NEIGHBORS),
+  known: KnownLayersSchema.optional(),
 });
 export type VisualNeighborsParams = z.infer<typeof VisualNeighborsParamsSchema>;
 
@@ -605,6 +621,7 @@ export const ExportParamsSchema = z.object({
   format: ExportFormatSchema.optional(),
   /** PNG and JPG only; 1x when omitted. */
   scale: ExportScaleSchema.optional(),
+  known: KnownLayersSchema.optional(),
   /** Identifies this export's captured files; set by the service worker. */
   token: z.string(),
 });
@@ -632,7 +649,8 @@ export type ExportPlan = z.infer<typeof ExportPlanSchema>;
 export const CapturedFileSchema = z.object({ name: z.string(), mimeType: z.string(), data: z.string() });
 export type CapturedFile = z.infer<typeof CapturedFileSchema>;
 
-export const ExportFinishSchema = z.object({ files: z.array(CapturedFileSchema), userSelectionRestored: z.boolean() });
+/** The files captured, and notes on how Figma tried to hand files over, such as "a Blob of image/png, 1200 bytes". */
+export const ExportFinishSchema = z.object({ files: z.array(CapturedFileSchema), notes: z.array(z.string()), userSelectionRestored: z.boolean() });
 
 export const ExportResultSchema = z.object({
   identity: PageIdentitySchema,
@@ -678,6 +696,34 @@ export const ExportOutputSchema = z.object({
 });
 export type ExportOutput = z.infer<typeof ExportOutputSchema>;
 
+/** Most layers `export_assets` exports in one call; the rest come back in `remaining`. */
+export const MAX_EXPORT_BATCH = 50;
+
+/** What `export_assets` returns to the coding agent. */
+export const ExportAssetsOutputSchema = z.object({
+  contextId: z.string(),
+  /** Layers exported, in the order they were asked for, with the files written for each. */
+  saved: z.array(
+    z.object({
+      ref: z.string(),
+      source: z.enum(["direct", "download"]),
+      usedExistingSettings: z.boolean(),
+      files: z.array(z.object({ name: z.string(), mimeType: z.string(), bytes: z.number().int().nonnegative(), savedTo: z.string(), downloadPath: z.string().nullable() })),
+    }),
+  ),
+  /** Layers that could not be exported, with the error each one ended with. */
+  failed: z.array(z.object({ ref: z.string(), code: z.string(), message: z.string() })),
+  /** Layers with export settings that were left out when exporting from a snapshot, such as hidden ones. */
+  skipped: z.array(z.object({ ref: z.string(), reason: z.string() })),
+  /** Layers this call did not get to; pass them as refs to continue. */
+  remaining: z.array(z.string()),
+  /** The error that stopped the call before the last layer, such as TAB_IN_BACKGROUND; null when it was not stopped. */
+  stoppedBy: z.object({ code: z.string(), message: z.string() }).nullable(),
+  userSelectionRestored: z.boolean(),
+  elapsedMs: z.number().nonnegative(),
+});
+export type ExportAssetsOutput = z.infer<typeof ExportAssetsOutputSchema>;
+
 /** Most layers a page snapshot reads, the root included: about two minutes of reading. */
 export const MAX_SNAPSHOT_LAYERS = 400;
 /** Time a page snapshot may take, screenshot included; below the five minutes Chrome allows one extension request. */
@@ -687,6 +733,7 @@ export const SnapshotParamsSchema = z.object({
   expect: PageIdentitySchema,
   /** The root layer; it must not be inside an instance. */
   ref: z.string(),
+  known: KnownLayersSchema.optional(),
 });
 export type SnapshotParams = z.infer<typeof SnapshotParamsSchema>;
 
@@ -740,6 +787,8 @@ const SnapshotReadCompleteSchema = z.object({
   identity: PageIdentitySchema,
   /** Every layer in layers panel order, the root first. */
   layers: z.array(SnapshotLayerSchema),
+  /** The root's ancestors, from the layer on the page down to its parent; empty for a layer on the page. */
+  rootPath: z.array(z.string()),
   /** The root on screen, in viewport CSS pixels; null without Figma's screen reader mirror. */
   rootOnScreen: RectSchema.nullable(),
   /** Screen pixels per design pixel. */

@@ -37,11 +37,19 @@ describe("layers panel parsing on captured Figma markup", () => {
     expect(rows.find((row) => row.id === "338:4259")).toMatchObject({ type: "Image", hasChildren: false, expanded: false });
   });
 
-  it("marks the row Figma greys out as hidden, selected or not", () => {
-    // The one greyed-out row in the capture is not selected; its style sets color: var(--color-text-disabled).
-    expect(readRenderedRows(document).filter((row) => row.hidden).map((row) => row.id)).toEqual(["338:4259"]);
-    const el = document.querySelector('[data-testid="338:4259-layers-panel-row"]')!.closest('[role="row"]') as HTMLElement;
-    el.setAttribute("style", el.getAttribute("style")!.replace("color: var(--color-text-disabled);", ""));
+  it("marks the rows Figma greys out or dims as hidden, selected or not", () => {
+    // 338:4259 is grey, color: var(--color-text-disabled). 1335:5269, inside an instance, is the dimmest
+    // purple, color: var(--color-text-component-tertiary), which Arc showed on 2026-10-02 for hidden
+    // instances whether selected or not, while visible ones keep var(--color-text-component).
+    expect(readRenderedRows(document).filter((row) => row.hidden).map((row) => row.id)).toEqual(["1335:5269", "338:4259"]);
+    for (const [id, color] of [
+      ["338:4259", "color: var(--color-text-disabled);"],
+      ["1335:5269", "color: var(--color-text-component-tertiary);"],
+    ]) {
+      const el = document.querySelector(`[data-testid="${id}-layers-panel-row"]`)!.closest('[role="row"]') as HTMLElement;
+      expect(el.getAttribute("style")).toContain(color);
+      el.setAttribute("style", el.getAttribute("style")!.replace(color, "color: var(--color-text-component);"));
+    }
     expect(readRenderedRows(document).some((row) => row.hidden)).toBe(false);
   });
 });

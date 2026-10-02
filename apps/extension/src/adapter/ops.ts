@@ -37,7 +37,7 @@ import { inspectionHeader, inspectionRoot, inspectionSignature, readInspection }
 import { ReadingOverlay, estimateRemainingMs } from "./overlay.js";
 import { readPagesList } from "./pages.js";
 import { layersPanel, readRenderedRows, type Row } from "./row.js";
-import { LayerTree, StopExploration, type IndexEntry, type Page, type WalkedLayer } from "./tree.js";
+import { LayerTree, StopExploration, hiddenLayers, learnParents, type IndexEntry, type Page, type WalkedLayer } from "./tree.js";
 import { BackgroundPause } from "./visibility.js";
 
 /** Per-operation budgets from the plan: 15 s of UI work and a bounded number of UI operations. */
@@ -89,6 +89,8 @@ const MIRROR_MESSAGE =
 interface PendingExport {
   token: string;
   files: CapturedFile[];
+  /** How Figma tried to hand files over, from the page hook. */
+  notes: string[];
   onMessage: (event: MessageEvent) => void;
   before: UserSelection;
   /** What the layer's own settings export, such as "PNG 2x", before Figloo added its temporary one. */
@@ -100,6 +102,8 @@ interface PendingExport {
 
 /** An export that never finishes cleans up on its own after this long. */
 const PENDING_EXPORT_TIMEOUT_MS = 30_000;
+/** Notes kept per export about how Figma tried to hand files over. */
+const MAX_EXPORT_NOTES = 20;
 
 interface PendingCapture {
   token: string;
@@ -246,6 +250,7 @@ export class Explorer {
 
   async inspectNodes(params: InspectParams): Promise<InspectResult> {
     const identity = this.checkExpected(params.expect);
+    learnParents(this.index, params.known ?? []);
     if (this.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
     await this.showPropertiesTab();
     const groups = params.groups ?? ALL_GROUPS;
@@ -284,6 +289,7 @@ export class Explorer {
    */
   async visualNeighbors(params: VisualNeighborsParams): Promise<VisualNeighborsResult> {
     const identity = this.checkExpected(params.expect);
+    learnParents(this.index, params.known ?? []);
     if (this.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
     await this.showPropertiesTab();
     let before: UserSelection = { kind: "none" };
@@ -364,6 +370,7 @@ export class Explorer {
    */
   async prepareCapture(params: CaptureParams): Promise<CapturePlan> {
     const identity = this.checkExpected(params.expect);
+    learnParents(this.index, params.known ?? []);
     if (this.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
     if (this.pendingCapture) await this.finishCapture(this.pendingCapture.token);
     let before: UserSelection = { kind: "none" };
@@ -445,10 +452,12 @@ export class Explorer {
    */
   async readSubtree(params: ReadSubtreeParams): Promise<SnapshotReadResult> {
     const identity = this.checkExpected(params.expect);
+    learnParents(this.index, params.known ?? []);
     if (this.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
     await this.showPropertiesTab();
     let before: UserSelection = { kind: "none" };
     let restored = false;
+    let rootPath: string[] = [];
     // The screenshot was taken before this op, so the overlay cannot end up in it.
     const overlay = new ReadingOverlay(this.doc);
     const pause = new BackgroundPause(this.doc, Date.now() + params.timeBudgetMs, (paused) => overlay.setPaused(paused));
@@ -464,6 +473,8 @@ export class Explorer {
         if (chain.some((parent) => parent.type === "Instance")) {
           throw new OpError("INSIDE_INSTANCE", `layer ${params.ref} is inside an instance, whose layer IDs only hold until the page reloads`);
         }
+        // The climb goes from the parent up; the snapshot keeps the way down, so the root can be found after a reload.
+        rootPath = chain.map((parent) => parent.id).reverse();
         const walk = await tree.walkSubtree(root, params.maxLayers, (found) => overlay.update({ phase: "walking", found }));
         if (!walk.complete) {
           const page = await tree.childrenPage(walk.layers[0]!.row, 1, MAX_NEIGHBOR_LIMIT);
@@ -540,6 +551,8 @@ export class Explorer {
     const zoom = chooseZoom(root.rect && root.box ? root.rect.width / root.box.width : null, value.zoomLabel);
     const rootOnScreen = root.rect && root.rect.width > 0 && root.rect.height > 0 ? root.rect : null;
     const bounds = boundsInRoot(measures, zoom);
+    // A row's color alone can miss a layer inside a hidden one, so hidden parents count too.
+    const hidden = hiddenLayers(value.read.map(({ layer }) => layer));
     const layers: SnapshotLayer[] = value.read.map(({ layer: { row, parentRef, depth }, sections, exports }) => ({
       ref: row.id,
       name: row.name.slice(0, MAX_NAME_LENGTH),
@@ -549,7 +562,7 @@ export class Explorer {
       position: row.position,
       siblingCount: row.setSize,
       hasChildren: row.hasChildren,
-      hidden: row.hidden,
+      hidden: hidden.has(row.id),
       bounds: bounds.get(row.id)!,
       sections,
       exports,
@@ -558,6 +571,7 @@ export class Explorer {
       status: "complete",
       identity,
       layers,
+      rootPath,
       rootOnScreen,
       zoom,
       walkMs: value.walkMs,
@@ -584,12 +598,15 @@ export class Explorer {
    */
   async prepareExport(params: ExportParams): Promise<ExportPlan> {
     const identity = this.checkExpected(params.expect);
+    learnParents(this.index, params.known ?? []);
     if (this.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
     await this.showPropertiesTab();
     if (this.pendingExport) await this.finishExport(this.pendingExport.token, 0, 0);
     const files: CapturedFile[] = [];
+    const notes: string[] = [];
     const onMessage = (event: MessageEvent) => {
-      const data = event.data as { __figlooExport?: string; name?: unknown; type?: unknown; data?: unknown } | null;
+      const data = event.data as { __figlooExport?: string; __figlooExportNote?: string; note?: unknown; name?: unknown; type?: unknown; data?: unknown } | null;
+      if (event.source === this.win && data?.__figlooExportNote === params.token && notes.length < MAX_EXPORT_NOTES) notes.push(String(data.note).slice(0, 120));
       if (event.source !== this.win || !data || data.__figlooExport !== params.token || !(data.data instanceof ArrayBuffer)) return;
       files.push({ name: String(data.name || "export"), mimeType: String(data.type || "application/octet-stream"), data: toBase64(data.data) });
     };
@@ -603,6 +620,8 @@ export class Explorer {
         try {
           const row = await tree.find(params.ref);
           if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${params.ref} is no longer in the layers panel`);
+          // Figma's Export button does nothing for such a layer, so there is no file to wait for.
+          if (row.hidden) throw new OpError("LAYER_HIDDEN", `layer ${params.ref} is hidden in Figma, or inside a hidden layer, and Figma exports nothing for it`);
           const previous = inspectionSignature(this.doc);
           if (!(await source.select(row))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${params.ref}; guest sessions cannot select layers`);
           await this.waitForPanel(row, previous, source);
@@ -645,6 +664,7 @@ export class Explorer {
       this.pendingExport = {
         token: params.token,
         files,
+        notes,
         onMessage,
         before,
         original,
@@ -660,9 +680,9 @@ export class Explorer {
   }
 
   /** Waits up to `waitMs` for `expected` captured files, then removes the temporary setting and reselects. */
-  async finishExport(token: string, expected: number, waitMs: number): Promise<{ files: CapturedFile[]; userSelectionRestored: boolean }> {
+  async finishExport(token: string, expected: number, waitMs: number): Promise<{ files: CapturedFile[]; notes: string[]; userSelectionRestored: boolean }> {
     const pending = this.pendingExport;
-    if (!pending || pending.token !== token) return { files: [], userSelectionRestored: false };
+    if (!pending || pending.token !== token) return { files: [], notes: [], userSelectionRestored: false };
     const deadline = Date.now() + waitMs;
     // Figma may pack several files into one ZIP, which then holds all of them.
     const zipped = () => pending.files.some((file) => file.mimeType === "application/zip" || /\.zip$/i.test(file.name));
@@ -671,7 +691,7 @@ export class Explorer {
     clearTimeout(pending.timer);
     this.win.removeEventListener("message", pending.onMessage);
     pending.user.dispose();
-    if (pending.user.interrupted()) return { files: pending.files, userSelectionRestored: false };
+    if (pending.user.interrupted()) return { files: pending.files, notes: pending.notes, userSelectionRestored: false };
     let restored = false;
     await this.run(
       async () => undefined,
@@ -680,7 +700,7 @@ export class Explorer {
         restored = await this.restoreSelection(tree, source, pending.before);
       },
     );
-    return { files: pending.files, userSelectionRestored: restored };
+    return { files: pending.files, notes: pending.notes, userSelectionRestored: restored };
   }
 
   private async removeTemporaryRow(original: string[]): Promise<void> {
@@ -746,6 +766,7 @@ export class Explorer {
 
   async listNeighbors(params: ListNeighborsParams): Promise<NeighborsResult> {
     const identity = this.checkExpected(params.expect);
+    learnParents(this.index, params.known ?? []);
     const { value, uiOps, elapsedMs } = await this.run(async (tree): Promise<Page> => {
       const row = await tree.find(params.ref);
       if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${params.ref} is no longer in the layers panel`);

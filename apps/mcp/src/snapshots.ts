@@ -19,6 +19,8 @@ const SnapshotFileSchema = z.object({
   elapsedMs: z.number().nonnegative(),
   image: SnapshotImageInfoSchema,
   zoom: z.number().positive().nullable(),
+  /** The root's ancestors from the layer on the page down; missing from snapshots saved before 0.4.0. */
+  rootPath: z.array(z.string()).optional(),
   layers: z.array(SnapshotLayerSchema).min(1),
 });
 export type SnapshotFile = z.infer<typeof SnapshotFileSchema>;
@@ -65,17 +67,23 @@ export class SnapshotStore {
   }
 
   async read(id: string): Promise<SnapshotLookup> {
-    if (!parseSnapshotId(id)) return { status: "missing" };
+    const file = await this.readSaved(id);
+    if (!file) return { status: "missing" };
+    if (Date.parse(file.expiresAt) <= this.now()) return { status: "expired", expiresAt: file.expiresAt };
+    return { status: "found", file };
+  }
+
+  /** The saved file whether or not it has expired, or null when there is none of this format. */
+  async readSaved(id: string): Promise<SnapshotFile | null> {
+    if (!parseSnapshotId(id)) return null;
     let json: unknown;
     try {
       json = JSON.parse(await readFile(this.paths(id).json, "utf8"));
     } catch {
-      return { status: "missing" };
+      return null;
     }
     const parsed = SnapshotFileSchema.safeParse(json);
-    if (!parsed.success || parsed.data.id !== id) return { status: "missing" };
-    if (Date.parse(parsed.data.expiresAt) <= this.now()) return { status: "expired", expiresAt: parsed.data.expiresAt };
-    return { status: "found", file: parsed.data };
+    return parsed.success && parsed.data.id === id ? parsed.data : null;
   }
 
   async readImage(id: string): Promise<Buffer | null> {

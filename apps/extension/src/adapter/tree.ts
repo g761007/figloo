@@ -41,6 +41,18 @@ export interface IndexEntry {
   childCount?: number;
 }
 
+/**
+ * Records parents the server knows from a saved snapshot, for layers this page load has not met yet,
+ * such as after a reload: `find` then opens the way to them through their parents. Entries the tab
+ * read itself keep what it read.
+ */
+export function learnParents(index: Map<string, IndexEntry>, known: ReadonlyArray<{ ref: string; parentRef: string | null }>): void {
+  for (const { ref, parentRef } of known) {
+    const entry = index.get(ref);
+    if (!entry || entry.parentRef === undefined) index.set(ref, { ...entry, rowIndex: entry?.rowIndex ?? 0, parentRef });
+  }
+}
+
 export interface Page {
   rows: Row[];
   total: number | null;
@@ -62,6 +74,13 @@ export interface WalkedLayer {
   row: Row;
   parentRef: string | null;
   depth: number;
+}
+
+/** Refs of walked layers that are hidden or inside a hidden layer; `layers` lists parents before their children. */
+export function hiddenLayers(layers: WalkedLayer[]): Set<string> {
+  const hidden = new Set<string>();
+  for (const { row, parentRef } of layers) if (row.hidden || (parentRef !== null && hidden.has(parentRef))) hidden.add(row.id);
+  return hidden;
 }
 
 export interface Walk {
@@ -241,6 +260,8 @@ export class LayerTree {
       found = child;
       return false;
     });
+    // The next find starts at its row instead of opening the way down again.
+    if (found) this.remember(found, { parentRef: parent.id });
     return found;
   }
 

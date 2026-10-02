@@ -38,6 +38,7 @@
 | `inspect_nodes` | 已驗證 | 需要 |
 | `capture` | 已驗證 | 需要 |
 | `export_asset` | 已驗證 SVG 與 PNG、設計師的設定、臨時設定與 ZIP；PDF 與 JPG 未驗證 | 需要 |
+| `export_assets` | 已驗證，12 個圖層一次匯出、從快照匯出、重新載入分頁後以快取的快照匯出；隱藏圖層跳過 | 需要 |
 | `snapshot_layer` | 已驗證，278 個圖層約 35 秒；需要開啟「Adapt content for screen readers」才能量到大部分圖層的位置。讀取期間顯示遮罩，可用「Stop」或 Esc 中止 | 開始時需要；讀取中進入背景會暫停，回到畫面後繼續 |
 | `query_snapshot` | 已驗證，只讀快照檔 | 否 |
 | `summarize_snapshot` | 已驗證，只讀快照檔；以本機三份真實快照核對，顏色、文字樣式與 instance 的數量都與另外統計的結果相同 | 否 |
@@ -57,6 +58,7 @@
 9. 背景分頁裡的展開點擊究竟被丟棄還是延後執行，無法確認，所以在背景一律不送出。
 10. `get_visual_neighbors` 只比較同一個父層的圖層。由 auto layout 決定位置的文字圖層，畫面與屬性面板都沒有它的位置，會列為未量測。
 11. Mirror 偶爾會給出過時的絕對位置：2026-10-02 實測時，root 比畫面高了 33 px，直到選取另一個頂層 frame 才恢復，觸發條件未查明。`snapshot_layer` 會用截圖本身確認並修正 root 的位置，結果寫在 `image.alignment`；無法確認時標為 `unconfirmed`，`rootInImage` 可能偏移。大綱中的位置是圖層之間的相對位置，不受影響。`capture` 的裁切沒有這項確認。
+12. Figma 不匯出隱藏圖層，也不匯出位在隱藏群組中的圖層，親手按 Export 也沒有反應。`export_asset` 會回報 `LAYER_HIDDEN`，`export_assets` 從快照匯出時會跳過它們。圖層面板以灰色標示隱藏圖層，instance 與其中的圖層則以最暗的紫色標示。
 
 ## 各階段驗證紀錄
 
@@ -74,3 +76,4 @@
 - [讀取時的遮罩與背景暫停](2026-10-02-reading-overlay.md)
 - [figloo-implement skill 與 Claude Code plugin](2026-10-02-figloo-skill.md)
 - [`list_pages` 的頁面列表讀取](2026-10-02-pages-list.md)
+- [批次匯出與重新載入後的快照 ref](2026-10-02-export-assets.md)

@@ -36,6 +36,7 @@ Call `get_anchor` with the `tabId`. Done when you and the user agree on the one 
 Tell the user first: reading takes about 40 seconds per 300 layers and at most 3 minutes, the Figma tab has to be on screen when it starts, and Stop or Esc on Figma's overlay cancels it cleanly. Then call `snapshot_layer` with the context and the layer's ref.
 
 - The snapshot is saved for 24 hours and comes back without reading Figma again; pass `refresh: true` only when the user says the design changed.
+- After Figma reloaded, a context from before fails with `CONTEXT_EXPIRED`: get a new one with `get_anchor` or `explore_page` and pass the same root to `snapshot_layer`. The saved snapshot comes back, and its refs work in the new context.
 - `SUBTREE_TOO_LARGE`: snapshot the children it lists, one at a time, and treat each as a section.
 
 Done when you hold the snapshot id, the screenshot, and the whole outline. When `outlineLayers` is below `layerCount`, page through the rest with `query_snapshot` and `nextCursor`.
@@ -71,7 +72,7 @@ Write the code section by section, in the project's own conventions, with every 
 - Layout follows the panel: a frame with `Flow`, `Gap`, and `Padding` is a flex or stack container. Children at `?,?` in the outline are placed by that auto layout, so they flow in it. Absolute positions are for layers inside frames without auto layout.
 - `[hidden]` layers stay out unless the user asks for them.
 - Text comes from the `content` section, which holds the full text even where the outline cuts it.
-- Images and icons come from `export_asset`, in the format and scale the project uses for its existing assets; an `[export …]` mark shows what the designer set up.
+- Images and icons come from `export_assets` with the snapshot id, which exports every layer with an `[export …]` mark into one folder, or from `export_asset` for one layer; use the format and scale the project uses for its existing assets.
 - An asset `export_asset` cannot deliver yet gets a placeholder of its size and goes on the report's list.
 
 Done when every section of the plan has code and every listed asset is in the project.
@@ -98,3 +99,5 @@ Quote values as Figma shows them.
 ## Exporting
 
 Use steps 1 and 2 to reach the layer, then call `export_asset` once per format and scale the project needs, with `saveTo` inside the project. Match the format, scale, and file naming of the assets the project already has.
+
+For many layers, such as every icon of a page, take a snapshot and call `export_assets` with its id and a folder, once per format and scale. Figma exports nothing for `[hidden]` layers, so they are skipped, and `export_asset` answers `LAYER_HIDDEN` for them. When it returns `remaining`, call it again with those refs; on `stoppedBy`, deal with the reason first, for example by asking the user to bring the Figma tab back on screen. Rename the files to the project's conventions afterwards.

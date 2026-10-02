@@ -15,7 +15,7 @@ import {
   type SummarizeSnapshotOutput,
 } from "@figloo/protocol";
 import { BridgeError, type Bridge } from "./bridge.js";
-import type { ContextStore } from "./contexts.js";
+import { knownParents, type ContextStore, type ExplorationContext } from "./contexts.js";
 import type { ToolErrorResult } from "./export-asset.js";
 import { summarizeLayers } from "./snapshot-summary.js";
 import { isPlainRef, outlineLine, snapshotId, type SnapshotFile, type SnapshotStore } from "./snapshots.js";
@@ -88,8 +88,29 @@ function fitPage<T>(items: T[], offset: number, max: number, budget: number, bui
 
 const textOf = (layer: SnapshotLayer) => layer.sections.find((section) => section.kind === "content")?.text ?? "";
 
+/**
+ * Lets a context use every layer of a saved snapshot, whose refs hold across page loads, and learn
+ * their parents, so the tab can find them even after the page reloaded.
+ */
+export function adoptSnapshot(context: ExplorationContext, file: SnapshotFile): void {
+  adoptRoot(context, file);
+  for (const layer of file.layers) {
+    context.knownRefs.add(layer.ref);
+    if (layer.parentRef !== null) context.parents.set(layer.ref, layer.parentRef);
+  }
+}
+
+/** The root and the way down to it; the snapshot itself names no parent for its root. */
+function adoptRoot(context: ExplorationContext, file: SnapshotFile): void {
+  context.knownRefs.add(file.rootRef);
+  const path = file.rootPath;
+  if (!path) return;
+  path.forEach((ref, i) => context.parents.set(ref, i === 0 ? null : path[i - 1]!));
+  context.parents.set(file.rootRef, path.at(-1) ?? null);
+}
+
 /** The layers inside the layer at `at`: in panel order they follow it until the depth comes back up. */
-function inside(layers: SnapshotLayer[], at: number): SnapshotLayer[] {
+export function inside(layers: SnapshotLayer[], at: number): SnapshotLayer[] {
   const depth = layers[at]!.depth;
   const end = layers.findIndex((layer, index) => index > at && layer.depth <= depth);
   return layers.slice(at + 1, end < 0 ? undefined : end);
@@ -107,6 +128,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
       description:
         "Read a layer and everything inside it in one go, for implementing a page: a screenshot, and for each layer its place, size, and all that inspect_nodes shows, saved as a snapshot that query_snapshot reads without Figma. " +
         "Use it on the page's root, such as the frame the user selected (get_anchor). Instances count as one layer; read inside them with get_neighbors. " +
+        "A root snapshotted before can be passed with any context of the same file, even after the page reloaded; every ref of its snapshot then works in that context. " +
         "Returns the screenshot, the snapshot id, and an outline with one line per layer: ref, type, name, x,y and width×height in design pixels from the root's top-left corner (? when Figma shows no place), the start of its text, and marks for hidden layers, instances with layers of their own, and export settings. " +
         "A layer at (x, y) shows at image.rootInImage + (x, y) × image.scale in the screenshot. image.alignment says whether rootInImage was checked against the screenshot: confirmed, corrected (Figma reported a stale place), or unconfirmed (it may be off by a few dozen pixels; the outline's places, relative to the root, are not affected). " +
         "A saved snapshot comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. " +
@@ -117,7 +139,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         "The user's selection is put back; the view stays zoomed to the root.",
       inputSchema: {
         contextId: z.string(),
-        ref: z.string().describe("A ref returned earlier in this context, outside instances"),
+        ref: z.string().describe("A ref returned earlier in this context, outside instances, or the root of an earlier snapshot"),
         refresh: z.boolean().optional().describe("Read Figma again even when a saved snapshot has not expired"),
       },
       outputSchema: SnapshotOutputSchema,
@@ -127,7 +149,12 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         const started = Date.now();
         const context = contexts.get(contextId);
         if (!context) throw new SnapshotFailure("CONTEXT_NOT_FOUND", `no context ${contextId}`);
-        if (!context.knownRefs.has(ref)) throw new SnapshotFailure("UNKNOWN_REF", `ref ${ref} was not returned in context ${contextId}`);
+        if (!context.knownRefs.has(ref)) {
+          // The root of an earlier snapshot of this file, for example from before the page reloaded, may be used again.
+          const earlier = isPlainRef(ref) ? await snapshots.readSaved(snapshotId(context.identity.fileKey, ref)) : null;
+          if (!earlier) throw new SnapshotFailure("UNKNOWN_REF", `ref ${ref} was not returned in context ${contextId}`);
+          adoptRoot(context, earlier);
+        }
         if (!isPlainRef(ref)) throw new SnapshotFailure("INSIDE_INSTANCE", `layer ${ref} is inside an instance, whose layer IDs only hold until the page reloads`);
         const id = snapshotId(context.identity.fileKey, ref);
         const saved = refresh ? null : await snapshots.read(id);
@@ -137,7 +164,9 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         if (!file || !jpeg) {
           let result;
           try {
-            result = SnapshotResultSchema.parse(await bridge.request("snapshot_layer", { expect: context.identity, ref }, SNAPSHOT_TIMEOUT_MS, context.tabId));
+            result = SnapshotResultSchema.parse(
+              await bridge.request("snapshot_layer", { expect: context.identity, ref, ...knownParents(context, [ref]) }, SNAPSHOT_TIMEOUT_MS, context.tabId),
+            );
           } catch (error) {
             if (error instanceof BridgeError && error.code === "CONTEXT_EXPIRED") contexts.release(contextId);
             throw error;
@@ -165,14 +194,14 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
                 scale: result.imageScale && Math.round(result.imageScale * 10_000) / 10_000,
               },
               zoom: result.zoom,
+              rootPath: result.rootPath,
               layers: result.layers,
             },
             jpeg,
           );
           log(`snapshot_layer layers=${result.layers.length} walkMs=${Math.round(result.walkMs)} uiOps=${result.uiOps} alignment=${result.alignment} ms=${Math.round(result.elapsedMs)}`);
         }
-        // Refs outside instances hold across page loads, so this context may use them all.
-        for (const layer of file.layers) context.knownRefs.add(layer.ref);
+        adoptSnapshot(context, file);
         const snapshotFile = file;
         const { count, output } = fitPage(snapshotFile.layers, 0, Number.POSITIVE_INFINITY, maxOutputBytes, (page, next): SnapshotOutput => ({
           contextId,

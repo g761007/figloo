@@ -15,11 +15,16 @@ export interface Row {
   expanded: boolean;
   /** Figma also marks the rendered descendants of a selected layer as selected. */
   selected: boolean;
-  /** Figma greys out a hidden layer and every layer inside it (seen in Arc on 2026-10-01). */
+  /**
+   * Figma greys out a hidden layer and every layer inside it (seen in Arc on 2026-10-01); rows of
+   * instances and of layers inside them turn a dimmer purple instead (seen in Arc on 2026-10-02).
+   */
   hidden: boolean;
 }
 
 const ROW_ID_SUFFIX = "-layers-panel-row";
+/** The text colors of hidden rows: grey, or for components and instances the dimmest purple. */
+const HIDDEN_TEXT = /--color-text-(?:disabled|component-tertiary)(?![\w-])/;
 
 export function layersPanel(root: ParentNode): Element | null {
   return root.querySelector('[data-testid="objects-panel"]');
@@ -44,7 +49,7 @@ export function parseRow(el: Element): Row | null {
     hasChildren: expanded !== null,
     expanded: expanded === "true",
     selected: el.getAttribute("aria-selected") === "true",
-    hidden: /--color-text-disabled/.test(el.getAttribute("style") ?? ""),
+    hidden: HIDDEN_TEXT.test(el.getAttribute("style") ?? ""),
   };
 }
 

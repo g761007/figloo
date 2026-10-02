@@ -17,6 +17,8 @@ export interface ServerDeps {
   root?: string;
   /** Where snapshots are kept; ~/.figloo/snapshots with a 24-hour lifetime by default. */
   snapshots?: SnapshotStore;
+  /** Clock for the tools' time budgets. */
+  now?: () => number;
 }
 
 export function createServer(deps: ServerDeps): McpServer {
@@ -40,6 +42,7 @@ export function createServer(deps: ServerDeps): McpServer {
     contexts: deps.contexts ?? new ContextStore(),
     log: deps.log ?? ((message) => console.error(`[figloo] ${message}`)),
     ...(deps.root ? { root: deps.root } : {}),
+    ...(deps.now ? { now: deps.now } : {}),
     snapshots: deps.snapshots ?? new SnapshotStore(join(configDir(), "snapshots")),
   });
 

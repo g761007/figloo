@@ -165,7 +165,7 @@ Screenshot a layer of a context, zoomed to fit the screen, or the whole page whe
 
 ## export_asset
 
-Export a layer of a context with Figma's Export button and hand the files over: SVG markup inline, and PNG or JPG up to 1568 px as an image. Choose format and scale for the project, for example by checking how it already stores icons: SVG for web or Android vector drawables, PDF or PNG at 1x, 2x, and 3x for iOS, PNG at 1x to 4x for Android densities. One call exports one scale. With format, a temporary setting in that format and scale is added and removed again, unless the layer already has that exact setting, and only files in that format are returned. Without format, the designer's own export settings decide, and a layer without settings exports as SVG. With saveTo, the files are also written inside the project directory. Figma names files after the layer without a scale suffix, so give a full file name such as icons/close@2x.png for each scale, or end saveTo with a slash to keep Figma's name. Figloo normally receives the file inside the page, so the browser saves nothing; if that fails it falls back to the browser's download and reports its path. The Figma tab must be visible.
+Export a layer of a context with Figma's Export button and hand the files over: SVG markup inline, and PNG or JPG up to 1568 px as an image. Choose format and scale for the project, for example by checking how it already stores icons: SVG for web or Android vector drawables, PDF or PNG at 1x, 2x, and 3x for iOS, PNG at 1x to 4x for Android densities. One call exports one scale. With format, a temporary setting in that format and scale is added and removed again, unless the layer already has that exact setting, and only files in that format are returned. Without format, the designer's own export settings decide, and a layer without settings exports as SVG. With saveTo, the files are also written inside the project directory. Figma names files after the layer without a scale suffix, so give a full file name such as icons/close@2x.png for each scale, or end saveTo with a slash to keep Figma's name. Figloo normally receives the file inside the page, so the browser saves nothing; if that fails it falls back to the browser's download and reports its path. The Figma tab must be visible. For many layers, such as every icon of a page, use export_assets.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -185,14 +185,40 @@ Export a layer of a context with Figma's Export button and hand the files over: 
 | `usedExistingSettings` | boolean |
 | `userSelectionRestored` | boolean |
 
-## snapshot_layer
+## export_assets
 
-Read a layer and everything inside it in one go, for implementing a page: a screenshot, and for each layer its place, size, and all that inspect_nodes shows, saved as a snapshot that query_snapshot reads without Figma. Use it on the page's root, such as the frame the user selected (get_anchor). Instances count as one layer; read inside them with get_neighbors. Returns the screenshot, the snapshot id, and an outline with one line per layer: ref, type, name, x,y and width×height in design pixels from the root's top-left corner (? when Figma shows no place), the start of its text, and marks for hidden layers, instances with layers of their own, and export settings. A layer at (x, y) shows at image.rootInImage + (x, y) × image.scale in the screenshot. image.alignment says whether rootInImage was checked against the screenshot: confirmed, corrected (Figma reported a stale place), or unconfirmed (it may be off by a few dozen pixels; the outline's places, relative to the root, are not affected). A saved snapshot comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. Reading takes about 40 s for 300 layers, at most 3 minutes, for up to 400 layers; a larger subtree fails and lists the root's children. The Figma tab must be on screen to start. Meanwhile Figma shows an overlay with the progress and a Stop button, and the user can use other windows; if the tab goes to the background, reading pauses and goes on when it is back, within the 3 minutes. To cancel, the user should press Stop or Esc on the overlay, which puts the layers panel back; a click elsewhere in Figma also stops it but keeps the user's new selection. The user's selection is put back; the view stays zoomed to the root.
+Export several layers of a context with Figma's Export button, one after another, and save their files into one folder of the project, such as every icon and image of a page. Pass refs, or a snapshot from snapshot_layer to export each of its layers with export settings (the outline's [export …] marks), optionally only those inside one layer with under; hidden layers are skipped. format and scale work as in export_asset, for every layer; without format each layer exports as the designer set it up. Files keep Figma's names; when this call would write one path twice, the later file gets its layer's ref added, such as Vector-570-14192.svg. Existing files are only replaced with overwrite: true. A call exports at most 50 layers and starts none after about 150 seconds; the layers it did not get to come back in remaining, to pass as refs in the next call. It stops early, with stoppedBy, when the Figma tab goes to the background, the user steps in, or the browser waits for a Save dialog; other failures, such as a layer Figma hands no file over for, are listed in failed and the rest still export. Returns where each file went, not the files themselves. The Figma tab must be visible.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `contextId` | string | yes |  |
-| `ref` | string | yes | A ref returned earlier in this context, outside instances |
+| `refs` | array of string | no | Refs returned earlier in this context; not combined with snapshot |
+| `snapshot` | string | no | A snapshot id from snapshot_layer, of the context's file and page: export its layers with export settings |
+| `under` | string | no | With snapshot: only that layer and the layers inside it |
+| `saveTo` | string | yes | Folder inside the project, for example src/assets/icons/ |
+| `format` | "svg" or "png" or "jpg" or "pdf" | no | Pick it for the project; without it the designer's export settings decide |
+| `scale` | "0.5x" or "0.75x" or "1x" or "1.5x" or "2x" or "3x" or "4x" | no | Default 1x |
+| `overwrite` | boolean | no |  |
+
+| Result field | Type |
+|---|---|
+| `contextId` | string |
+| `saved` | array of object with ref, source, usedExistingSettings, files |
+| `failed` | array of object with ref, code, message |
+| `skipped` | array of object with ref, reason |
+| `remaining` | array of string |
+| `stoppedBy` | object with code, message or null |
+| `userSelectionRestored` | boolean |
+| `elapsedMs` | number, at least 0 |
+
+## snapshot_layer
+
+Read a layer and everything inside it in one go, for implementing a page: a screenshot, and for each layer its place, size, and all that inspect_nodes shows, saved as a snapshot that query_snapshot reads without Figma. Use it on the page's root, such as the frame the user selected (get_anchor). Instances count as one layer; read inside them with get_neighbors. A root snapshotted before can be passed with any context of the same file, even after the page reloaded; every ref of its snapshot then works in that context. Returns the screenshot, the snapshot id, and an outline with one line per layer: ref, type, name, x,y and width×height in design pixels from the root's top-left corner (? when Figma shows no place), the start of its text, and marks for hidden layers, instances with layers of their own, and export settings. A layer at (x, y) shows at image.rootInImage + (x, y) × image.scale in the screenshot. image.alignment says whether rootInImage was checked against the screenshot: confirmed, corrected (Figma reported a stale place), or unconfirmed (it may be off by a few dozen pixels; the outline's places, relative to the root, are not affected). A saved snapshot comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. Reading takes about 40 s for 300 layers, at most 3 minutes, for up to 400 layers; a larger subtree fails and lists the root's children. The Figma tab must be on screen to start. Meanwhile Figma shows an overlay with the progress and a Stop button, and the user can use other windows; if the tab goes to the background, reading pauses and goes on when it is back, within the 3 minutes. To cancel, the user should press Stop or Esc on the overlay, which puts the layers panel back; a click elsewhere in Figma also stops it but keeps the user's new selection. The user's selection is put back; the view stays zoomed to the root.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `contextId` | string | yes |  |
+| `ref` | string | yes | A ref returned earlier in this context, outside instances, or the root of an earlier snapshot |
 | `refresh` | boolean | no | Read Figma again even when a saved snapshot has not expired |
 
 | Result field | Type |
@@ -290,6 +316,7 @@ Forget an exploration context and the refs it returned.
 | `INTERNAL` | No hint; the message says what went wrong. |
 | `INVALID_ARGUMENT` | Check the tool's parameters against its description. |
 | `INVALID_CURSOR` | Pass nextCursor exactly as returned, with the same contextId, ref, and relation. |
+| `LAYER_HIDDEN` | Figma exports nothing for a hidden layer or one inside a hidden layer. Leave it out, or ask the user whether it should be shown in Figma. |
 | `NODE_NOT_FOUND` | The layer is no longer in the layers panel; call get_anchor again. |
 | `NOT_CONNECTED` | Call get_status for setup steps. |
 | `NO_SELECTION` | Ask the user to select the layers to work on in Figma, then call get_anchor again. |

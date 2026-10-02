@@ -6,11 +6,19 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ### Added
 
+- `export_assets` exports several layers one after another into one folder of the project: the given refs, or every layer a snapshot marks with export settings. Files keep Figma's names, with the layer's ref added when a name repeats; a call does up to 50 layers in about 150 seconds and hands back the rest.
 - `summarize_snapshot` lists the design values of a saved snapshot, or of one section of it, without the Figma tab: every color with what it colors, text style, gap, padding side, corner radius, border width, and shadow, each with how many layers use it, and the instances by name with each combination of their component properties. The figloo-implement skill calls it before mapping a design onto the project's tokens and components.
 
 ### Changed
 
+- A saved snapshot works after the Figma tab reloads: pass its root to `snapshot_layer` with a new context, and every ref of the snapshot works in that context again. Figloo now tells the tab the way down to these layers, so `inspect_nodes`, `capture`, `export_asset`, and the other tools find them even though the page has not shown them since it loaded.
+- `export_asset` and `export_assets` report `LAYER_HIDDEN` at once for a hidden layer, or one inside a hidden layer, which Figma does not export, instead of `EXPORT_BLOCKED` after 12 seconds. An `EXPORT_BLOCKED` message now says what Figma did in the page, such as making no file.
+- The extension and the MCP server speak bridge protocol 0.3.0, so both must be replaced together; a mismatched pair reports `PROTOCOL_MISMATCH` in `get_status`.
 - GitHub Actions builds and publishes each release from its version tag, and computes the checksum table in the release notes from the files it uploads. Every push and pull request runs the build, type checks, and unit tests.
+
+### Fixed
+
+- Snapshots marked instances inside hidden layers, and hidden instances, as visible: Figma dims such rows in purple instead of greying them. They count as hidden now, and so does every layer inside a hidden layer.
 
 ## [0.3.2] - 2026-10-02
 

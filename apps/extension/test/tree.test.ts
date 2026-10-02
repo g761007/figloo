@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LayerTree, StopExploration, type IndexEntry, type Limits } from "../src/adapter/tree.js";
+import { LayerTree, StopExploration, hiddenLayers, learnParents, type IndexEntry, type Limits } from "../src/adapter/tree.js";
 import { FakeLayers, type FakeNode } from "./fake-layers.js";
 
 /** Five cards whose layers share names; only card `selectedCard` has its button selected. */
@@ -390,5 +390,78 @@ describe("LayerTree whole subtree walk", () => {
     const tree = makeTree(source, new Map(), { interrupted: () => operations >= 3 });
 
     await expect(tree.walkSubtree(list, 400)).rejects.toMatchObject({ cause: "user_interrupted" });
+  });
+});
+
+describe("LayerTree after a page reload", () => {
+  /** The card screen as a fresh page load shows it: every layer collapsed and no row read yet. */
+  function reloaded(): FakeLayers {
+    const nodes = cardScreen(0);
+    const collapse = (list: FakeNode[]) => {
+      for (const node of list) {
+        node.expanded = false;
+        collapse(node.children ?? []);
+      }
+    };
+    collapse(nodes);
+    return new FakeLayers(nodes);
+  }
+  /** The way down to the fourth card's image, as a saved snapshot of the screen knows it. */
+  const fromSnapshot = [
+    { ref: "screen", parentRef: null },
+    { ref: "list", parentRef: "screen" },
+    { ref: "c4", parentRef: "list" },
+    { ref: "c4-image", parentRef: "c4" },
+  ];
+
+  it("finds a deep layer through the parents a saved snapshot names, and closes what it opened", async () => {
+    const source = reloaded();
+    const index = new Map<string, IndexEntry>();
+    learnParents(index, fromSnapshot);
+    const tree = makeTree(source, index);
+
+    const row = await tree.find("c4-image");
+    expect(row?.id).toBe("c4-image");
+    expect(source.expandedIds()).toEqual(["c4", "list", "screen"]);
+    // The row's place is remembered, so the next find does not start from the page again.
+    expect(index.get("c4-image")).toMatchObject({ rowIndex: row!.rowIndex, parentRef: "c4" });
+
+    await tree.restore();
+    expect(source.expandedIds()).toEqual([]);
+  });
+
+  it("finds nothing without the parents, as before", async () => {
+    const source = reloaded();
+    expect(await makeTree(source).find("c4-image")).toBeNull();
+    expect(source.toggles).toBe(0);
+  });
+
+  it("keeps what the tab read itself over the parents the server sends", () => {
+    const index = new Map<string, IndexEntry>([
+      ["a", { rowIndex: 7, parentRef: "p" }],
+      ["b", { rowIndex: 3 }],
+    ]);
+    learnParents(index, [
+      { ref: "a", parentRef: "q" },
+      { ref: "b", parentRef: "p" },
+      { ref: "c", parentRef: null },
+    ]);
+    expect(index.get("a")).toEqual({ rowIndex: 7, parentRef: "p" });
+    expect(index.get("b")).toEqual({ rowIndex: 3, parentRef: "p" });
+    expect(index.get("c")).toEqual({ rowIndex: 0, parentRef: null });
+  });
+});
+
+describe("hiddenLayers", () => {
+  it("counts every layer inside a hidden layer as hidden, whatever its own row shows", async () => {
+    const nodes = cardScreen(0);
+    // The second card is hidden; its rows are greyed, but an instance row inside it may not say so.
+    nodes[1]!.children![1]!.children![1]!.hidden = true;
+    const source = new FakeLayers(nodes, 50);
+    const tree = makeTree(source);
+    const list = (await tree.find("list"))!;
+    const walk = await tree.walkSubtree(list, 100);
+    for (const layer of walk.layers) if (layer.row.id === "c2-button") layer.row = { ...layer.row, hidden: false };
+    expect([...hiddenLayers(walk.layers)].sort()).toEqual(["c2", "c2-button", "c2-image", "c2-title"]);
   });
 });
