@@ -135,6 +135,28 @@ export const BridgeOpSchema = z.enum([
 ]);
 export type BridgeOp = z.infer<typeof BridgeOpSchema>;
 
+/** Which coding-agent session a Figloo MCP server belongs to, so the user can tell sessions apart. */
+export const SessionIdentitySchema = z.object({
+  /** The MCP client's title, or its name when it has no title; null until the client initialized. */
+  client: z.string().nullable(),
+  /** Folder name of the project the session works in. */
+  project: z.string(),
+  pid: z.number().int(),
+  startedAt: z.number(),
+  serverVersion: z.string(),
+});
+export type SessionIdentity = z.infer<typeof SessionIdentitySchema>;
+
+/** Close code telling the extension the port moved to another session's server, which it should reconnect to right away. */
+export const HANDED_OVER_CLOSE_CODE = 4010;
+
+/** Names a session the way the user sees it: client · project folder (start time). */
+export function sessionLabel(session: SessionIdentity): string {
+  const started = new Date(session.startedAt);
+  const time = `${String(started.getHours()).padStart(2, "0")}:${String(started.getMinutes()).padStart(2, "0")}`;
+  return `${session.client ? `${session.client} · ` : ""}${session.project} (started ${time})`;
+}
+
 // Messages sent by the extension to the local bridge.
 export const HelloMessageSchema = z.object({
   type: z.literal("hello"),
@@ -160,6 +182,8 @@ export const WelcomeMessageSchema = z.object({
   protocolVersion: z.string(),
   serverVersion: z.string(),
   heartbeatIntervalMs: z.number().positive(),
+  /** Missing from servers older than 0.2.0. */
+  session: SessionIdentitySchema.optional(),
 });
 export const ErrorMessageSchema = z.object({
   type: z.literal("error"),
@@ -209,6 +233,10 @@ export const StatusReportSchema = z.object({
     listening: z.boolean(),
     port: z.number().int(),
     error: z.string().nullable(),
+    /** The holder serves the extension; a standby server takes over when one of its tools needs the extension. */
+    role: z.enum(["holder", "standby"]),
+    /** The session the extension serves, when known. */
+    holder: SessionIdentitySchema.nullable(),
   }),
   extension: z.object({
     connected: z.boolean(),

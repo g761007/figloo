@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Bridge } from "./bridge.js";
-import { configDir, configPath, loadOrCreateConfig } from "./config.js";
+import { configDir, configPath, loadOrCreateConfig, projectName } from "./config.js";
 import { createServer } from "./server.js";
 import { SnapshotStore } from "./snapshots.js";
 
@@ -23,9 +23,13 @@ if (command !== "serve") {
   process.exit(2);
 }
 
-const bridge = new Bridge({ ...config, serverVersion: VERSION });
+const bridge = new Bridge({ ...config, serverVersion: VERSION, project: projectName() });
 await bridge.start();
 const server = createServer({ bridge, version: VERSION, snapshots: new SnapshotStore(join(configDir(), "snapshots"), config.snapshotTtlHours * 3_600_000) });
+server.server.oninitialized = () => {
+  const client = server.server.getClientVersion();
+  bridge.session.client = client?.title ?? client?.name ?? null;
+};
 server.server.onclose = () => {
   void bridge.stop().finally(() => process.exit(0));
 };

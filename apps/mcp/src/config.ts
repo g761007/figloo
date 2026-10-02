@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { EXTENSION_ID } from "@figloo/protocol";
 import { DEFAULT_SNAPSHOT_TTL_HOURS } from "./snapshots.js";
 
@@ -21,6 +21,11 @@ export function configDir(): string {
 
 export function configPath(): string {
   return join(configDir(), "config.json");
+}
+
+/** Folder name of the project the agent session works in, which tells sessions apart for the user. */
+export function projectName(): string {
+  return basename(process.env.CLAUDE_PROJECT_DIR || process.cwd());
 }
 
 /** Reads ~/.figloo/config.json, creating it with a fresh pairing token on first run. */

@@ -14,7 +14,7 @@ No parameters.
 |---|---|
 | `status` | "DISCONNECTED" or "NO_DESIGN_TAB" or "LOADING" or "READY" or "DEGRADED" or "INCOMPATIBLE" |
 | `protocolVersion` | string |
-| `bridge` | object with listening, port, error |
+| `bridge` | object with listening, port, error, role, holder |
 | `extension` | object with connected, extensionVersion, userAgent, connectedAt, lastDisconnectAt, lastError |
 | `tabs` | array of object with tabId, windowId, url, title, fileKey, fileName, nodeIdFromUrl, readiness, access, uiLocale, capabilities, layerRowCount, visible, probedAt, detail |
 | `tabsFresh` | boolean |
@@ -255,7 +255,7 @@ Forget an exploration context and the refs it returned.
 |---|---|
 | `BAD_MESSAGE` | No hint; the message says what went wrong. |
 | `BUDGET_EXCEEDED` | The operation ran out of its time or UI budget; narrow the request or retry. |
-| `BUSY` | Another operation is running in this tab; retry after it finishes. |
+| `BUSY` | Another operation is running in this tab, or Figloo is working for another agent session (the message names it); retry after a few seconds. |
 | `CONTEXT_EXPIRED` | The Figma tab reloaded or switched files; call get_anchor again. |
 | `CONTEXT_NOT_FOUND` | The context was released or expired; call get_anchor again. |
 | `EXPORT_BLOCKED` | Figma handed over no file and the browser started no download. If the browser blocked repeated downloads from figma.com, ask the user to allow them in the site settings, then retry. |

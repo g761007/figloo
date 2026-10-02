@@ -58,7 +58,7 @@ export const HINTS: Record<string, string> = {
   NODE_NOT_FOUND: "The layer is no longer in the layers panel; call get_anchor again.",
   USER_INTERRUPTED: "The user interacted with Figma during the operation. Check with the user before retrying.",
   UI_NOT_READY: "Call get_status to see what the Figma tab can do right now.",
-  BUSY: "Another operation is running in this tab; retry after it finishes.",
+  BUSY: "Another operation is running in this tab, or Figloo is working for another agent session (the message names it); retry after a few seconds.",
   BUDGET_EXCEEDED: "The operation ran out of its time or UI budget; narrow the request or retry.",
   TIMEOUT: "The Figma tab did not answer in time; call get_status.",
   TAB_IN_BACKGROUND:

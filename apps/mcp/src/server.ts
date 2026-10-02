@@ -48,6 +48,7 @@ export function createServer(deps: ServerDeps): McpServer {
 
 /** Asks the extension for fresh tab statuses when it is connected, then assembles the report. */
 export async function buildStatusReport(bridge: Bridge, refreshTimeoutMs = 3_000): Promise<StatusReport> {
+  await bridge.lookupHolder();
   let { tabs } = bridge.getTabs();
   let tabsFresh = false;
   if (bridge.connected) {
@@ -61,7 +62,7 @@ export async function buildStatusReport(bridge: Bridge, refreshTimeoutMs = 3_000
   const report: StatusReport = {
     status: overallStatus(bridge.connected, tabs),
     protocolVersion: PROTOCOL_VERSION,
-    bridge: { listening: bridge.listening, port: bridge.port, error: bridge.listenError },
+    bridge: { listening: bridge.listening, port: bridge.port, error: bridge.listenError, role: bridge.role, holder: bridge.holder },
     extension: {
       connected: bridge.connected,
       extensionVersion: bridge.extension?.extensionVersion ?? null,

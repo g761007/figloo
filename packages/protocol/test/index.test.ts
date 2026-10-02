@@ -10,6 +10,7 @@ import {
   SnapshotResultSchema,
   TabStatusSchema,
   protocolCompatible,
+  sessionLabel,
 } from "../src/index.js";
 
 describe("ConnectionStatusSchema", () => {
@@ -76,6 +77,25 @@ describe("bridge messages", () => {
 
   it("rejects a tab status with an unknown readiness", () => {
     expect(TabStatusSchema.safeParse({ ...tab, readiness: "CONNECTED" }).success).toBe(false);
+  });
+
+  it("accepts a welcome with the server's session and one from a server older than 0.2.0 without it", () => {
+    const welcome = { type: "welcome", protocolVersion: PROTOCOL_VERSION, serverVersion: "0.1.0", heartbeatIntervalMs: 20_000 };
+    const session = { client: "Claude Code", project: "shop", pid: 17807, startedAt: 0, serverVersion: "0.2.0" };
+    expect(ServerMessageSchema.parse({ ...welcome, serverVersion: "0.2.0", session })).toMatchObject({ session });
+    expect(ServerMessageSchema.parse(welcome)).not.toHaveProperty("session");
+  });
+});
+
+describe("sessionLabel", () => {
+  const session = { client: "Claude Code", project: "shop", pid: 17807, startedAt: new Date(2026, 9, 2, 9, 5).getTime(), serverVersion: "0.2.0" };
+
+  it("names the client, the project folder, and the local start time", () => {
+    expect(sessionLabel(session)).toBe("Claude Code · shop (started 09:05)");
+  });
+
+  it("leaves out the client before it initialized", () => {
+    expect(sessionLabel({ ...session, client: null })).toBe("shop (started 09:05)");
   });
 });
 

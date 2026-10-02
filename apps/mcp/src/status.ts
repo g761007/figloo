@@ -1,4 +1,4 @@
-import type { ConnectionStatus, StatusReport, TabStatus } from "@figloo/protocol";
+import { sessionLabel, type ConnectionStatus, type StatusReport, type TabStatus } from "@figloo/protocol";
 
 /** Collapses the extension connection and per-tab readiness into the single status the plan defines. */
 export function overallStatus(connected: boolean, tabs: TabStatus[]): ConnectionStatus {
@@ -12,7 +12,10 @@ export function overallStatus(connected: boolean, tabs: TabStatus[]): Connection
 
 /** A one-line next step for the agent, or null when nothing needs attention. */
 export function statusHint(report: StatusReport): string | null {
-  if (!report.bridge.listening) {
+  if (report.bridge.role === "standby") {
+    if (report.bridge.holder) {
+      return `Figloo is serving ${sessionLabel(report.bridge.holder)} right now. Any Figloo tool that needs Figma takes over once that session has been idle for 10 seconds.`;
+    }
     return `The local bridge is not listening on port ${report.bridge.port}${report.bridge.error ? `: ${report.bridge.error}` : ""}.`;
   }
   switch (report.status) {

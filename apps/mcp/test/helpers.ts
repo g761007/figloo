@@ -1,11 +1,11 @@
 import { WebSocket } from "ws";
-import { EXTENSION_ID, PROTOCOL_VERSION, type ExtensionMessage, type ServerMessage, type TabStatus } from "@figloo/protocol";
+import { EXTENSION_ID, PROTOCOL_VERSION, type ExtensionMessage, type ServerMessage, type TabStatus, type WelcomeMessage } from "@figloo/protocol";
 import { Bridge } from "../src/bridge.js";
 
 export const TOKEN = "test-token";
 
 export function startBridge(overrides: Partial<ConstructorParameters<typeof Bridge>[0]> = {}): Promise<Bridge> {
-  const bridge = new Bridge({ port: 0, token: TOKEN, allowedExtensionIds: [EXTENSION_ID], serverVersion: "test", log: () => {}, ...overrides });
+  const bridge = new Bridge({ port: 0, token: TOKEN, allowedExtensionIds: [EXTENSION_ID], serverVersion: "test", project: "test", log: () => {}, ...overrides });
   return bridge.start().then(() => bridge);
 }
 
@@ -60,6 +60,50 @@ export async function pairFakeExtension(port: number): Promise<FakeExtension> {
   ext.send(hello());
   await ext.next((m) => m.type === "welcome");
   return ext;
+}
+
+export interface ReconnectingExtension {
+  /** Close codes of every connection that ended, in order. */
+  closes: number[];
+  welcomes: WelcomeMessage[];
+  stop: () => void;
+}
+
+/**
+ * Keeps a paired connection to `port` the way the extension does, reconnecting 50 ms after
+ * any close, and answers each request with `answer` (by default an empty tab list).
+ */
+export function runReconnectingExtension(port: number, answer: (op: string) => unknown = () => ({ tabs: [] })): ReconnectingExtension {
+  const closes: number[] = [];
+  const welcomes: WelcomeMessage[] = [];
+  let stopped = false;
+  let ws: WebSocket;
+  const connect = () => {
+    ws = new WebSocket(`ws://127.0.0.1:${port}/`, { headers: { origin: `chrome-extension://${EXTENSION_ID}` } });
+    ws.on("open", () => ws.send(JSON.stringify(hello())));
+    ws.on("message", (data) => {
+      const message = JSON.parse(data.toString()) as ServerMessage;
+      if (message.type === "welcome") welcomes.push(message);
+      if (message.type === "request") {
+        const socket = ws;
+        void Promise.resolve(answer(message.op)).then((result) => socket.send(JSON.stringify({ type: "response", id: message.id, ok: true, result })));
+      }
+    });
+    ws.on("error", () => {});
+    ws.on("close", (code) => {
+      closes.push(code);
+      if (!stopped) setTimeout(connect, 50);
+    });
+  };
+  connect();
+  return {
+    closes,
+    welcomes,
+    stop: () => {
+      stopped = true;
+      ws.close();
+    },
+  };
 }
 
 export function sampleTab(overrides: Partial<TabStatus> = {}): TabStatus {

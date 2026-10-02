@@ -1,7 +1,9 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, describe, expect, it } from "vitest";
-import { StatusReportSchema } from "@figloo/protocol";
+import { StatusReportSchema, sessionLabel } from "@figloo/protocol";
+import { createServer as createHttpServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { Bridge } from "../src/bridge.js";
 import { createServer } from "../src/server.js";
 import { pairFakeExtension, sampleTab, startBridge } from "./helpers.js";
@@ -27,7 +29,7 @@ describe("get_status", () => {
     bridges.push(bridge);
     const report = await callGetStatus(bridge);
     expect(report.status).toBe("DISCONNECTED");
-    expect(report.bridge).toEqual({ listening: true, port: bridge.port, error: null });
+    expect(report.bridge).toEqual({ listening: true, port: bridge.port, error: null, role: "holder", holder: bridge.session });
     expect(report.hint).toMatch(/figloo-mcp pair/);
   });
 
@@ -64,6 +66,37 @@ describe("get_status", () => {
     expect(report.extension.lastError).toMatch(/timed out/);
     expect(report.hint).toMatch(/guest session/);
     ext.ws.close();
+  });
+
+  it("names the holder while standing by, without taking the extension from it", async () => {
+    const holder = await startBridge({ project: "alpha" });
+    bridges.push(holder);
+    const ext = await pairFakeExtension(holder.port);
+    const standby = await startBridge({ port: holder.port, project: "beta" });
+    bridges.push(standby);
+
+    const report = await callGetStatus(standby);
+
+    expect(report.bridge).toMatchObject({ listening: false, role: "standby", holder: holder.session, error: null });
+    expect(report.hint).toContain(`Figloo is serving ${sessionLabel(holder.session)}`);
+    expect(holder.connected).toBe(true);
+    ext.ws.close();
+  });
+
+  it("asks for a restart while an older Figloo that cannot hand over holds the port", async () => {
+    const old = createHttpServer((_req, res) => {
+      res.statusCode = 404;
+      res.end();
+    });
+    await new Promise<void>((resolve) => old.listen(0, "127.0.0.1", resolve));
+    const standby = await startBridge({ port: (old.address() as AddressInfo).port });
+    bridges.push(standby);
+
+    const report = await callGetStatus(standby);
+
+    expect(report.bridge).toMatchObject({ role: "standby", holder: null });
+    expect(report.hint).toMatch(/older Figloo.*restart that session/);
+    await new Promise((resolve) => old.close(resolve));
   });
 
   it("reports NO_DESIGN_TAB when the extension is connected without Figma tabs", async () => {
