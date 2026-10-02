@@ -21,6 +21,12 @@ describe("the toolbar popup", () => {
     expect(root.textContent).toContain("Agent: connected");
   });
 
+  it("names the agent session the extension serves", () => {
+    const session = { client: "Claude Code", project: "shop", pid: 1, startedAt: new Date(2026, 9, 2, 9, 15).getTime(), serverVersion: "0.2.0" };
+    renderPopup(root, snapshot({ connection: { ...snapshot().connection, session } }), { copy: async () => true });
+    expect(root.querySelector(".agent")?.textContent).toBe("Agent: Claude Code · shop (started 09:15)");
+  });
+
   it("shows layer names as text, never as markup", () => {
     const named = layer("2:5", '<img src=x onerror="window.hacked=1">', "Frame");
     const selection = { ...cardSelection(), anchor: named, anchors: [named] };
@@ -73,7 +79,7 @@ describe("the toolbar popup", () => {
   });
 
   it("asks for a Figma tab when there is none", () => {
-    renderPopup(root, snapshot({ tab: null, connection: { phase: "unpaired", port: null, connectedAt: null, lastError: null, attempts: 0, tabCount: 0 } }), { copy: async () => true });
+    renderPopup(root, snapshot({ tab: null, connection: { ...snapshot().connection, phase: "unpaired", port: null, connectedAt: null, tabCount: 0 } }), { copy: async () => true });
     expect(root.textContent).toContain("This tab has no Figma design file");
     expect(root.textContent).toContain("Agent: not paired");
     expect(root.querySelector("button.copy")).toBeNull();

@@ -1,4 +1,4 @@
-import type { TabStatus } from "@figloo/protocol";
+import { sessionLabel, type TabStatus } from "@figloo/protocol";
 import type { ConnectionState } from "./state.js";
 
 /** Toolbar icon sets. Gray is also the manifest default, so tabs without a design file show it. */
@@ -25,10 +25,10 @@ export interface ActionAppearance {
 const WARNING: Badge = { text: "!", color: "#F59E0B", textColor: "#1F2937" };
 const ERROR: Badge = { text: "!", color: "#DC2626", textColor: "#FFFFFF" };
 
-export function agentLine(phase: ConnectionState["phase"]): string {
+export function agentLine({ phase, session }: Pick<ConnectionState, "phase" | "session">): string {
   switch (phase) {
     case "connected":
-      return "Agent: connected";
+      return session ? `Agent: ${sessionLabel(session)}` : "Agent: connected";
     case "unpaired":
       return "Agent: not paired; open the Figloo options page";
     default:
@@ -40,10 +40,10 @@ export function agentLine(phase: ConnectionState["phase"]): string {
  * The icon turns colorful only when Figloo can read the tab: READY as is, DEGRADED with a
  * warning badge. The tooltip names the file, the limitation if any, and the agent connection.
  */
-export function actionAppearance(status: TabStatus | null, phase: ConnectionState["phase"]): ActionAppearance {
+export function actionAppearance(status: TabStatus | null, connection: Pick<ConnectionState, "phase" | "session">): ActionAppearance {
   if (!status) return { icon: "gray", badge: null, title: DEFAULT_TITLE };
   const file = status.fileName ? `“${status.fileName}”` : "this file";
-  const title = (headline: string) => [headline, status.detail, agentLine(phase)].filter(Boolean).join("\n");
+  const title = (headline: string) => [headline, status.detail, agentLine(connection)].filter(Boolean).join("\n");
   switch (status.readiness) {
     case "READY":
       return { icon: "color", badge: null, title: title(`Figloo: ready on ${file}`) };

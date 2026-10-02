@@ -50,7 +50,7 @@ export function renderPopup(root: HTMLElement, snapshot: PopupSnapshot, handlers
     if (where) status.append(el(doc, "p", "muted", where));
     status.append(el(doc, "p", `readiness ${tab.readiness.toLowerCase()}`, readinessLine(tab)));
   }
-  status.append(el(doc, "p", `agent ${connection.phase}`, agentLine(connection.phase)));
+  status.append(el(doc, "p", `agent ${connection.phase}`, agentLine(connection)));
   root.append(status);
 
   const usable = tab !== null && (tab.readiness === "READY" || tab.readiness === "DEGRADED");

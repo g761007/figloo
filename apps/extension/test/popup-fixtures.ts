@@ -25,7 +25,7 @@ export const figmaTab: TabStatus = {
 
 export function snapshot(extra: Partial<PopupSnapshot> = {}): PopupSnapshot {
   return {
-    connection: { phase: "connected", port: 47129, connectedAt: 1, lastError: null, attempts: 0, tabCount: 1 },
+    connection: { phase: "connected", port: 47129, connectedAt: 1, lastError: null, attempts: 0, tabCount: 1, session: null, lastHandoverAt: null },
     tab: figmaTab,
     page: "Checkout",
     selection: null,

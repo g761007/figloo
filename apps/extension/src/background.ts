@@ -6,6 +6,7 @@ import {
   ExportFinishSchema,
   ExportPlanSchema,
   ExportRequestSchema,
+  HANDED_OVER_CLOSE_CODE,
   InspectParamsSchema,
   ListNeighborsParamsSchema,
   ListPagesResultSchema,
@@ -25,6 +26,7 @@ import {
   type Rect,
   type ExtensionMessage,
   type ProbeResult,
+  type SessionIdentity,
   type TabOpResponse,
   type TabStatus,
 } from "@figloo/protocol";
@@ -40,6 +42,8 @@ const FIGMA_DESIGN_URLS = ["https://www.figma.com/design/*", "https://www.figma.
 const RECONNECT_ALARM = "figloo-reconnect";
 const BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000];
 const REJECTED_RETRY_MS = 60_000;
+/** The session that took over listens within moments, and its tool call is waiting for this extension. */
+const HANDOVER_RETRY_MS = 200;
 const PROBE_TIMEOUT_MS = 3_000;
 const REFRESH_DEBOUNCE_MS = 500;
 
@@ -48,7 +52,16 @@ interface Settings {
   port: number;
 }
 
-const state: ConnectionState = { phase: "disconnected", port: null, connectedAt: null, lastError: null, attempts: 0, tabCount: 0 };
+const state: ConnectionState = {
+  phase: "disconnected",
+  port: null,
+  connectedAt: null,
+  lastError: null,
+  attempts: 0,
+  tabCount: 0,
+  session: null,
+  lastHandoverAt: null,
+};
 let socket: WebSocket | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -104,6 +117,11 @@ async function connect(): Promise<void> {
     const wasConnected = state.phase === "connected";
     setPhase("disconnected");
     state.connectedAt = null;
+    if (event.code === HANDED_OVER_CLOSE_CODE) {
+      state.lastHandoverAt = Date.now();
+      scheduleReconnect(HANDOVER_RETRY_MS);
+      return;
+    }
     if (event.code >= 4000 && event.reason) state.lastError = `${event.code} ${event.reason}`;
     // Unauthorized or incompatible: retry slowly so a bad token does not hammer the bridge.
     if (event.code === 4001 || event.code === 4003) {
@@ -156,7 +174,7 @@ async function handleServerMessage(raw: string): Promise<void> {
   const message = parsed.data;
   switch (message.type) {
     case "welcome":
-      setPhase("connected");
+      setPhase("connected", message.session ?? null);
       state.connectedAt = Date.now();
       state.attempts = 0;
       state.lastError = null;
@@ -495,16 +513,18 @@ async function refreshAllTabs(): Promise<TabStatus[]> {
   return statuses;
 }
 
-function setPhase(phase: ConnectionState["phase"]): void {
-  const agentChanged = agentLine(phase) !== agentLine(state.phase);
+/** `session` is the server's, from its welcome; any other phase has none. */
+function setPhase(phase: ConnectionState["phase"], session: SessionIdentity | null = null): void {
+  const agentChanged = agentLine({ phase, session }) !== agentLine(state);
   state.phase = phase;
+  state.session = session;
   // Every tracked tab's tooltip mentions the agent connection, so refresh them when that changes.
   if (agentChanged) for (const status of tabs.values()) applyAction(status.tabId, status);
 }
 
 /** Shows on the toolbar icon whether Figloo can use the page in this tab; null restores the default. */
 function applyAction(tabId: number, status: TabStatus | null): void {
-  applyAppearance(tabId, actionAppearance(status, state.phase)).catch((error: unknown) => {
+  applyAppearance(tabId, actionAppearance(status, state)).catch((error: unknown) => {
     // The tab may have closed in the meantime; anything else is worth seeing in the worker console.
     if (!/No tab with id/.test(String(error))) console.warn("Figloo: cannot update the toolbar icon", error);
   });

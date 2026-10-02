@@ -1,3 +1,4 @@
+import { formatState } from "./options-model.js";
 import { DEFAULT_PORT, type ConnectionState } from "./state.js";
 
 const form = document.querySelector<HTMLFormElement>("#pairing-form")!;
@@ -18,14 +19,6 @@ async function refreshStatus(): Promise<void> {
   } catch (error) {
     statusEl.textContent = `Cannot reach the service worker: ${String(error)}`;
   }
-}
-
-function formatState(state: ConnectionState): string {
-  const lines = [`Connection: ${state.phase}${state.port ? ` (port ${state.port})` : ""}`];
-  if (state.connectedAt) lines.push(`Connected since: ${new Date(state.connectedAt).toLocaleTimeString()}`);
-  if (state.phase === "connected") lines.push(`Figma design tabs: ${state.tabCount}`);
-  if (state.lastError) lines.push(`Last error: ${state.lastError}`);
-  return lines.join("\n");
 }
 
 form.addEventListener("submit", (event) => {
