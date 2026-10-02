@@ -132,7 +132,7 @@ describe("snapshot schemas", () => {
 
   it("keeps the size of a layer Figma shows no position for", () => {
     const image = { data: "", mimeType: "image/jpeg", width: 748, height: 1568 };
-    const complete = { status: "complete", identity, layers: [layer], rootOnScreen: null, zoom: null, walkMs: 4_000, ...counts, image, crop: { x: 1, y: 2, width: 388, height: 813 }, rootInImage: null, imageScale: null };
+    const complete = { status: "complete", identity, layers: [layer], rootOnScreen: null, zoom: null, walkMs: 4_000, ...counts, image, crop: { x: 1, y: 2, width: 388, height: 813 }, rootInImage: null, imageScale: null, alignment: "unconfirmed" };
     const parsed = SnapshotResultSchema.parse(complete);
     expect(parsed.status === "complete" && parsed.layers[0]!.bounds).toEqual({ x: null, y: null, width: 120, height: 24, source: "unknown" });
     expect(SnapshotResultSchema.safeParse({ ...complete, layers: [{ ...layer, bounds: { ...layer.bounds, source: "guess" } }] }).success).toBe(false);

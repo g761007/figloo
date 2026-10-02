@@ -27,6 +27,7 @@ import type {
   VisualNeighborsResult,
 } from "@figloo/protocol";
 import { MAX_ANCHORS, MAX_NEIGHBOR_LIMIT } from "@figloo/protocol";
+import { CAPTURE_MARGIN_PX, inflate, intersect } from "../capture.js";
 import { parseFigmaUrl } from "../figma-url.js";
 import { parseSelectedCount } from "../probe.js";
 import { DomRowSource, TabInBackground, synthesizeClick } from "./dom-source.js";
@@ -45,8 +46,6 @@ const ALL_GROUPS: InspectGroup[] = ["layout", "appearance", "typography", "compo
 const PAGE_SWITCH_TIMEOUT_MS = 8_000;
 /** A capture the worker never finished restores the user's selection on its own after this long. */
 const PENDING_CAPTURE_TIMEOUT_MS = 10_000;
-/** Room around a captured layer, in CSS pixels, so its edges and shadows stay in the image. */
-const CAPTURE_MARGIN_PX = 12;
 /** Wider margin when the crop is estimated from the layer's size instead of measured. */
 const CAPTURE_FALLBACK_MARGIN_PX = 48;
 const ZOOM_ANIMATION_MS = 500;
@@ -380,7 +379,7 @@ export class Explorer {
       await sleep(200);
       // Zooming shows a toast such as "Zoom to selection" for about three seconds; keep it out of the image.
       await source.settle(() => !(this.doc.querySelector('[data-testid="visual-bell-message"]')?.textContent?.trim()), TOAST_TIMEOUT_MS);
-      return { crop, cropSource, zoom: source.zoomLabel() };
+      return { crop, cropSource, canvas, zoom: source.zoomLabel() };
     });
     const token = crypto.randomUUID();
     const pending: PendingCapture = {
@@ -885,18 +884,6 @@ function toBase64(buffer: ArrayBuffer): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(binary);
-}
-
-function inflate(rect: Rect, by: number): Rect {
-  return { x: rect.x - by, y: rect.y - by, width: rect.width + 2 * by, height: rect.height + 2 * by };
-}
-
-function intersect(a: Rect, b: Rect): Rect | null {
-  const x = Math.max(a.x, b.x);
-  const y = Math.max(a.y, b.y);
-  const right = Math.min(a.x + a.width, b.x + b.width);
-  const bottom = Math.min(a.y + a.height, b.y + b.height);
-  return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
 }
 
 function translate(error: unknown): unknown {

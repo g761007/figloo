@@ -446,6 +446,8 @@ export const CapturePlanSchema = z.object({
   crop: RectSchema,
   /** "layer" when the crop follows the layer's bounds, "canvas" when it is the visible canvas. */
   cropSource: z.enum(["layer", "canvas"]),
+  /** The part of the canvas no panel covers, which a crop stays within. */
+  canvas: RectSchema,
   viewport: z.object({ width: z.number().positive(), height: z.number().positive() }),
   zoom: z.string().nullable(),
 });
@@ -733,6 +735,10 @@ const SnapshotTooLargeSchema = z.object({
   elapsedMs: z.number().nonnegative(),
 });
 
+/** How the root's place in a snapshot's screenshot was checked against the screenshot itself. */
+export const ImageAlignmentSchema = z.enum(["confirmed", "corrected", "unconfirmed"]);
+export type ImageAlignment = z.infer<typeof ImageAlignmentSchema>;
+
 /** Result of the tab's `read_subtree` op. */
 export const SnapshotReadResultSchema = z.discriminatedUnion("status", [SnapshotReadCompleteSchema, SnapshotTooLargeSchema]);
 export type SnapshotReadResult = z.infer<typeof SnapshotReadResultSchema>;
@@ -747,6 +753,7 @@ export const SnapshotResultSchema = z.discriminatedUnion("status", [
     rootInImage: RectSchema.nullable(),
     /** Image pixels per design pixel, to place a layer's bounds in the image; null when the zoom is unknown. */
     imageScale: z.number().positive().nullable(),
+    alignment: ImageAlignmentSchema,
   }),
   SnapshotTooLargeSchema,
 ]);
@@ -754,6 +761,8 @@ export type SnapshotResult = z.infer<typeof SnapshotResultSchema>;
 
 /** Where the root sits in a snapshot's screenshot, to find a layer's bounds in the image. */
 export const SnapshotImageInfoSchema = z.object({
+  /** confirmed: the screenshot shows the root where Figma said; corrected: Figma's place was off and the root was found in the screenshot; unconfirmed: not checked, so rootInImage may be off. */
+  alignment: ImageAlignmentSchema,
   width: z.number().int(),
   height: z.number().int(),
   /** The root in the image, in image pixels; null when Figma did not show where it is on screen. */

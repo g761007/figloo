@@ -186,7 +186,7 @@ Export a layer of a context with Figma's Export button and hand the files over: 
 
 ## snapshot_layer
 
-Read a layer and everything inside it in one go, for implementing a page: a screenshot, and for each layer its place, size, and all that inspect_nodes shows, saved as a snapshot that query_snapshot reads without Figma. Use it on the page's root, such as the frame the user selected (get_anchor). Instances count as one layer; read inside them with get_neighbors. Returns the screenshot, the snapshot id, and an outline with one line per layer: ref, type, name, x,y and width×height in design pixels from the root's top-left corner (? when Figma shows no place), the start of its text, and marks for hidden layers, instances with layers of their own, and export settings. A layer at (x, y) shows at image.rootInImage + (x, y) × image.scale in the screenshot. A saved snapshot comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. Reading takes about 40 s for 300 layers, at most 3 minutes, for up to 400 layers; a larger subtree fails and lists the root's children. Meanwhile the Figma tab must stay visible and the user cannot use Figma; a click in Figma stops it. The user's selection is put back; the view stays zoomed to the root.
+Read a layer and everything inside it in one go, for implementing a page: a screenshot, and for each layer its place, size, and all that inspect_nodes shows, saved as a snapshot that query_snapshot reads without Figma. Use it on the page's root, such as the frame the user selected (get_anchor). Instances count as one layer; read inside them with get_neighbors. Returns the screenshot, the snapshot id, and an outline with one line per layer: ref, type, name, x,y and width×height in design pixels from the root's top-left corner (? when Figma shows no place), the start of its text, and marks for hidden layers, instances with layers of their own, and export settings. A layer at (x, y) shows at image.rootInImage + (x, y) × image.scale in the screenshot. image.alignment says whether rootInImage was checked against the screenshot: confirmed, corrected (Figma reported a stale place), or unconfirmed (it may be off by a few dozen pixels; the outline's places, relative to the root, are not affected). A saved snapshot comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. Reading takes about 40 s for 300 layers, at most 3 minutes, for up to 400 layers; a larger subtree fails and lists the root's children. Meanwhile the Figma tab must stay visible and the user cannot use Figma; a click in Figma stops it. The user's selection is put back; the view stays zoomed to the root.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -205,7 +205,7 @@ Read a layer and everything inside it in one go, for implementing a page: a scre
 | `expiresAt` | string |
 | `fromCache` | boolean |
 | `layerCount` | integer, at least 1 |
-| `image` | object with width, height, rootInImage, scale |
+| `image` | object with alignment, width, height, rootInImage, scale |
 | `outline` | string |
 | `outlineLayers` | integer, at least 0 |
 | `nextCursor` | string or null |

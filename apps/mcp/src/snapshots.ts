@@ -1,10 +1,10 @@
 import { chmod, mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { RectSchema, SnapshotLayerSchema, type SnapshotLayer } from "@figloo/protocol";
+import { SnapshotImageInfoSchema, SnapshotLayerSchema, type SnapshotLayer } from "@figloo/protocol";
 
 /** Bumped whenever the file layout changes; files of another version count as missing. */
-export const SNAPSHOT_FORMAT_VERSION = 1;
+export const SNAPSHOT_FORMAT_VERSION = 2;
 export const DEFAULT_SNAPSHOT_TTL_HOURS = 24;
 
 const SnapshotFileSchema = z.object({
@@ -17,7 +17,7 @@ const SnapshotFileSchema = z.object({
   expiresAt: z.string(),
   /** How long reading Figma took. */
   elapsedMs: z.number().nonnegative(),
-  image: z.object({ width: z.number().int(), height: z.number().int(), rootInImage: RectSchema.nullable(), scale: z.number().positive().nullable() }),
+  image: SnapshotImageInfoSchema,
   zoom: z.number().positive().nullable(),
   layers: z.array(SnapshotLayerSchema).min(1),
 });

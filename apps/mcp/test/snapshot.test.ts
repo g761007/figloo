@@ -62,6 +62,7 @@ function complete(layers: SnapshotLayer[]) {
     crop: { x: 409.28, y: 28.27, width: 387.94, height: 812.99 },
     rootInImage: { x: 23.137, y: 23.141, width: 701.67, height: 1521.68 },
     imageScale: 1.785_431,
+    alignment: "corrected",
   };
 }
 
@@ -149,7 +150,7 @@ describe("snapshot_layer", () => {
 
     const first = await snap({ contextId, ref: "570:1" });
     expect(first).toMatchObject({ snapshot: "abc/570-1", fromCache: false, layerCount: 7, outlineLayers: 7, nextCursor: null, rootRef: "570:1" });
-    expect(first.image).toEqual({ width: 748, height: 1568, rootInImage: { x: 23.1, y: 23.1, width: 701.7, height: 1521.7 }, scale: 1.7854 });
+    expect(first.image).toEqual({ alignment: "corrected", width: 748, height: 1568, rootInImage: { x: 23.1, y: 23.1, width: 701.7, height: 1521.7 }, scale: 1.7854 });
     expect(first.outline.split("\n")).toHaveLength(7);
     expect(Date.parse(first.expiresAt) - Date.parse(first.createdAt)).toBe(24 * HOUR);
     expect(snapshotsOf()).toHaveLength(1);
@@ -201,7 +202,7 @@ describe("snapshot_layer", () => {
     const contextId = await anchor();
     await snap({ contextId, ref: "570:1" });
     const path = join(dir, "abc", "570-1.json");
-    writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, "utf8")), formatVersion: 0 }));
+    writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, "utf8")), formatVersion: 1 }));
 
     expect(await snap({ contextId, ref: "570:1" })).toMatchObject({ fromCache: false });
     expect(snapshotsOf()).toHaveLength(2);

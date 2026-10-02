@@ -65,6 +65,25 @@
 
 ## 觀察到的既有限制
 
+- 截圖對位偶爾會偏移。2026-10-02 在 Claude Code 中直接呼叫 `snapshot_layer` 時，截圖上方多了 frame 的名稱、下方少了一截，`rootInImage` 比畫面上的 root 高了約 33 個 CSS 像素。原因是 mirror 給的 root 絕對位置比實際高了 33 px：縮放時偏移一直存在，取消選取再重選也沒有消失，選取另一個頂層 frame 再選回來才恢復。捲動畫布、縮放與重新載入分頁都會讓 mirror 正確更新，所以觸發條件尚未查明。大綱中的位置是圖層之間的相對位置，因為所有圖層一起偏移而不受影響；受影響的是截圖的裁切與 `rootInImage`，`capture` 的裁切也依賴同一個位置。
+
+## 截圖對位的確認
+
+針對上面的問題，`snapshot_layer` 不再只相信 mirror：worker 保留未裁切的整張截圖，讀取結束後檢查 mirror 給的 root 外框。外框外側 3 px 應該是畫布的單一顏色，內側 3 px 則不是。
+
+- 符合：`image.alignment` 為 `confirmed`。
+- 不符合：在 100 CSS px 內平移尋找最符合的位置，再用離邊緣 1 與 2 px 的取樣挑出正確的像素；找到後以新位置重新裁切，`alignment` 為 `corrected`。
+- 找不到可信的位置，例如 root 帶有陰影或周圍沒有畫布時：保留 mirror 的位置，`alignment` 為 `unconfirmed`。
+
+驗證：
+
+| 項目 | 結果 |
+|---|---|
+| 單元測試 | 合成截圖 5 項：mirror 位置正確時確認；過時 66 px 與斜向偏移時修正到正確像素；不會跳到相鄰的畫面；帶陰影時只會確認或修正到正確位置的 1 px 內，否則不動；周圍沒有畫布時不動 |
+| 2026-10-02 那張對位錯誤的截圖 | 以 mirror 的錯誤位置為起點，找到往下 63 個圖片像素的位置，約 158 ms；預期約 64，差的 1 px 是因為那張截圖底部已被裁掉，少了一邊可以參考。畫出外框後與 frame 的上緣貼齊 |
+| Arc，重新載入 extension 後在 Claude Code 中呼叫 | 198 個圖層 28.8 秒；截圖 748×1568，`rootInImage` 為 (22.9, 22.8)，四周各留 12 CSS px，frame 的四邊都在圖中。這個工作階段的 MCP 是舊版，輸出中沒有 `alignment`，所以看不到是確認還是修正，兩者都會得到同樣的裁切 |
+
+快照檔的格式因此升到第 2 版，舊的快照視為不存在。
 - 使用者的選取藏在收合的群組裡時，`get_anchor` 回報 `NO_SELECTION`。其他工具結束時也無法還原這個選取，會改成取消選取。這次是先由 `explore_page` 取得 root，再建立快照。
 
 ## 未驗證
@@ -73,4 +92,4 @@
 2. 讀取中 Figma 分頁切到背景時的中止。
 3. Section 在圖層面板上的類型標籤是否為 "Section"；不是的話，section 中的畫面會得到一般的提示。
 4. Codex 的 `tool_timeout_sec` 設定未實際以 Codex 執行。
-5. 在 Claude Code 工作階段中直接呼叫這兩個工具；這次以腳本透過 MCP 呼叫同一個建置好的伺服器。
+5. 新版 MCP 輸出的 `alignment` 值。2026-10-02 已在 Claude Code 工作階段中直接呼叫 `get_anchor`、`snapshot_layer` 與 `query_snapshot`，但那個工作階段的 MCP 在加入 `alignment` 之前就已啟動，桌面版也無法重新連線。

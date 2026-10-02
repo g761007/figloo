@@ -19,14 +19,17 @@ import {
   SnapshotReadResultSchema,
   TabOpResponseSchema,
   VisualNeighborsParamsSchema,
+  type CapturePlan,
   type CaptureResult,
+  type ImageAlignment,
+  type Rect,
   type ExtensionMessage,
   type ProbeResult,
   type TabOpResponse,
   type TabStatus,
 } from "@figloo/protocol";
 import { DEFAULT_TITLE, actionAppearance, agentLine, applyAppearance } from "./action.js";
-import { cropCapture, insideImage, placeInImage } from "./capture.js";
+import { CAPTURE_MARGIN_PX, alignCapture, cropCapture, insideImage, intersect, inflate, placeInImage } from "./capture.js";
 import { installExportCapture, removeExportCapture } from "./export-capture.js";
 import { parseFigmaUrl } from "./figma-url.js";
 import { POPUP_CHILDREN, type PopupSnapshot } from "./popup-model.js";
@@ -340,8 +343,11 @@ async function captureTab(tabId: number, params: unknown): Promise<TabOpResponse
   return (await takeCapture(tabId, params)).response;
 }
 
-/** A capture, and whether the user stepped in before their selection could be put back. */
-async function takeCapture(tabId: number, params: unknown): Promise<{ response: TabOpResponse; interrupted: boolean }> {
+/**
+ * A capture, whether the user stepped in before their selection could be put back, and the whole
+ * screenshot with the plan it was taken by, for a snapshot to check the crop against.
+ */
+async function takeCapture(tabId: number, params: unknown): Promise<{ response: TabOpResponse; interrupted: boolean; dataUrl?: string; plan?: CapturePlan }> {
   const started = Date.now();
   // Read the tab again: it may have changed while this request waited in the queue.
   const tab = await chrome.tabs.get(tabId).catch(() => null);
@@ -366,7 +372,7 @@ async function takeCapture(tabId: number, params: unknown): Promise<{ response: 
       userSelectionRestored: done?.userSelectionRestored === true,
       elapsedMs: Date.now() - started,
     };
-    return { response: { ok: true, result }, interrupted: done?.interrupted === true };
+    return { response: { ok: true, result }, interrupted: done?.interrupted === true, dataUrl, plan };
   } catch (error) {
     await sendToTab(tabId, "finish_capture", { token: plan.token });
     return { response: { ok: false, error: { code: "INTERNAL", message: `capture failed: ${error instanceof Error ? error.message : String(error)}` } }, interrupted: false };
@@ -389,7 +395,7 @@ async function snapshotTab(tabId: number, params: unknown): Promise<TabOpRespons
   const shot = await takeCapture(tabId, { expect, ref });
   if (!shot.response.ok) return shot.response;
   if (shot.interrupted) return { ok: false, error: { code: "USER_INTERRUPTED", message: "the user interacted with Figma during the screenshot" } };
-  const { image, crop } = shot.response.result as CaptureResult;
+  let { image, crop } = shot.response.result as CaptureResult;
   const timeBudgetMs = Math.round(SNAPSHOT_TIME_BUDGET_MS - SNAPSHOT_CLEANUP_MS - (Date.now() - started));
   if (timeBudgetMs <= 0) return { ok: false, error: { code: "BUDGET_EXCEEDED", message: "the screenshot used up the snapshot's time budget" } };
   const read = await sendToTab(tabId, "read_subtree", { expect, ref, maxLayers: MAX_SNAPSHOT_LAYERS, timeBudgetMs });
@@ -397,7 +403,20 @@ async function snapshotTab(tabId: number, params: unknown): Promise<TabOpRespons
   const result = SnapshotReadResultSchema.parse(read.result);
   const elapsedMs = Date.now() - started;
   if (result.status === "too_large") return { ok: true, result: { ...result, elapsedMs } };
-  const rootInImage = result.rootOnScreen ? placeInImage(result.rootOnScreen, crop, image) : null;
+  // The mirror can keep a stale place for the root, so the screenshot itself says where the root is.
+  let root: Rect | null = result.rootOnScreen;
+  let alignment: ImageAlignment = "unconfirmed";
+  if (root && shot.dataUrl && shot.plan) {
+    const aligned = await alignCapture(shot.dataUrl, root, shot.plan.viewport);
+    ({ root, alignment } = aligned);
+    const recrop = alignment === "corrected" ? intersect(inflate(aligned.root, CAPTURE_MARGIN_PX), shot.plan.canvas) : null;
+    if (recrop) {
+      const { crop: shown, ...cropped } = await cropCapture(shot.dataUrl, recrop, shot.plan.viewport);
+      image = { ...cropped, mimeType: "image/jpeg" };
+      crop = shown;
+    }
+  }
+  const rootInImage = root ? placeInImage(root, crop, image) : null;
   // The read measures the root where the screenshot was taken; a root outside the image means the view moved in between.
   if (rootInImage && !insideImage(rootInImage, image)) {
     return { ok: false, error: { code: "UI_NOT_READY", message: "the screenshot does not show the whole root, so the view moved while it was taken; take the snapshot again" } };
@@ -410,6 +429,7 @@ async function snapshotTab(tabId: number, params: unknown): Promise<TabOpRespons
       crop,
       rootInImage,
       imageScale: result.zoom ? (image.width / crop.width) * result.zoom : null,
+      alignment,
       elapsedMs,
     },
   };
