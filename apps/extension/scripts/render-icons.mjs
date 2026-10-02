@@ -7,16 +7,9 @@ import { chromium } from "playwright";
 const OUT_DIR = new URL("../static/icons/", import.meta.url);
 
 // "color" marks a Figma design tab Figloo can use; "gray" is the default for every other tab.
-const PALETTES = {
-  color: [
-    ["0", "#06B6D4"],
-    ["0.55", "#6366F1"],
-    ["1", "#D946EF"],
-  ],
-  gray: [
-    ["0", "#A1A1AA"],
-    ["1", "#71717A"],
-  ],
+const TILES = {
+  color: "#4F46E5",
+  gray: "#8E939B",
 };
 
 // Toolbar icons need 16 and 32 px; the extensions page and install prompt use 48 and 128.
@@ -29,21 +22,20 @@ const OUTPUTS = [
   ["gray", 32],
 ];
 
-/** An igloo on a rounded tile, drawn on a 128-unit grid. */
+/**
+ * An igloo built from rows like a layers panel, white on a rounded tile, drawn on a 128-unit grid.
+ * The glyph is drawn to fill the grid and scaled down onto the tile; the bottom row leaves the door open.
+ */
 export function iconSvg(palette, size) {
-  const stops = PALETTES[palette].map(([offset, color]) => `<stop offset="${offset}" stop-color="${color}"/>`).join("");
-  // Block seams read well from 32 px up; at 16 px they blur into noise, so they are left out.
-  const seams =
-    size >= 32
-      ? '<path d="M20 78H44M84 78H108M33 58H95M32 78V92M96 78V92M42 58V78M86 58V78" fill="none" stroke="url(#g)" stroke-width="5"/>'
-      : "";
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 128 128">`,
-    `<defs><linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="128" y2="128">${stops}</linearGradient></defs>`,
-    '<rect width="128" height="128" rx="28" fill="url(#g)"/>',
-    '<path d="M18 92A46 46 0 0 1 110 92Z" fill="#fff"/>',
-    '<path d="M50 92V78A14 14 0 0 1 78 78V92Z" fill="url(#g)"/>',
-    seams,
+    `<rect width="128" height="128" rx="28" fill="${TILES[palette]}"/>`,
+    '<g transform="translate(64 64) scale(0.68) translate(-64 -64)" fill="#fff">',
+    '<rect x="36" y="21" width="56" height="22" rx="11"/>',
+    '<rect x="14" y="53" width="100" height="22" rx="11"/>',
+    '<rect x="6" y="85" width="46" height="22" rx="11"/>',
+    '<rect x="76" y="85" width="46" height="22" rx="11"/>',
+    "</g>",
     "</svg>",
   ].join("");
 }

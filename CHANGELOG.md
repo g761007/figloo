@@ -9,6 +9,10 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 - Figloo is released under the MIT License.
 - A Quickstart in the README: one sentence to paste into Claude Code or Codex, which installs Figloo by following `docs/agent-install.md` and walks the user through the steps only they can do.
 
+### Changed
+
+- A new icon: an igloo built from rows like a layers panel, white on an indigo tile, in place of the gradient igloo. Tabs Figloo cannot use still show it in gray.
+
 ## [0.3.1] - 2026-10-02
 
 The first published release since 0.1.0. It includes the changes made as 0.2.0 and 0.3.0, which were not released on their own.

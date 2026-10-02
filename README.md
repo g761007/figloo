@@ -140,8 +140,8 @@ The icon shows, for the tab you are looking at, whether Figloo can use it. Hover
 
 | Icon | Meaning |
 |---|---|
-| Colorful | A Figma design file Figloo can read. |
-| Colorful with an amber `!` | A design file Figloo can read with a limitation, such as a guest session or a minimized UI. |
+| Indigo | A Figma design file Figloo can read. |
+| Indigo with an amber `!` | A design file Figloo can read with a limitation, such as a guest session or a minimized UI. |
 | Gray | Not a Figma design file, or the file is still loading. |
 | Gray with a red `!` | A Figma design page Figloo cannot read. |
 
