@@ -3,7 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Explorer, OpError } from "../src/adapter/ops.js";
+import { ReadingOverlay } from "../src/adapter/overlay.js";
 import { readRenderedRows } from "../src/adapter/row.js";
+import type { LayerTree } from "../src/adapter/tree.js";
 
 /** The repository root, found from the working directory; URL-based paths do not work under happy-dom. */
 function repoRoot(): string {
@@ -101,5 +103,79 @@ describe("Explorer on captured Figma markup", () => {
     expect(page.nodes.map((node) => node.ref)).toEqual(["1335:5270", "1335:5269", "1335:5268"]);
     expect(page).toMatchObject({ total: 3, hasMore: false, stopReason: "complete" });
     expect(page.nodes.every((node) => node.parentRef === "873:45095" && node.insideInstance === true)).toBe(true);
+  });
+});
+
+/** Runs an operation with the reading overlay the way readSubtree does, with a probe as its work. */
+class OverlayRun extends Explorer {
+  start<T>(overlay: ReadingOverlay, work: (tree: LayerTree) => T, finished: () => void): Promise<{ value: T }> {
+    return this.run(
+      async (tree) => {
+        overlay.show();
+        return work(tree);
+      },
+      // Putting the selection back drives the panel, which checks for interruptions like any other step.
+      async (tree) => {
+        tree.check();
+        finished();
+      },
+      { timeBudgetMs: 5_000, maxUiOps: 10, overlay },
+    ).finally(() => overlay.remove());
+  }
+}
+
+/** A pointer press as the browser reports a real one. */
+function trustedPress(): PointerEvent {
+  const event = new PointerEvent("pointerdown", { bubbles: true, composed: true });
+  Object.defineProperty(event, "isTrusted", { value: true });
+  return event;
+}
+
+describe("the reading overlay during an operation", () => {
+  it("ends the operation on Stop and still puts the layers panel and selection back", async () => {
+    const overlay = new ReadingOverlay(document);
+    let putBack = false;
+    const run = new OverlayRun("page-1", document, window).start(
+      overlay,
+      (tree) => {
+        overlay.root.querySelector("button")!.click();
+        tree.check();
+        return "read";
+      },
+      () => (putBack = true),
+    );
+    await expect(run).rejects.toMatchObject({ code: "USER_INTERRUPTED", message: expect.stringMatching(/stopped the read with Stop or Esc/) });
+    expect(putBack).toBe(true);
+    expect(document.querySelector("figloo-reading-overlay")).toBeNull();
+  });
+
+  it("does not take a click on the overlay for the user stepping in, but a click in Figma still is", async () => {
+    let putBack = false;
+    const onOverlay = new ReadingOverlay(document);
+    const read = new OverlayRun("page-1", document, window).start(
+      onOverlay,
+      (tree) => {
+        onOverlay.root.firstElementChild!.dispatchEvent(trustedPress());
+        tree.check();
+        return "read";
+      },
+      () => (putBack = true),
+    );
+    await expect(read).resolves.toMatchObject({ value: "read" });
+    expect(putBack).toBe(true);
+
+    putBack = false;
+    const inFigma = new OverlayRun("page-1", document, window).start(
+      new ReadingOverlay(document),
+      (tree) => {
+        document.body.dispatchEvent(trustedPress());
+        tree.check();
+        return "read";
+      },
+      () => (putBack = true),
+    );
+    await expect(inFigma).rejects.toMatchObject({ code: "USER_INTERRUPTED", message: expect.stringMatching(/interacted with Figma/) });
+    // The user's own input wins: nothing is put back over it.
+    expect(putBack).toBe(false);
   });
 });

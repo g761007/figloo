@@ -307,8 +307,9 @@ export class LayerTree {
    * layer is expanded where the walk meets it, so its children follow right below and no row is
    * read twice. Instances count as one layer and stay as they are; the rows of an instance the user
    * expanded are skipped. Stops once the subtree turns out to hold more than `maxLayers` layers.
+   * `onLayer` hears how many layers were found so far.
    */
-  async walkSubtree(root: Row, maxLayers: number): Promise<Walk> {
+  async walkSubtree(root: Row, maxLayers: number, onLayer?: (found: number) => void): Promise<Walk> {
     const layers: WalkedLayer[] = [{ row: root, parentRef: null, depth: 0 }];
     this.remember(root, { insideInstance: false });
     if (!root.hasChildren || root.type === "Instance") return { layers, complete: true };
@@ -326,6 +327,7 @@ export class LayerTree {
       if (layers.length >= maxLayers) return { layers, complete: false };
       const parent = open.at(-1)!;
       layers.push({ row, parentRef: parent.id, depth: row.level - root.level });
+      onLayer?.(layers.length);
       this.remember(row, { parentRef: parent.id, insideInstance: false });
       this.remember(parent, { childCount: row.setSize });
       if (!row.hasChildren) continue;

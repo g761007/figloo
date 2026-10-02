@@ -34,6 +34,7 @@ import { DomRowSource, TabInBackground, synthesizeClick } from "./dom-source.js"
 import { addTemporarySetting, exportButton, exportRows, exportSection, exportSettings, exportsLayer, removeTemporarySetting } from "./export.js";
 import { boundsInRoot, chooseZoom, placeSiblings, type LayerBox, type Measured } from "./geometry.js";
 import { inspectionHeader, inspectionRoot, inspectionSignature, readInspection } from "./inspect.js";
+import { ReadingOverlay, estimateRemainingMs } from "./overlay.js";
 import { layersPanel, readRenderedRows, type Row } from "./row.js";
 import { LayerTree, StopExploration, type IndexEntry, type Page, type WalkedLayer } from "./tree.js";
 
@@ -62,12 +63,16 @@ interface RunLimits {
   maxUiOps: number;
   /** Close the layers this operation opened even after the user stepped in, until their next input. */
   collapseAfterInterrupt?: boolean;
+  /** Shown during the operation: input on it is not the user stepping in, and its Stop ends the operation. */
+  overlay?: ReadingOverlay;
 }
 
 const DEFAULT_LIMITS: RunLimits = { timeBudgetMs: OP_TIME_BUDGET_MS, maxUiOps: OP_MAX_UI_OPS };
 
 /** What the user had selected: none, one layer, several found layers, or several Figloo could not all find. */
 type UserSelection = { kind: "none" } | { kind: "layer"; id: string } | { kind: "layers"; ids: string[] } | { kind: "multiple" };
+
+const STOPPED_MESSAGE = "the user stopped the read with Stop or Esc on Figloo's reading overlay; the layers panel and the selection were put back";
 
 const MIRROR_MESSAGE =
   "Figma shows where layers are on screen only with Adapt content for screen readers turned on (Main menu, Preferences, Accessibility settings)";
@@ -114,11 +119,11 @@ interface UserWatch {
   dispose: () => void;
 }
 
-/** Any trusted pointer, key, or wheel input during an operation means the user took over. */
-function watchForUser(win: Window): UserWatch {
+/** Any trusted pointer, key, or wheel input during an operation means the user took over, except input on the overlay. */
+export function watchForUser(win: Window, overlay?: ReadingOverlay): UserWatch {
   let inputs = 0;
   const onInput = (event: Event) => {
-    if (event.isTrusted) inputs += 1;
+    if (event.isTrusted && !overlay?.owns(event)) inputs += 1;
   };
   const types = ["pointerdown", "keydown", "wheel"];
   for (const type of types) win.addEventListener(type, onInput, { capture: true, passive: true });
@@ -423,8 +428,11 @@ export class Explorer {
     await this.showPropertiesTab();
     let before: UserSelection = { kind: "none" };
     let restored = false;
-    const { value, uiOps, elapsedMs } = await this.run(
+    // The screenshot was taken before this op, so the overlay cannot end up in it.
+    const overlay = new ReadingOverlay(this.doc);
+    const ran = await this.run(
       async (tree, source) => {
+        overlay.show();
         const started = Date.now();
         before = await this.userSelection(tree);
         const root = await tree.find(params.ref);
@@ -434,7 +442,7 @@ export class Explorer {
         if (chain.some((parent) => parent.type === "Instance")) {
           throw new OpError("INSIDE_INSTANCE", `layer ${params.ref} is inside an instance, whose layer IDs only hold until the page reloads`);
         }
-        const walk = await tree.walkSubtree(root, params.maxLayers);
+        const walk = await tree.walkSubtree(root, params.maxLayers, (found) => overlay.update({ phase: "walking", found }));
         if (!walk.complete) {
           const page = await tree.childrenPage(walk.layers[0]!.row, 1, MAX_NEIGHBOR_LIMIT);
           return { status: "too_large" as const, children: page.rows, childrenHasMore: page.hasMore };
@@ -446,7 +454,10 @@ export class Explorer {
           for (const [id, rect] of source.mirrorRects()) rects.set(id, rect);
         };
         const read: { layer: WalkedLayer; sections: InspectedSection[]; exports: string[] | null }[] = [];
+        const durations: number[] = [];
         for (const layer of walk.layers) {
+          const layerStarted = Date.now();
+          overlay.update({ phase: "reading", done: read.length, total: walk.layers.length, remainingMs: estimateRemainingMs(durations, walk.layers.length - read.length) });
           tree.check();
           const row = await tree.find(layer.row.id);
           if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${layer.row.id} is no longer in the layers panel`);
@@ -462,14 +473,17 @@ export class Explorer {
           // The mirror does not place text layers.
           if (row.type !== "Text" && !rects.has(row.id) && (await source.settle(() => source.mirrorRects().has(row.id), SNAPSHOT_MIRROR_WAIT_MS))) collect();
           read.push({ layer, sections, exports: switched ? designerExports(this.doc, row.name) : null });
+          durations.push(Date.now() - layerStarted);
         }
+        overlay.update({ phase: "finishing" });
         return { status: "complete" as const, read, rects, walkMs, zoomLabel: parseZoom(source.zoomLabel()) };
       },
       async (tree, source) => {
         restored = await this.restoreSelection(tree, source, before);
       },
-      { timeBudgetMs: params.timeBudgetMs, maxUiOps: SNAPSHOT_UI_OPS_PER_LAYER * params.maxLayers, collapseAfterInterrupt: true },
-    );
+      { timeBudgetMs: params.timeBudgetMs, maxUiOps: SNAPSHOT_UI_OPS_PER_LAYER * params.maxLayers, collapseAfterInterrupt: true, overlay },
+    ).finally(() => overlay.remove());
+    const { value, uiOps, elapsedMs } = ran;
     if (value.status === "too_large") {
       return {
         status: "too_large",
@@ -716,7 +730,7 @@ export class Explorer {
     return { identity, ...this.pageResult(value), uiOps, elapsedMs };
   }
 
-  private async run<T>(
+  protected async run<T>(
     work: (tree: LayerTree, source: DomRowSource) => Promise<T>,
     finish?: (tree: LayerTree, source: DomRowSource) => Promise<void>,
     limits: RunLimits = DEFAULT_LIMITS,
@@ -725,8 +739,8 @@ export class Explorer {
     if (!layersPanel(this.doc)) throw new OpError("UI_NOT_READY", "the layers panel is not rendered; expand the Figma UI");
     this.running = true;
     const started = Date.now();
-    const user = watchForUser(this.win);
-    let stopped = user.interrupted;
+    const user = watchForUser(this.win, limits.overlay);
+    let stopped = () => user.interrupted() || limits.overlay?.stopRequested === true;
     const source = new DomRowSource(this.doc);
     const tree = new LayerTree(source, this.index, {
       deadline: started + limits.timeBudgetMs,
@@ -742,7 +756,10 @@ export class Explorer {
         if (user.interrupted()) throw new StopExploration("user_interrupted");
       } catch (error) {
         if (!user.interrupted()) {
+          // A Stop on the overlay changed nothing in Figma, so everything is put back; only the user's own input stops that.
+          stopped = user.interrupted;
           await this.putBack(tree, source, finish);
+          if (limits.overlay?.stopRequested && !user.interrupted()) throw new OpError("USER_INTERRUPTED", STOPPED_MESSAGE);
         } else if (limits.collapseAfterInterrupt) {
           // The user's new selection and scroll position stay; only what this operation opened closes.
           const seen = user.inputs();
@@ -751,6 +768,7 @@ export class Explorer {
         }
         throw translate(error);
       }
+      stopped = user.interrupted;
       await this.putBack(tree, source, finish);
       return { value, uiOps: tree.uiOps + source.actions, elapsedMs: Date.now() - started };
     } finally {
