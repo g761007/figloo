@@ -1,6 +1,6 @@
 # `list_pages` 的頁面列表讀取
 
-狀態：已修正，以單元測試驗證；回報的少列情況在 Arc 上未能重現  
+狀態：已修正，以單元測試與 Arc 驗證；回報的少列情況在 Arc 上未能重現  
 日期：2026-10-02
 
 ## 問題
@@ -9,7 +9,7 @@
 
 ## 頁面列表的 DOM
 
-- 左側欄的 Pages 區塊有收合按鈕（`aria-expanded`、`aria-controls`）。區塊內的 `legacy_pages_panel--pagesList` 是固定高度的容器，預設 `height: 200px`，下方有 `role="slider"` 的「Resize handle」可以調整高度。
+- 左側欄的 Pages 區塊有收合按鈕（`aria-expanded`、`aria-controls`）。區塊內的 `legacy_pages_panel--pagesList` 是固定高度的容器，實測時為 `height: 200px`，下方有 `role="slider"` 的「Resize handle」可以調整高度。
 - 容器內的捲動容器（`overflow-y: scroll`，以 class 設定）包著 `role="grid"`。每個頁面占 grid 的一個直接子元素 `.cachedSubtree`，裡面依序是 `role="row"`、`role="gridcell"`、`[data-testid="PagesRowWrapper"]` 與頁面按鈕。目前頁面的按鈕帶 `aria-current="page"`。
 - 列採一般文件流排列，每列 32 px。列上沒有 `aria-rowcount`、`aria-rowindex` 或 `aria-setsize`，DOM 裡沒有任何能看出總頁數的資訊。
 - 去識別化的擷取檔：`tests/fixtures/figma-pages-list.html`。
@@ -36,7 +36,7 @@
 | 項目 | 環境 | 結果 |
 |---|---|---|
 | 單元測試 | happy-dom，擷取的頁面列表 | 讀到全部 20 頁與目前頁面；後 12 列在第一次讀取 60 ms 後才出現時，仍回傳 20 頁（舊實作只回傳 8 頁）；捲動內容比畫出的列高、grid 某一列沒有頁面，以及列表一直變動時，都回報 `complete: false`；沒有頁面列表時回報 `UI_NOT_READY`。在舊實作上，這些測試都會失敗 |
-| Arc 實測 | | 未做。修正後的 extension 尚未在 Arc 上實測 |
+| 完整路徑 | Arc 1.167.0，macOS 27.0，已登入、檢視權限，20 頁的檔案；新版 MCP 伺服器以 stdio 啟動，在持有者閒置後接手 | 分頁在前景與在背景時各呼叫 4 次，每次都回傳 20 頁，其中 1 頁標為目前頁面，`complete: true`。前景每次 215 到 231 ms，背景每次 203 到 205 ms；兩邊的第一次都包含接手時間，約 480 ms。`complete: false` 只以單元測試驗證 |
 
 ## 已知限制
 
