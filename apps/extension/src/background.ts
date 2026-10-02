@@ -2,6 +2,7 @@ import {
   AnchorResultSchema,
   CaptureParamsSchema,
   CapturePlanSchema,
+  EXTENSION_ID,
   ExplorePageParamsSchema,
   ExportFinishSchema,
   ExportPlanSchema,
@@ -32,6 +33,7 @@ import {
 } from "@figloo/protocol";
 import { DEFAULT_TITLE, actionAppearance, agentLine, applyAppearance } from "./action.js";
 import { CAPTURE_MARGIN_PX, alignCapture, cropCapture, insideImage, intersect, inflate, placeInImage } from "./capture.js";
+import { MAX_RECENT_ERRORS, buildDiagnostics, type Diagnostics, type RecentError } from "./diagnostics.js";
 import { installExportCapture, removeExportCapture } from "./export-capture.js";
 import { parseFigmaUrl } from "./figma-url.js";
 import { POPUP_CHILDREN, type PopupSnapshot } from "./popup-model.js";
@@ -66,6 +68,10 @@ let socket: WebSocket | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+/** Versions from the connected server's welcome, for diagnostics. */
+const server: { version: string | null; protocolVersion: string | null } = { version: null, protocolVersion: null };
+/** The last ops that failed, by code, for diagnostics. */
+const recentErrors: RecentError[] = [];
 const tabs = new Map<number, TabStatus>();
 const unreachableProbes = new Map<number, number>();
 let connectPending = false;
@@ -114,6 +120,8 @@ async function connect(): Promise<void> {
     if (socket !== ws) return;
     socket = null;
     stopHeartbeat();
+    server.version = null;
+    server.protocolVersion = null;
     const wasConnected = state.phase === "connected";
     setPhase("disconnected");
     state.connectedAt = null;
@@ -175,6 +183,8 @@ async function handleServerMessage(raw: string): Promise<void> {
   switch (message.type) {
     case "welcome":
       setPhase("connected", message.session ?? null);
+      server.version = message.serverVersion;
+      server.protocolVersion = message.protocolVersion;
       state.connectedAt = Date.now();
       state.attempts = 0;
       state.lastError = null;
@@ -214,6 +224,7 @@ async function handleRequest(id: string, op: string, tabId?: number, params?: Re
       case "visual_neighbors":
       case "snapshot_layer": {
         const reply = await runInTab(tabId, op, params);
+        if (!reply.ok) recordError(op, reply.error?.code ?? "INTERNAL");
         send(reply.ok ? { type: "response", id, ok: true, result: reply.result } : { type: "response", id, ok: false, error: reply.error });
         return;
       }
@@ -221,8 +232,32 @@ async function handleRequest(id: string, op: string, tabId?: number, params?: Re
         send({ type: "response", id, ok: false, error: { code: "BAD_MESSAGE", message: `unsupported op ${op}` } });
     }
   } catch (error) {
+    recordError(op, "INTERNAL");
     send({ type: "response", id, ok: false, error: { code: "INTERNAL", message: error instanceof Error ? error.message : String(error) } });
   }
+}
+
+function recordError(op: string, code: string): void {
+  recentErrors.push({ op, code, at: Date.now() });
+  recentErrors.splice(0, Math.max(0, recentErrors.length - MAX_RECENT_ERRORS));
+}
+
+/** What the popup's diagnostics show for a tab; buildDiagnostics keeps only fields that hold no design content. */
+async function diagnostics(tabId: number | undefined): Promise<Diagnostics> {
+  const tab = tabId === undefined ? null : await chrome.tabs.get(tabId).catch(() => null);
+  const status = tab?.id !== undefined && parseFigmaUrl(tab.url ?? "").isDesignFile ? await probeTab(tab) : null;
+  return buildDiagnostics({
+    extensionVersion: chrome.runtime.getManifest().version,
+    userAgent: navigator.userAgent,
+    protocolVersion: PROTOCOL_VERSION,
+    pinnedId: chrome.runtime.id === EXTENSION_ID,
+    state,
+    server,
+    tab: status,
+    designTabs: tabs.size,
+    snapshotRunning: tabId !== undefined && snapshotting.has(tabId),
+    recentErrors,
+  });
 }
 
 const tabQueues = new Map<number, Promise<unknown>>();
@@ -678,6 +713,10 @@ chrome.runtime.onMessage.addListener((message: { type?: string; tabId?: number }
   if (message?.type === "figloo:popup") {
     popupSnapshot(message.tabId).then(sendResponse, (error: unknown) => sendResponse({ error: error instanceof Error ? error.message : String(error) }));
     // Keeps the message channel open for the asynchronous reply.
+    return true;
+  }
+  if (message?.type === "figloo:diagnostics") {
+    diagnostics(message.tabId).then(sendResponse, (error: unknown) => sendResponse({ error: error instanceof Error ? error.message : String(error) }));
     return true;
   }
   if (message?.type === "figloo:status") {

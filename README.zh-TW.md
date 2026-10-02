@@ -151,6 +151,8 @@ node apps/mcp/dist/index.js pair
 
 「Copy prompt for the agent」會複製一段文字，讓你在描述任務之前貼到 coding agent 中。這段文字寫出檔案、分頁與選取的圖層，並告訴 agent 先使用哪些 Figloo 工具。選取的圖層是畫布上或 section 中的 frame，例如一個畫面時，提示會說明你要實作這一頁，並請 agent 先為它建立快照。沒有選取時，這段提示會請 agent 自行探索檔案。複製之前，popup 視窗會先顯示提示內容。
 
+Popup 視窗底部的「Diagnostics」會顯示一段簡短的報告，可以貼到 [bug report](https://github.com/g761007/figloo/issues/new?template=bug_report.yml) 中：擴充功能、protocol 與伺服器的版本、瀏覽器、連線狀態、分頁的就緒狀態與 Figloo 找到的 Figma 介面元素，以及最近幾次錯誤的錯誤碼。報告中沒有檔案、頁面或圖層的名稱，也沒有連結；複製之前，popup 視窗會先顯示內容。
+
 圖示的圖稿在 `apps/extension/scripts/render-icons.mjs`。修改後，請重新產生已提交的 PNG：
 
 ```sh
@@ -269,7 +271,7 @@ Figloo 以 [MIT 授權](LICENSE)釋出。
 先從這些地方查看：
 
 - **`get_status`**：請 agent 呼叫它。它會回報 bridge、擴充功能的連線，以及每個 Figma 分頁的就緒狀態與原因，並附上說明下一步的 `hint`。
-- **工具列圖示與 popup 視窗**：提示文字與 popup 視窗會顯示目前分頁的就緒狀態與 agent 連線，兩者內容相同。
+- **工具列圖示與 popup 視窗**：提示文字與 popup 視窗會顯示目前分頁的就緒狀態與 agent 連線，兩者內容相同。Popup 視窗中的「Diagnostics」提供可以貼到 bug report 的報告，不含檔案、頁面或圖層的名稱。
 - **選項頁面**：顯示連線狀態、Figloo 正在服務的 agent 工作階段、最近一次在工作階段之間交接的時間，以及最後一次的連線錯誤。
 - **Service worker 主控台**：在 `chrome://extensions`（或 `arc://extensions`）的 Figloo 卡片上點「service worker」。
 - **伺服器日誌**：伺服器每次被呼叫時，會在 stderr 寫一行，包含數量、UI 操作次數與耗時，但不含圖層名稱。要查看時，請在沒有 agent 工作階段執行伺服器的情況下，在終端機手動執行，例如 `node apps/mcp/dist/index.js`。
@@ -282,6 +284,7 @@ Figloo 以 [MIT 授權](LICENSE)釋出。
 - 分頁顯示 `DEGRADED`，並提到「Figma UI is minimized」：介面隱藏時不會渲染圖層面板。請按 Cmd+\，或點檔名旁的展開按鈕。
 - 剛安裝擴充功能後，分頁一直是 `LOADING` 或變成 `INCOMPATIBLE`：請重新載入 Figma 分頁，讓 content script 注入頁面。
 - `export_asset` 回報 `EXPORT_BLOCKED`：Figma 沒有交出任何檔案，瀏覽器也沒有開始下載。如果瀏覽器擋下了 figma.com 的連續下載，請在網站設定中允許，再試一次。
+- `export_asset` 回報 `LAYER_HIDDEN`：這個圖層或它所在的上層在 Figma 中是隱藏的，Figma 不會匯出它，在 Figma 裡直接按 Export 也一樣。
 - `export_asset` 回報 `EXPORT_PENDING`：瀏覽器正在等待儲存備援的下載，通常是停在另存新檔的對話框。請確認儲存，或關閉「每次下載前詢問儲存位置」。
 - `snapshot_layer` 回報 `SUBTREE_TOO_LARGE`：這個圖層中有超過 400 個圖層。請改為對訊息中列出的某個子層建立快照。
 - 在 Codex 中，`snapshot_layer` 在 60 秒後失敗：請調高 `tool_timeout_sec`，見[在 agent 中註冊 MCP 伺服器](#2-在-agent-中註冊-mcp-伺服器)。

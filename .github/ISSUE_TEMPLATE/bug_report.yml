@@ -1,0 +1,57 @@
+name: Bug report
+description: Something in Figloo does not work the way the README or the tool descriptions say.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please leave out links to Figma files, screenshots of designs you may not share, and the pairing token from `~/.figloo/config.json`.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you or the agent did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a Figma design file and select a frame
+        2. Ask the agent to ...
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: In the Figloo popup on the Figma tab, click Diagnostics, then Copy diagnostics, and paste them here. They hold no file, page, or layer names and no links.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: tool-call
+    attributes:
+      label: Tool call and error
+      description: The Figloo tool the agent called, with its arguments, and the error code, message, and hint it got back. Remove file, page, and layer names you cannot share.
+      render: text
+  - type: input
+    id: agent
+    attributes:
+      label: Coding agent and version
+      placeholder: Claude Code 2.x, Codex 0.x, ...
+  - type: dropdown
+    id: install
+    attributes:
+      label: How Figloo is installed
+      options:
+        - Claude Code plugin
+        - Release files (the .mjs file and the extension zip)
+        - Built from source
+  - type: checkboxes
+    id: figma
+    attributes:
+      label: Figma setup
+      options:
+        - label: Figma's UI is in English
+        - label: '"Adapt content for screen readers" is on'
+        - label: The Figma tab was on screen while the agent worked

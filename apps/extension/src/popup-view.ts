@@ -120,3 +120,28 @@ export function renderPopup(root: HTMLElement, snapshot: PopupSnapshot, handlers
   prompt.append(button, preview, note);
   root.append(prompt);
 }
+
+/** Shows the diagnostics in `panel`, so the user sees what they share, with a button that copies them. */
+export function renderDiagnostics(panel: HTMLElement, text: string, handlers: PopupHandlers): void {
+  const doc = panel.ownerDocument;
+  panel.replaceChildren();
+  const preview = el(doc, "textarea", "diagnostics-text");
+  preview.readOnly = true;
+  preview.value = text;
+  preview.rows = 9;
+  const button = el(doc, "button", "diagnostics-copy", "Copy diagnostics");
+  button.type = "button";
+  const note = el(doc, "p", "muted", "For a GitHub issue about Figloo. It holds no file, page, or layer names and no links.");
+  button.addEventListener("click", () => {
+    void handlers.copy(text).then((copied) => {
+      if (copied) {
+        button.textContent = "Copied";
+        return;
+      }
+      preview.focus();
+      preview.select();
+      note.textContent = "Copying was not allowed here. The text is selected; press Cmd+C or Ctrl+C.";
+    });
+  });
+  panel.append(preview, button, note);
+}

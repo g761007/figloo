@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from "vitest";
-import { renderPopup } from "../src/popup-view.js";
+import { renderDiagnostics, renderPopup } from "../src/popup-view.js";
 import { cardSelection, figmaTab, layer, severalSelected, snapshot } from "./popup-fixtures.js";
 
 let root: HTMLElement;
@@ -83,5 +83,38 @@ describe("the toolbar popup", () => {
     expect(root.textContent).toContain("This tab has no Figma design file");
     expect(root.textContent).toContain("Agent: not paired");
     expect(root.querySelector("button.copy")).toBeNull();
+  });
+});
+
+describe("the popup's diagnostics", () => {
+  it("shows the text before it is copied, then copies it", async () => {
+    const panel = document.createElement("div");
+    document.body.append(panel);
+    let copied = "";
+    renderDiagnostics(panel, "Figloo diagnostics\nExtension: 0.4.0\n", {
+      copy: async (text) => {
+        copied = text;
+        return true;
+      },
+    });
+    expect(panel.querySelector<HTMLTextAreaElement>("textarea.diagnostics-text")!.value).toBe("Figloo diagnostics\nExtension: 0.4.0\n");
+    panel.querySelector<HTMLButtonElement>("button.diagnostics-copy")!.click();
+    await settle();
+    expect(copied).toBe("Figloo diagnostics\nExtension: 0.4.0\n");
+    expect(panel.querySelector("button.diagnostics-copy")?.textContent).toBe("Copied");
+    // The prompt's own button and preview keep their classes to themselves.
+    expect(panel.querySelector("button.copy, textarea.preview")).toBeNull();
+  });
+
+  it("selects the text for a manual copy when the clipboard refused it", async () => {
+    const panel = document.createElement("div");
+    document.body.append(panel);
+    renderDiagnostics(panel, "Figloo diagnostics\n", { copy: async () => false });
+    panel.querySelector<HTMLButtonElement>("button.diagnostics-copy")!.click();
+    await settle();
+    const text = panel.querySelector<HTMLTextAreaElement>("textarea.diagnostics-text")!;
+    expect(document.activeElement).toBe(text);
+    expect(text.selectionEnd - text.selectionStart).toBe(text.value.length);
+    expect(panel.textContent).toMatch(/press Cmd\+C or Ctrl\+C/);
   });
 });

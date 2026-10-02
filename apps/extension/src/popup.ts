@@ -1,5 +1,6 @@
+import { buildDiagnostics, formatDiagnostics, type Diagnostics } from "./diagnostics.js";
 import type { PopupSnapshot } from "./popup-model.js";
-import { renderPopup } from "./popup-view.js";
+import { renderDiagnostics, renderPopup } from "./popup-view.js";
 
 const root = document.querySelector<HTMLElement>("#app")!;
 
@@ -21,6 +22,28 @@ async function copy(text: string): Promise<boolean> {
 }
 
 document.querySelector<HTMLButtonElement>("#settings")!.addEventListener("click", () => void chrome.runtime.openOptionsPage());
+
+const diagnosticsPanel = document.querySelector<HTMLElement>("#diagnostics-panel")!;
+
+/** Opens or closes the diagnostics; they work even when the service worker does not answer. */
+async function toggleDiagnostics(): Promise<void> {
+  if (!diagnosticsPanel.hidden) {
+    diagnosticsPanel.hidden = true;
+    return;
+  }
+  let data: Diagnostics;
+  try {
+    const reply = (await chrome.runtime.sendMessage({ type: "figloo:diagnostics", tabId: await targetTab() })) as Diagnostics | { error: string };
+    if ("error" in reply) throw new Error(reply.error);
+    data = reply;
+  } catch {
+    data = buildDiagnostics({ extensionVersion: chrome.runtime.getManifest().version, userAgent: navigator.userAgent });
+  }
+  renderDiagnostics(diagnosticsPanel, formatDiagnostics(data, Date.now()), { copy });
+  diagnosticsPanel.hidden = false;
+}
+
+document.querySelector<HTMLButtonElement>("#diagnostics")!.addEventListener("click", () => void toggleDiagnostics());
 
 try {
   const reply = (await chrome.runtime.sendMessage({ type: "figloo:popup", tabId: await targetTab() })) as PopupSnapshot | { error: string };
