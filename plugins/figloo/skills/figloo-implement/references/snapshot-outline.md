@@ -24,6 +24,8 @@ Each line holds, in order:
 | `[hidden]` | Hidden in Figma, or inside a hidden layer |
 | `[has layers]` | An instance with layers of its own; a snapshot does not read inside instances |
 | `[export …]` | The export settings the designer gave the layer, such as `PNG 2x` or `SVG` |
+| `[new]` | Not in the previous snapshot of this root |
+| `[changed: …]` | Different since the previous snapshot of this root, with what changed: `name`, `type`, `hidden`, `moved` (another parent), `bounds` (1 px or more), a panel group (`layout`, `appearance`, `typography`, `component`, `other`), `content` (the text), or `exports` |
 
 ## Places in the screenshot
 

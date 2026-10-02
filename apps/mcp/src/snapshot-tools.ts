@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
+  MAX_REMOVED_LISTED,
   MAX_SNAPSHOT_DETAILS,
   MAX_SNAPSHOT_LAYERS,
   QuerySnapshotOutputSchema,
@@ -18,6 +19,7 @@ import {
 import { BridgeError, type Bridge } from "./bridge.js";
 import { knownParents, type ContextStore, type ExplorationContext } from "./contexts.js";
 import type { ToolErrorResult } from "./export-asset.js";
+import { changeMarks, diffSnapshots } from "./snapshot-diff.js";
 import { summarizeLayers } from "./snapshot-summary.js";
 import { isPlainRef, outlineLine, snapshotId, type PartialSnapshot, type SnapshotFile, type SnapshotStore } from "./snapshots.js";
 
@@ -165,6 +167,8 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         "Returns the screenshot, the snapshot id, and an outline with one line per layer: ref, type, name, x,y and width×height in design pixels from the root's top-left corner (? when Figma shows no place), the start of its text, and marks for hidden layers, instances with layers of their own, and export settings. " +
         "A layer at (x, y) shows at image.rootInImage + (x, y) × image.scale in the screenshot. image.alignment says whether rootInImage was checked against the screenshot: confirmed, corrected (Figma reported a stale place), or unconfirmed (it may be off by a few dozen pixels; the outline's places, relative to the root, are not affected). " +
         "A saved snapshot comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. " +
+        "When the root was snapshotted before, changes counts the layers new, changed, and removed since that snapshot, names the removed ones, and the outline marks the others [new] or [changed: …] with what changed; query_snapshot with changed: true lists them. " +
+        "An expired snapshot is kept 30 days for this comparison. " +
         `Reading takes about 40 s for 300 layers, for up to ${MAX_SNAPSHOT_LAYERS} layers; a larger subtree fails and lists the root's children. ` +
         "One call reads for at most 3 minutes. When it runs out of time first, it returns complete: false with progress and no outline: call snapshot_layer again with the same contextId and ref, and it goes on where it stopped, until complete is true. " +
         "The Figma tab must be on screen to start. Meanwhile Figma shows an overlay with the progress and a Stop button, and the user can use other windows; " +
@@ -264,6 +268,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
               expiresAt: partial.expiresAt,
               fromCache: false,
               complete: false,
+              changes: null,
               progress: { read: partial.layers.length, total: partial.walked.length },
               layerCount: partial.walked.length,
               image: partial.image,
@@ -275,11 +280,24 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
             return { content: [{ type: "text" as const, text: JSON.stringify(output) }], structuredContent: output as unknown as Record<string, unknown> };
           }
           jpeg = shot;
-          file = await snapshots.write(snapshot, jpeg);
+          // The snapshot this one replaces, expired or not, is what it is compared with.
+          const previous = await snapshots.readSaved(id);
+          const changes = previous ? diffSnapshots(previous.layers, snapshot.layers, previous.createdAt) : undefined;
+          file = await snapshots.write({ ...snapshot, ...(changes ? { changes } : {}) }, jpeg);
           await snapshots.removePartial(id);
         }
         adoptSnapshot(context, file);
         const snapshotFile = file;
+        const marks = changeMarks(snapshotFile.changes);
+        const changes = snapshotFile.changes
+          ? {
+              since: snapshotFile.changes.since,
+              added: snapshotFile.changes.added.length,
+              changed: snapshotFile.changes.changed.length,
+              removed: snapshotFile.changes.removed.length,
+              removedLayers: snapshotFile.changes.removed.slice(0, MAX_REMOVED_LISTED).map(({ ref, name, type }) => ({ ref, name, type })),
+            }
+          : null;
         const { count, output } = fitPage(snapshotFile.layers, 0, Number.POSITIVE_INFINITY, maxOutputBytes, (page, next): SnapshotOutput => ({
           contextId,
           snapshot: id,
@@ -290,10 +308,11 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
           expiresAt: snapshotFile.expiresAt,
           fromCache,
           complete: true,
+          changes,
           progress: { read: snapshotFile.layers.length, total: snapshotFile.layers.length },
           layerCount: snapshotFile.layers.length,
           image: snapshotFile.image,
-          outline: page.map(outlineLine).join("\n"),
+          outline: page.map((layer) => outlineLine(layer, marks.get(layer.ref))).join("\n"),
           outlineLayers: page.length,
           nextCursor: next === null ? null : encodeQueryCursor(id, next, outlineQuery),
           elapsedMs: Date.now() - started,
@@ -318,7 +337,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
       description:
         "Look layers up in a snapshot from snapshot_layer. Reads the saved file only, so it needs no Figma tab and works after the page reloads. " +
         `refs: those layers in full, up to ${MAX_SNAPSHOT_DETAILS}: bounds with where they came from, hidden, export settings, and every inspection panel section as inspect_nodes returns them. ` +
-        "Otherwise filter by text (in names and text content, ignoring case), type (such as Text, Instance, or Auto layout), and under (only layers inside that ref); filters combine, and none lists every layer. " +
+        "Otherwise filter by text (in names and text content, ignoring case), type (such as Text, Instance, or Auto layout), under (only layers inside that ref), and changed (only layers new or changed since the previous snapshot of the root); filters combine, and none lists every layer. " +
         "Matches come as outline lines, or in full with details: true, one page at a time; pass nextCursor for the next page. An expired snapshot fails; take a new one with snapshot_layer.",
       inputSchema: {
         snapshot: z.string().describe("The snapshot id from snapshot_layer"),
@@ -326,20 +345,21 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         text: z.string().min(1).optional(),
         type: z.string().min(1).optional(),
         under: z.string().optional().describe("A ref in the snapshot"),
+        changed: z.boolean().optional().describe("Only layers new or changed since the previous snapshot of this root; none when there was no previous snapshot"),
         details: z.boolean().optional().describe("Return matches in full instead of as outline lines"),
         cursor: z.string().optional().describe("nextCursor from the previous page of the same query"),
       },
       outputSchema: QuerySnapshotOutputSchema,
     },
-    async ({ snapshot, refs, text, type, under, details = false, cursor }) => {
+    async ({ snapshot, refs, text, type, under, changed = false, details = false, cursor }) => {
       try {
         const found = await finishedSnapshot(snapshots, snapshot);
         if (!("file" in found)) throw new SnapshotFailure(found.code, found.message);
         const { file } = found;
         const base = { snapshot, expiresAt: file.expiresAt };
         if (refs) {
-          if (text !== undefined || type !== undefined || under !== undefined || cursor !== undefined) {
-            throw new SnapshotFailure("INVALID_ARGUMENT", "refs cannot be combined with text, type, under, or cursor");
+          if (text !== undefined || type !== undefined || under !== undefined || changed || cursor !== undefined) {
+            throw new SnapshotFailure("INVALID_ARGUMENT", "refs cannot be combined with text, type, under, changed, or cursor");
           }
           const byRef = new Map(file.layers.map((layer) => [layer.ref, layer]));
           const layers = refs.map((ref) => byRef.get(ref)).filter((layer): layer is SnapshotLayer => layer !== undefined);
@@ -352,12 +372,14 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
           if (at < 0) throw new SnapshotFailure("UNKNOWN_REF", `snapshot ${snapshot} has no layer ${under}`);
           matches = inside(matches, at);
         }
+        const marks = changeMarks(file.changes);
+        if (changed) matches = matches.filter((layer) => marks.has(layer.ref));
         if (type !== undefined) matches = matches.filter((layer) => layer.type?.toLowerCase() === type.toLowerCase());
         if (text !== undefined) {
           const needle = text.toLowerCase();
           matches = matches.filter((layer) => layer.name.toLowerCase().includes(needle) || textOf(layer).toLowerCase().includes(needle));
         }
-        const query = JSON.stringify({ text: text ?? null, type: type ?? null, under: under ?? null, details });
+        const query = JSON.stringify({ text: text ?? null, type: type ?? null, under: under ?? null, ...(changed ? { changed } : {}), details });
         let offset = 0;
         if (cursor !== undefined) {
           const state = decodeQueryCursor(cursor);
@@ -370,7 +392,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
           ...base,
           matched: matches.length,
           from: offset + 1,
-          outline: details ? null : page.map(outlineLine).join("\n"),
+          outline: details ? null : page.map((layer) => outlineLine(layer, marks.get(layer.ref))).join("\n"),
           layers: details ? page : null,
           missing: [],
           hasMore: next !== null,

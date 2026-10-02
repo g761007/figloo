@@ -138,7 +138,7 @@ describe("snapshot ids and files", () => {
   });
 
   it("writes one line per layer with its place, the start of differing text, and marks", () => {
-    const lines = screen.map(outlineLine);
+    const lines = screen.map((layer) => outlineLine(layer));
     expect(lines[0]).toBe('570:1 Frame "Screen" 0,0 393×852');
     expect(lines[2]).toBe('    570:3 Text "Title" ?,? 120×24 text "Welcome back"');
     expect(lines[3]).toBe('    570:4 Instance "Button" 297,12 80×40 [has layers]');
@@ -260,13 +260,17 @@ describe("snapshot_layer", () => {
     expect(snapshotsOf()).toHaveLength(2);
   });
 
-  it("removes the expired snapshots of the same file when it saves a new one", async () => {
+  it("keeps expired snapshots 30 days as baselines, then removes them when it saves a new one of the file", async () => {
     const { dir, clock, anchor, snap } = await setup();
     await snap({ contextId: await anchor("570:1"), ref: "570:1" });
     clock.now += 23 * HOUR;
     await snap({ contextId: await anchor("570:2"), ref: "570:2" });
     clock.now += 2 * HOUR; // The first snapshot has expired, the second has not.
     await snap({ contextId: await anchor("570:7"), ref: "570:7" });
+    expect(readdirSync(join(dir, "abc")).sort()).toEqual(["570-1.jpg", "570-1.json", "570-2.jpg", "570-2.json", "570-7.jpg", "570-7.json"]);
+    // 30 days after it expired, the first one goes; the others expired later and stay a little longer.
+    clock.now += 30 * 24 * HOUR;
+    await snap({ contextId: await anchor("570:7"), ref: "570:7", refresh: true });
     expect(readdirSync(join(dir, "abc")).sort()).toEqual(["570-2.jpg", "570-2.json", "570-7.jpg", "570-7.json"]);
   });
 
@@ -529,5 +533,60 @@ describe("snapshot_layer over several calls", () => {
     // Another root of the same file is snapshotted, which sweeps the expired files of the file.
     await tools.snap({ contextId: await tools.anchor("570:7"), ref: "570:7" });
     expect(readdirSync(join(tools.dir, "abc")).sort()).toEqual(["570-7.jpg", "570-7.json"]);
+  });
+});
+
+describe("snapshot changes", () => {
+  /** The screen again after the designer worked on it: new title text, the photo gone, a new badge. */
+  const revised: SnapshotLayer[] = [
+    ...screen.slice(0, 2),
+    { ...screen[2]!, sections: [content("Welcome back, Ann")] },
+    ...screen.slice(3, 6),
+    layer("570:8", { name: "Badge", position: 3 }),
+  ];
+
+  it("has none for a root snapshotted the first time", async () => {
+    const tools = await setup();
+    expect(await tools.snap({ contextId: await tools.anchor(), ref: "570:1" })).toMatchObject({ changes: null });
+  });
+
+  it("finds none when the design did not change", async () => {
+    const tools = await setup();
+    const contextId = await tools.anchor();
+    await tools.snap({ contextId, ref: "570:1" });
+    expect(await tools.snap({ contextId, ref: "570:1", refresh: true })).toMatchObject({ changes: { added: 0, changed: 0, removed: 0, removedLayers: [] } });
+  });
+
+  it("reports what changed since the previous snapshot, marks it in the outline, and lists it with query_snapshot", async () => {
+    let layers = screen;
+    const tools = await setup({ snapshot: () => ({ ok: true, result: complete(layers) }) });
+    const contextId = await tools.anchor();
+    const first = await tools.snap({ contextId, ref: "570:1" });
+    layers = revised;
+    const second = await tools.snap({ contextId, ref: "570:1", refresh: true });
+    expect(second.changes).toEqual({ since: first.createdAt, added: 1, changed: 1, removed: 1, removedLayers: [{ ref: "570:7", name: "Photo", type: "Image" }] });
+    const lines = second.outline.split("\n");
+    expect(lines.find((line) => line.includes("570:3"))).toMatch(/\[changed: content\]$/);
+    expect(lines.find((line) => line.includes("570:8"))).toMatch(/\[new\]$/);
+    expect(lines.filter((line) => line.includes("[changed") || line.includes("[new]"))).toHaveLength(2);
+
+    const listed = await tools.query({ snapshot: second.snapshot, changed: true });
+    expect(listed.outline!.split("\n").map((line) => line.trim().split(" ")[0])).toEqual(["570:3", "570:8"]);
+    // The changes stay with the snapshot, so a later call from the cache reports them too.
+    expect(await tools.snap({ contextId, ref: "570:1" })).toMatchObject({ fromCache: true, changes: { added: 1, changed: 1, removed: 1 } });
+  });
+
+  it("compares with an expired snapshot within 30 days, and with none after that", async () => {
+    let layers = screen;
+    const tools = await setup({ snapshot: () => ({ ok: true, result: complete(layers) }) });
+    await tools.snap({ contextId: await tools.anchor(), ref: "570:1" });
+    tools.clock.now += 10 * 24 * HOUR;
+    layers = revised;
+    expect(await tools.snap({ contextId: await tools.anchor(), ref: "570:1" })).toMatchObject({ fromCache: false, changes: { added: 1, removed: 1 } });
+
+    tools.clock.now += 32 * 24 * HOUR;
+    // Saving another root of the file sweeps the old snapshot first.
+    await tools.snap({ contextId: await tools.anchor("570:2"), ref: "570:2" });
+    expect(await tools.snap({ contextId: await tools.anchor(), ref: "570:1" })).toMatchObject({ changes: null });
   });
 });

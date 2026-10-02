@@ -6,6 +6,7 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ### Added
 
+- `snapshot_layer` compares a new snapshot with the previous one of the same root: it counts the layers new, changed, and removed, names the removed ones, and marks the others in the outline with what changed, such as `[changed: layout, content]`. `query_snapshot` with `changed: true` lists them. An expired snapshot is kept 30 days for this comparison.
 - "Diagnostics" in the popup shows a short report for bug reports and copies it: the extension, protocol, and server versions, the browser, the connection, the tab's readiness and the parts of Figma's UI Figloo found, and the codes of the latest errors. It holds no file, page, or layer names and no links. A bug report form on GitHub asks for it.
 - `export_assets` exports several layers one after another into one folder of the project: the given refs, or every layer a snapshot marks with export settings. Files keep Figma's names, with the layer's ref added when a name repeats; a call does up to 50 layers in about 150 seconds and hands back the rest.
 - `summarize_snapshot` lists the design values of a saved snapshot, or of one section of it, without the Figma tab: every color with what it colors, text style, gap, padding side, corner radius, border width, and shadow, each with how many layers use it, and the instances by name with each combination of their component properties. The figloo-implement skill calls it before mapping a design onto the project's tokens and components.

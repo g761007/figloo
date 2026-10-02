@@ -881,6 +881,23 @@ export const SnapshotImageInfoSchema = z.object({
   scale: z.number().positive().nullable(),
 });
 
+/** What can change about a layer between two snapshots of its root; panel groups are compared as the panel shows them. */
+export const SnapshotChangeAspectSchema = z.enum(["name", "type", "hidden", "moved", "bounds", "layout", "appearance", "typography", "content", "component", "other", "exports"]);
+export type SnapshotChangeAspect = z.infer<typeof SnapshotChangeAspectSchema>;
+
+/** What changed in a root since the previous snapshot of it. */
+export const SnapshotChangesSchema = z.object({
+  /** When the previous snapshot was read. */
+  since: z.string(),
+  added: z.array(z.string()),
+  removed: z.array(z.object({ ref: z.string(), name: z.string(), type: z.string().nullable(), parentRef: z.string().nullable() })),
+  changed: z.array(z.object({ ref: z.string(), aspects: z.array(SnapshotChangeAspectSchema).min(1) })),
+});
+export type SnapshotChanges = z.infer<typeof SnapshotChangesSchema>;
+
+/** Most removed layers `snapshot_layer` names; the rest only count. */
+export const MAX_REMOVED_LISTED = 20;
+
 /** What `snapshot_layer` returns to the coding agent, next to the screenshot. */
 export const SnapshotOutputSchema = z.object({
   contextId: z.string(),
@@ -895,6 +912,16 @@ export const SnapshotOutputSchema = z.object({
   fromCache: z.boolean(),
   /** False while layers are left to read: call snapshot_layer again with the same ref to go on. */
   complete: z.boolean(),
+  /** What changed since the previous snapshot of this root, when there was one; the outline marks those layers. */
+  changes: z
+    .object({
+      since: z.string(),
+      added: z.number().int().nonnegative(),
+      changed: z.number().int().nonnegative(),
+      removed: z.number().int().nonnegative(),
+      removedLayers: z.array(z.object({ ref: z.string(), name: z.string(), type: z.string().nullable() })),
+    })
+    .nullable(),
   /** Layers read so far and in all. */
   progress: z.object({ read: z.number().int().nonnegative(), total: z.number().int().positive() }),
   layerCount: z.number().int().positive(),

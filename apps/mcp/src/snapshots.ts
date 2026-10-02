@@ -1,11 +1,14 @@
 import { chmod, mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { SnapshotImageInfoSchema, SnapshotLayerSchema, type SnapshotLayer } from "@figloo/protocol";
+import { SnapshotChangesSchema, SnapshotImageInfoSchema, SnapshotLayerSchema, type SnapshotLayer } from "@figloo/protocol";
 
 /** Bumped whenever the file layout changes; files of another version count as missing. */
 export const SNAPSHOT_FORMAT_VERSION = 2;
 export const DEFAULT_SNAPSHOT_TTL_HOURS = 24;
+/** An expired snapshot stays this long as what the next snapshot of its root is compared with. */
+export const SNAPSHOT_RETENTION_DAYS = 30;
+const RETENTION_MS = SNAPSHOT_RETENTION_DAYS * 24 * 3_600_000;
 
 const SnapshotFileSchema = z.object({
   formatVersion: z.literal(SNAPSHOT_FORMAT_VERSION),
@@ -22,6 +25,8 @@ const SnapshotFileSchema = z.object({
   /** The root's ancestors from the layer on the page down; missing from snapshots saved before 0.4.0. */
   rootPath: z.array(z.string()).optional(),
   layers: z.array(SnapshotLayerSchema).min(1),
+  /** What changed since the previous snapshot of the root; missing when there was none to compare with. */
+  changes: SnapshotChangesSchema.optional(),
 });
 export type SnapshotFile = z.infer<typeof SnapshotFileSchema>;
 
@@ -171,7 +176,9 @@ export class SnapshotStore {
       }
       if (!name.endsWith(".json")) continue;
       const id = `${fileKey}/${name.slice(0, -".json".length)}`;
-      if ((await this.read(id)).status !== "expired") continue;
+      // Expired snapshots stay a while as the baseline the next snapshot of their root is compared with.
+      const saved = await this.readSaved(id);
+      if (!saved || Date.parse(saved.expiresAt) + RETENTION_MS > this.now()) continue;
       const { json, jpg } = this.paths(id);
       await unlink(json).catch(() => undefined);
       await unlink(jpg).catch(() => undefined);
@@ -192,9 +199,10 @@ const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0
 
 /**
  * One outline line: indent by depth, ref, type, name, place and size in design pixels from the
- * root's corner, then the start of a text layer's content when it differs from its name, and marks.
+ * root's corner, then the start of a text layer's content when it differs from its name, and marks,
+ * with `change` saying what changed since the previous snapshot.
  */
-export function outlineLine(layer: SnapshotLayer): string {
+export function outlineLine(layer: SnapshotLayer, change?: string): string {
   const { x, y, width, height } = layer.bounds;
   const parts = [`${"  ".repeat(layer.depth)}${layer.ref}`, layer.type ?? "?", JSON.stringify(clip(layer.name, MAX_OUTLINE_NAME))];
   parts.push(x === null || y === null ? "?,?" : `${x},${y}`);
@@ -204,5 +212,6 @@ export function outlineLine(layer: SnapshotLayer): string {
   if (layer.hidden) parts.push("[hidden]");
   if (layer.type === "Instance" && layer.hasChildren) parts.push("[has layers]");
   if (layer.exports?.length) parts.push(`[export ${layer.exports.join(", ")}]`);
+  if (change) parts.push(change);
   return parts.join(" ");
 }

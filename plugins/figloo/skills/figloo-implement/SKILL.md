@@ -38,6 +38,7 @@ Tell the user first: reading takes about 40 seconds per 300 layers, the Figma ta
 - One call reads for at most 3 minutes. While it returns `complete: false`, tell the user the progress and call it again with the same context and ref; it reads on where the last call stopped.
 
 - The snapshot is saved for 24 hours and comes back without reading Figma again; pass `refresh: true` only when the user says the design changed.
+- After a refresh, `changes` counts what is new, changed, and removed since the previous snapshot, and `query_snapshot` with `changed: true` lists the new and changed layers. Update only the code for those layers and remove what the removed ones built.
 - After Figma reloaded, a context from before fails with `CONTEXT_EXPIRED`: get a new one with `get_anchor` or `explore_page` and pass the same root to `snapshot_layer`. The saved snapshot comes back, and its refs work in the new context.
 - `SUBTREE_TOO_LARGE`, above 2,000 layers: snapshot the children it lists, one at a time, and treat each as a section.
 
