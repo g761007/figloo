@@ -4,6 +4,10 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+### Changed
+
+- GitHub Actions builds and publishes each release from its version tag, and computes the checksum table in the release notes from the files it uploads. Every push and pull request runs the build, type checks, and unit tests.
+
 ## [0.3.2] - 2026-10-02
 
 ### Added

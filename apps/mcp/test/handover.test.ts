@@ -128,7 +128,8 @@ describe("handover between sessions", () => {
 
     await alpha.stop();
 
-    await until(() => beta.role === "holder" && beta.connected);
+    // beta counts as connected once it sends welcome; the extension reads it a turn later.
+    await until(() => beta.role === "holder" && beta.connected && extension.welcomes.at(-1)?.session?.project === "beta");
     expect(extension.welcomes.at(-1)?.session).toEqual(beta.session);
     await expect(beta.request("refresh_tabs")).resolves.toEqual({ tabs: [] });
   });

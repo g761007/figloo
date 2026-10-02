@@ -209,9 +209,19 @@ claude plugin validate --strict plugins/figloo   # 檢查 plugin；對 . 執行�
 claude plugin eval plugins/figloo --mocks off --ablation none   # skill 是否只在該觸發時觸發
 ```
 
-`pnpm package` 也會檢查 `plugins/figloo/.claude-plugin/plugin.json` 的版本與 bundle 網址是否和伺服器的版本一致，以及 [CHANGELOG.md](CHANGELOG.md) 有沒有這個版本的段落，所以升版時要一起改。Plugin 的評估要加 `--mocks off`，因為 `claude plugin eval` 無法替以 bundle 宣告的伺服器提供替身；評估案例沒有開放任何 Figloo 工具，所以不會動到 Figma。
+`pnpm package` 也會檢查擴充功能的 manifest 與三個 `package.json` 的版本是否相同、`plugins/figloo/.claude-plugin/plugin.json` 的版本與 bundle 網址是否和這個版本一致，以及 [CHANGELOG.md](CHANGELOG.md) 有沒有這個版本的段落，所以升版時要一起改。Plugin 的評估要加 `--mocks off`，因為 `claude plugin eval` 無法替以 bundle 宣告的伺服器提供替身；評估案例沒有開放任何 Figloo 工具，所以不會動到 Figma。
 
 `docs/mcp-tools.md` 與伺服器註冊的工具不一致時，`pnpm test` 會失敗。
+
+每次 push 到 `main` 與每個 pull request，GitHub Actions 都會執行 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)：建置、型別檢查、一次一個套件執行單元測試，以及打包。下方的整合測試需要瀏覽器與 Figma 連結，所以只在本機執行。
+
+發佈一個版本：
+
+1. 更新 `apps/extension/static/manifest.json`、三個 `package.json` 與 `plugins/figloo/.claude-plugin/plugin.json`（版本與 bundle 網址）中的版本，並在 CHANGELOG.md 加上這個版本的段落。段落中第一個 `###` 標題之前的文字，會成為 release 說明的開頭。
+2. 執行 `pnpm package` 與 `pnpm test:release`。
+3. Commit，在這個 commit 打上 `vX.Y.Z` tag，兩者一起 push：`git push origin main vX.Y.Z`。[`.github/workflows/release.yml`](.github/workflows/release.yml) 會測試並打包這個 commit、核對 tag 與版本、以它上傳的檔案計算 SHA-256 並寫進說明，然後發佈 release。Release 發佈之前，新安裝的 plugin 下載不到 bundle，所以 tag 要和 commit 一起 push。
+
+從 Actions 頁面手動執行 Release workflow 是演練：只把檔案與說明保留成 artifact，不會發佈任何東西。
 
 整合測試 `tests/integration/get-status.e2e.mjs` 會以建置好的擴充功能啟動 Playwright 的 Chromium，透過選項頁面配對，以訪客身分開啟 Figma 檔案，並在 MCP 程序重新啟動前後，以及第二個伺服器接手又結束時，檢查 `get_status`。它需要網路連線、已建置的 workspace、先下載瀏覽器，以及一個知道連結就能檢視的 Figma 設計檔。連結不進版控：把範例檔複製成 git 會忽略的 `tests/integration/.env.local` 並填入連結，或改設定 `FIGLOO_E2E_FIGMA_URL`：
 
@@ -240,7 +250,8 @@ docs/plans/          規劃文件
 docs/compatibility/  在真實 Figma 頁面上驗證過的項目與已知限制
 plugins/figloo/      Claude Code plugin：figloo-implement skill、它的評估案例，以及它下載的伺服器 bundle 的設定
 .claude-plugin/      Marketplace 的 manifest，讓這個 repo 可以用 /plugin marketplace add 加入
-scripts/             release 打包與 release 檢查
+scripts/             release 打包、release 檢查與 release 說明
+.github/workflows/   CI，以及版本 tag 觸發的 release workflow
 tests/fixtures/      回歸測試用的 Figma markup 擷取與匯出檔案
 tests/integration/   對真實 Chromium 與 Figma 執行的端對端測試
 tests/acceptance/    在已登入瀏覽器上執行的核心情境驗收

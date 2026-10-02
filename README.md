@@ -207,9 +207,19 @@ claude plugin validate --strict plugins/figloo   # check the plugin; run it on .
 claude plugin eval plugins/figloo --mocks off --ablation none   # whether the skill fires when it should, and only then
 ```
 
-`pnpm package` also checks that `plugins/figloo/.claude-plugin/plugin.json` carries the server's version and the URL of that version's bundle, and that [CHANGELOG.md](CHANGELOG.md) has a section for the version, so bump them together. The plugin evals need `--mocks off`, since `claude plugin eval` cannot stand in for a server declared through a bundle; the cases grant no Figloo tools, so nothing reaches Figma.
+`pnpm package` also checks that the extension's manifest and the three `package.json` files carry the same version, that `plugins/figloo/.claude-plugin/plugin.json` carries it with the URL of that version's bundle, and that [CHANGELOG.md](CHANGELOG.md) has a section for the version, so bump them together. The plugin evals need `--mocks off`, since `claude plugin eval` cannot stand in for a server declared through a bundle; the cases grant no Figloo tools, so nothing reaches Figma.
 
 `pnpm test` fails when `docs/mcp-tools.md` no longer matches the tools the server registers.
+
+GitHub Actions runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml) on every push to `main` and every pull request: build, typecheck, the unit tests one package at a time, and packaging. The integration tests below need a browser and a Figma link, so they only run locally.
+
+To release a version:
+
+1. Bump the version in `apps/extension/static/manifest.json`, the three `package.json` files, and `plugins/figloo/.claude-plugin/plugin.json` (its version and bundle URL), and add the version's section to CHANGELOG.md. Text above the section's first `###` heading becomes the introduction of the release notes.
+2. Run `pnpm package` and `pnpm test:release`.
+3. Commit, tag the commit `vX.Y.Z`, and push both at once: `git push origin main vX.Y.Z`. [`.github/workflows/release.yml`](.github/workflows/release.yml) tests and packages the tagged commit, checks the tag against the version, writes the notes with the SHA-256 of the files it uploads, and publishes the release. New plugin installs cannot download the bundle until the release is out, so push the tag together with the commit.
+
+Running the Release workflow by hand from the Actions tab is a dry run: it keeps the files and the notes as an artifact and publishes nothing.
 
 The integration test (`tests/integration/get-status.e2e.mjs`) launches Playwright's Chromium with the built extension, pairs it through the options page, opens a Figma file as a guest, and checks `get_status` before and after restarting the MCP process, and while a second server takes the extension over and exits again. It needs network access, a built workspace, the browser download, and a Figma design file that anyone with the link can view. The link is not committed: copy the example file to `tests/integration/.env.local`, which git ignores, and fill it in, or set `FIGLOO_E2E_FIGMA_URL` instead:
 
@@ -238,7 +248,8 @@ docs/plans/          Planning documents
 docs/compatibility/  What was verified on real Figma pages, and known limits
 plugins/figloo/      Claude Code plugin: the figloo-implement skill, its evals, and the server bundle it downloads
 .claude-plugin/      Marketplace manifest, so the repository can be added with /plugin marketplace add
-scripts/             Release packaging and the release check
+scripts/             Release packaging, the release check, and the release notes
+.github/workflows/   CI, and the release workflow a version tag starts
 tests/fixtures/      Captured Figma markup and export files for regression tests
 tests/integration/   End-to-end tests against real Chromium and Figma
 tests/acceptance/    Core-scenario acceptance run for a signed-in browser

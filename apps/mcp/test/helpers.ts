@@ -78,7 +78,9 @@ export function runReconnectingExtension(port: number, answer: (op: string) => u
   const welcomes: WelcomeMessage[] = [];
   let stopped = false;
   let ws: WebSocket;
+  let reconnect: ReturnType<typeof setTimeout> | undefined;
   const connect = () => {
+    if (stopped) return;
     ws = new WebSocket(`ws://127.0.0.1:${port}/`, { headers: { origin: `chrome-extension://${EXTENSION_ID}` } });
     ws.on("open", () => ws.send(JSON.stringify(hello())));
     ws.on("message", (data) => {
@@ -92,7 +94,7 @@ export function runReconnectingExtension(port: number, answer: (op: string) => u
     ws.on("error", () => {});
     ws.on("close", (code) => {
       closes.push(code);
-      if (!stopped) setTimeout(connect, 50);
+      if (!stopped) reconnect = setTimeout(connect, 50);
     });
   };
   connect();
@@ -101,6 +103,8 @@ export function runReconnectingExtension(port: number, answer: (op: string) => u
     welcomes,
     stop: () => {
       stopped = true;
+      // A reconnect still pending would otherwise reach whatever listens on the port next.
+      clearTimeout(reconnect);
       ws.close();
     },
   };

@@ -1,6 +1,7 @@
 // Builds the installable artifacts into release/: the unpacked extension as a zip, the MCP server as
 // one self-contained file that runs with Node.js 24, and the same server as an MCP bundle (.mcpb) for
-// the Claude Code plugin. Run through `pnpm package`.
+// the Claude Code plugin. Run through `pnpm package`; `--tag vX.Y.Z` also checks the tag that
+// publishes the release against the version.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -18,6 +19,22 @@ const extensionZip = join(RELEASE, `figloo-extension-${extensionVersion}.zip`);
 const mcpBundle = join(RELEASE, `figloo-mcp-${mcpVersion}.mjs`);
 const mcpbName = `figloo-mcp-${mcpVersion}.mcpb`;
 const mcpb = join(RELEASE, mcpbName);
+
+// docs/agent-install.md names every file of a release after its tag, so all parts share one version.
+const versions = {
+  "apps/extension/static/manifest.json": extensionVersion,
+  "apps/extension/package.json": readJson("apps/extension/package.json").version,
+  "apps/mcp/package.json": mcpVersion,
+  "packages/protocol/package.json": readJson("packages/protocol/package.json").version,
+};
+const mismatched = Object.entries(versions).filter(([, version]) => version !== mcpVersion);
+if (mismatched.length > 0) {
+  throw new Error(`every package needs version ${mcpVersion}: ${mismatched.map(([file, version]) => `${file} has ${version}`).join(", ")}`);
+}
+const tagAt = process.argv.indexOf("--tag");
+if (tagAt >= 0 && process.argv[tagAt + 1] !== `v${mcpVersion}`) {
+  throw new Error(`the tag ${process.argv[tagAt + 1] ?? "(none)"} does not name version ${mcpVersion}; tag the release v${mcpVersion}`);
+}
 
 // The plugin downloads this release's bundle, so its version and URL move with the server's.
 const plugin = readJson("plugins/figloo/.claude-plugin/plugin.json");
