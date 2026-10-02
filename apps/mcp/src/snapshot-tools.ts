@@ -101,7 +101,10 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         "A layer at (x, y) shows at image.rootInImage + (x, y) × image.scale in the screenshot. image.alignment says whether rootInImage was checked against the screenshot: confirmed, corrected (Figma reported a stale place), or unconfirmed (it may be off by a few dozen pixels; the outline's places, relative to the root, are not affected). " +
         "A saved snapshot comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. " +
         `Reading takes about 40 s for 300 layers, at most 3 minutes, for up to ${MAX_SNAPSHOT_LAYERS} layers; a larger subtree fails and lists the root's children. ` +
-        "Meanwhile the Figma tab must stay visible and the user cannot use Figma; a click in Figma stops it. The user's selection is put back; the view stays zoomed to the root.",
+        "The Figma tab must be on screen to start. Meanwhile Figma shows an overlay with the progress and a Stop button, and the user can use other windows; " +
+        "if the tab goes to the background, reading pauses and goes on when it is back, within the 3 minutes. " +
+        "To cancel, the user should press Stop or Esc on the overlay, which puts the layers panel back; a click elsewhere in Figma also stops it but keeps the user's new selection. " +
+        "The user's selection is put back; the view stays zoomed to the root.",
       inputSchema: {
         contextId: z.string(),
         ref: z.string().describe("A ref returned earlier in this context, outside instances"),
