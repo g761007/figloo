@@ -71,6 +71,7 @@ export class ReadingOverlay {
   private timer: ReturnType<typeof setInterval> | null = null;
   private previousFocus: Element | null = null;
   private stopping = false;
+  private paused = false;
 
   constructor(private readonly doc: Document) {
     this.host = doc.createElement("figloo-reading-overlay");
@@ -139,6 +140,12 @@ export class ReadingOverlay {
     this.progress = progress;
   }
 
+  /** While the tab is in the background the read waits; the text says so when the user comes back. */
+  setPaused(paused: boolean): void {
+    this.paused = paused;
+    this.render();
+  }
+
   remove(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
@@ -168,7 +175,11 @@ export class ReadingOverlay {
   }
 
   private render(): void {
-    const text = this.stopping ? "Stopping and putting the layers panel back" : progressText(this.progress);
+    const text = this.stopping
+      ? "Stopping and putting the layers panel back"
+      : this.paused
+        ? "Paused: bring this tab back on screen to continue"
+        : progressText(this.progress);
     if (this.status.textContent !== text) this.status.textContent = text;
     // Keys reach the overlay only while it has focus; Figma may take focus when a layer is selected.
     if (!this.stopping && this.doc.activeElement !== this.host) this.stopButton.focus({ preventScroll: true });

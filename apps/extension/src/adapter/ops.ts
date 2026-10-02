@@ -37,6 +37,7 @@ import { inspectionHeader, inspectionRoot, inspectionSignature, readInspection }
 import { ReadingOverlay, estimateRemainingMs } from "./overlay.js";
 import { layersPanel, readRenderedRows, type Row } from "./row.js";
 import { LayerTree, StopExploration, type IndexEntry, type Page, type WalkedLayer } from "./tree.js";
+import { BackgroundPause } from "./visibility.js";
 
 /** Per-operation budgets from the plan: 15 s of UI work and a bounded number of UI operations. */
 export const OP_TIME_BUDGET_MS = 15_000;
@@ -65,6 +66,8 @@ interface RunLimits {
   collapseAfterInterrupt?: boolean;
   /** Shown during the operation: input on it is not the user stepping in, and its Stop ends the operation. */
   overlay?: ReadingOverlay;
+  /** Wait while the tab is in the background instead of failing; ending there puts the panel back once the tab returns. */
+  pause?: BackgroundPause;
 }
 
 const DEFAULT_LIMITS: RunLimits = { timeBudgetMs: OP_TIME_BUDGET_MS, maxUiOps: OP_MAX_UI_OPS };
@@ -73,6 +76,8 @@ const DEFAULT_LIMITS: RunLimits = { timeBudgetMs: OP_TIME_BUDGET_MS, maxUiOps: O
 type UserSelection = { kind: "none" } | { kind: "layer"; id: string } | { kind: "layers"; ids: string[] } | { kind: "multiple" };
 
 const STOPPED_MESSAGE = "the user stopped the read with Stop or Esc on Figloo's reading overlay; the layers panel and the selection were put back";
+const BACKGROUND_TIMEOUT_MESSAGE =
+  "the read ran out of time while the Figma tab was in the background; Figloo puts the layers panel and the selection back once the tab is on screen again, unless the user uses Figma first";
 
 const MIRROR_MESSAGE =
   "Figma shows where layers are on screen only with Adapt content for screen readers turned on (Main menu, Preferences, Accessibility settings)";
@@ -430,6 +435,7 @@ export class Explorer {
     let restored = false;
     // The screenshot was taken before this op, so the overlay cannot end up in it.
     const overlay = new ReadingOverlay(this.doc);
+    const pause = new BackgroundPause(this.doc, Date.now() + params.timeBudgetMs, (paused) => overlay.setPaused(paused));
     const ran = await this.run(
       async (tree, source) => {
         overlay.show();
@@ -456,24 +462,32 @@ export class Explorer {
         const read: { layer: WalkedLayer; sections: InspectedSection[]; exports: string[] | null }[] = [];
         const durations: number[] = [];
         for (const layer of walk.layers) {
-          const layerStarted = Date.now();
           overlay.update({ phase: "reading", done: read.length, total: walk.layers.length, remainingMs: estimateRemainingMs(durations, walk.layers.length - read.length) });
-          tree.check();
-          const row = await tree.find(layer.row.id);
-          if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${layer.row.id} is no longer in the layers panel`);
-          const previous = inspectionSignature(this.doc);
-          if (!(await source.select(row))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${row.id}`);
-          // Two layers that look alike leave the panel unchanged; the selection itself did change.
-          const switched = await this.waitForPanel(row, previous, source).then(
-            () => true,
-            () => false,
-          );
-          const sections = readInspection(inspectionRoot(this.doc) ?? this.doc);
-          collect();
-          // The mirror does not place text layers.
-          if (row.type !== "Text" && !rects.has(row.id) && (await source.settle(() => source.mirrorRects().has(row.id), SNAPSHOT_MIRROR_WAIT_MS))) collect();
-          read.push({ layer, sections, exports: switched ? designerExports(this.doc, row.name) : null });
-          durations.push(Date.now() - layerStarted);
+          // A layer read while the tab went to the background may show a stale panel, so it is read again once the tab is back.
+          for (;;) {
+            const layerStarted = Date.now();
+            const mark = pause.mark();
+            tree.check();
+            const row = await tree.find(layer.row.id);
+            if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${layer.row.id} is no longer in the layers panel`);
+            const previous = inspectionSignature(this.doc);
+            if (!(await source.select(row))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${row.id}`);
+            // Two layers that look alike leave the panel unchanged; the selection itself did change.
+            const switched = await this.waitForPanel(row, previous, source).then(
+              () => true,
+              () => false,
+            );
+            const sections = readInspection(inspectionRoot(this.doc) ?? this.doc);
+            collect();
+            // The mirror does not place text layers.
+            if (row.type !== "Text" && !rects.has(row.id) && (await source.settle(() => source.mirrorRects().has(row.id), SNAPSHOT_MIRROR_WAIT_MS))) collect();
+            if (!pause.hidSince(mark)) {
+              read.push({ layer, sections, exports: switched ? designerExports(this.doc, row.name) : null });
+              durations.push(Date.now() - layerStarted);
+              break;
+            }
+            await pause.untilVisible();
+          }
         }
         overlay.update({ phase: "finishing" });
         return { status: "complete" as const, read, rects, walkMs, zoomLabel: parseZoom(source.zoomLabel()) };
@@ -481,8 +495,11 @@ export class Explorer {
       async (tree, source) => {
         restored = await this.restoreSelection(tree, source, before);
       },
-      { timeBudgetMs: params.timeBudgetMs, maxUiOps: SNAPSHOT_UI_OPS_PER_LAYER * params.maxLayers, collapseAfterInterrupt: true, overlay },
-    ).finally(() => overlay.remove());
+      { timeBudgetMs: params.timeBudgetMs, maxUiOps: SNAPSHOT_UI_OPS_PER_LAYER * params.maxLayers, collapseAfterInterrupt: true, overlay, pause },
+    ).finally(() => {
+      overlay.remove();
+      pause.dispose();
+    });
     const { value, uiOps, elapsedMs } = ran;
     if (value.status === "too_large") {
       return {
@@ -741,7 +758,7 @@ export class Explorer {
     const started = Date.now();
     const user = watchForUser(this.win, limits.overlay);
     let stopped = () => user.interrupted() || limits.overlay?.stopRequested === true;
-    const source = new DomRowSource(this.doc);
+    const source = new DomRowSource(this.doc, limits.pause);
     const tree = new LayerTree(source, this.index, {
       deadline: started + limits.timeBudgetMs,
       maxUiOps: limits.maxUiOps,
@@ -758,6 +775,10 @@ export class Explorer {
         if (!user.interrupted()) {
           // A Stop on the overlay changed nothing in Figma, so everything is put back; only the user's own input stops that.
           stopped = user.interrupted;
+          if (limits.pause && this.doc.hidden) {
+            this.putBackLater(tree, source, finish, (watch) => (stopped = watch.interrupted));
+            throw error instanceof StopExploration && error.cause === "time_budget" ? new OpError("BUDGET_EXCEEDED", BACKGROUND_TIMEOUT_MESSAGE) : translate(error);
+          }
           await this.putBack(tree, source, finish);
           if (limits.overlay?.stopRequested && !user.interrupted()) throw new OpError("USER_INTERRUPTED", STOPPED_MESSAGE);
         } else if (limits.collapseAfterInterrupt) {
@@ -776,6 +797,36 @@ export class Explorer {
       this.running = false;
       if (this.index.size > INDEX_LIMIT) this.index.clear();
     }
+  }
+
+  /**
+   * Puts the panel back once the tab is on screen again, since Figma ignores clicks in the background.
+   * Gives up when the user uses Figma first, the page changes, or another operation is running then.
+   * `watchWith` hands the new watch to the tree, so user input also stops the put-back itself.
+   */
+  private putBackLater(
+    tree: LayerTree,
+    source: DomRowSource,
+    finish: ((tree: LayerTree, source: DomRowSource) => Promise<void>) | undefined,
+    watchWith: (watch: UserWatch) => void,
+  ): void {
+    const watch = watchForUser(this.win);
+    watchWith(watch);
+    const page = JSON.stringify(this.identity());
+    const onVisibility = () => {
+      if (this.doc.hidden) return;
+      this.doc.removeEventListener("visibilitychange", onVisibility);
+      if (watch.interrupted() || this.running || JSON.stringify(this.identity()) !== page) {
+        watch.dispose();
+        return;
+      }
+      this.running = true;
+      void this.putBack(tree, source, finish).finally(() => {
+        watch.dispose();
+        this.running = false;
+      });
+    };
+    this.doc.addEventListener("visibilitychange", onVisibility);
   }
 
   /** Best effort: once the user takes over, the panel is left as it is. */

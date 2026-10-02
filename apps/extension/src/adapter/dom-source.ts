@@ -1,6 +1,7 @@
 import type { Rect } from "@figloo/protocol";
 import { layersPanel, readRenderedRows, rowElement, type Row } from "./row.js";
 import type { Align, RowSource } from "./tree.js";
+import type { BackgroundPause } from "./visibility.js";
 
 const DEFAULT_ROW_HEIGHT = 32;
 const RENDER_TIMEOUT_MS = 1_500;
@@ -16,13 +17,20 @@ export class TabInBackground extends Error {
   }
 }
 
-/** The live Figma layers panel. Operates it only through scrolling and expand carets. */
+/**
+ * The live Figma layers panel. Operates it only through scrolling and expand carets. With `pause`,
+ * expanding and selecting wait while the tab is in the background instead of failing, and a click
+ * that the tab went to the background during is made again once it is back.
+ */
 export class DomRowSource implements RowSource {
   /** Selections and key presses, which the tree's own UI operation count does not see. */
   actions = 0;
   private readonly initialScrollTop: number | null;
 
-  constructor(private readonly doc: Document) {
+  constructor(
+    private readonly doc: Document,
+    private readonly pause?: BackgroundPause,
+  ) {
     this.initialScrollTop = this.scroller()?.scrollTop ?? null;
   }
 
@@ -51,27 +59,39 @@ export class DomRowSource implements RowSource {
   }
 
   async toggle(row: Row): Promise<Row[]> {
-    if (this.doc.hidden) throw new TabInBackground();
-    const caret = rowElement(this.doc, row.id)?.querySelector('[data-testid="layers-panel-expand-caret"]');
-    if (!caret) return this.rows();
-    synthesizeClick(caret);
-    await this.waitFor(() => {
+    const toggled = () => {
       const now = this.rows().find((r) => r.id === row.id);
       return now !== undefined && now.expanded !== row.expanded;
-    });
-    return this.rows();
+    };
+    for (let attempt = 0; ; attempt += 1) {
+      await this.whenVisible();
+      // A click made just before the tab went to the background may have landed after all.
+      if (attempt > 0 && toggled()) return this.rows();
+      const mark = this.pause?.mark();
+      const caret = rowElement(this.doc, row.id)?.querySelector('[data-testid="layers-panel-expand-caret"]');
+      if (!caret) return this.rows();
+      synthesizeClick(caret);
+      if ((await this.waitFor(toggled)) || mark === undefined || !this.pause!.hidSince(mark)) return this.rows();
+    }
   }
 
   /** Selects a layer the way a click in the layers panel does, and waits until Figma shows it selected. */
   /** Selects the row's layer; with `add`, adds it to the selection the way Cmd-click (Ctrl-click off macOS) does. */
   async select(row: Row, add = false): Promise<boolean> {
-    if (this.doc.hidden) throw new TabInBackground();
-    const cell = rowElement(this.doc, row.id)?.querySelector('[role="gridcell"]:not([aria-hidden="true"])');
-    if (!cell) return false;
-    this.actions += 1;
-    const mac = /Mac/.test(this.doc.defaultView?.navigator.platform ?? "");
-    synthesizeClick(cell, add ? (mac ? { metaKey: true } : { ctrlKey: true }) : {});
-    return this.waitFor(() => this.rows().find((r) => r.id === row.id)?.selected === true);
+    const selected = () => this.rows().find((r) => r.id === row.id)?.selected === true;
+    for (let attempt = 0; ; attempt += 1) {
+      await this.whenVisible();
+      // Checked before clicking again, since a Cmd-click on a selected layer would deselect it.
+      if (attempt > 0 && selected()) return true;
+      const mark = this.pause?.mark();
+      const cell = rowElement(this.doc, row.id)?.querySelector('[role="gridcell"]:not([aria-hidden="true"])');
+      if (!cell) return false;
+      this.actions += 1;
+      const mac = /Mac/.test(this.doc.defaultView?.navigator.platform ?? "");
+      synthesizeClick(cell, add ? (mac ? { metaKey: true } : { ctrlKey: true }) : {});
+      const done = await this.waitFor(selected);
+      if (done || mark === undefined || !this.pause!.hidSince(mark)) return done;
+    }
   }
 
   /** Sends a shortcut to the canvas keyboard target, for example Shift+2 to zoom to the selection. */
@@ -137,6 +157,13 @@ export class DomRowSource implements RowSource {
   restoreScroll(): void {
     const scroller = this.scroller();
     if (scroller && this.initialScrollTop !== null) this.scrollTo(scroller, this.initialScrollTop);
+  }
+
+  /** In the background, waits for the tab with a pause and fails without one. */
+  private async whenVisible(): Promise<void> {
+    if (!this.doc.hidden) return;
+    if (!this.pause) throw new TabInBackground();
+    await this.pause.untilVisible();
   }
 
   private scroller(): HTMLElement | null {

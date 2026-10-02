@@ -2,10 +2,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
+import { DomRowSource } from "../src/adapter/dom-source.js";
 import { Explorer, OpError } from "../src/adapter/ops.js";
 import { ReadingOverlay } from "../src/adapter/overlay.js";
 import { readRenderedRows } from "../src/adapter/row.js";
-import type { LayerTree } from "../src/adapter/tree.js";
+import { StopExploration, type LayerTree } from "../src/adapter/tree.js";
+import { BackgroundPause } from "../src/adapter/visibility.js";
 
 /** The repository root, found from the working directory; URL-based paths do not work under happy-dom. */
 function repoRoot(): string {
@@ -108,18 +110,14 @@ describe("Explorer on captured Figma markup", () => {
 
 /** Runs an operation with the reading overlay the way readSubtree does, with a probe as its work. */
 class OverlayRun extends Explorer {
-  start<T>(overlay: ReadingOverlay, work: (tree: LayerTree) => T, finished: () => void): Promise<{ value: T }> {
+  start<T>(overlay: ReadingOverlay, work: (tree: LayerTree) => T, putBack: (tree: LayerTree) => void, pause?: BackgroundPause): Promise<{ value: T }> {
     return this.run(
       async (tree) => {
         overlay.show();
         return work(tree);
       },
-      // Putting the selection back drives the panel, which checks for interruptions like any other step.
-      async (tree) => {
-        tree.check();
-        finished();
-      },
-      { timeBudgetMs: 5_000, maxUiOps: 10, overlay },
+      async (tree) => putBack(tree),
+      { timeBudgetMs: 5_000, maxUiOps: 10, overlay, ...(pause ? { pause } : {}) },
     ).finally(() => overlay.remove());
   }
 }
@@ -142,7 +140,11 @@ describe("the reading overlay during an operation", () => {
         tree.check();
         return "read";
       },
-      () => (putBack = true),
+      // Putting the selection back drives the panel, which checks for interruptions like any other step.
+      (tree) => {
+        tree.check();
+        putBack = true;
+      },
     );
     await expect(run).rejects.toMatchObject({ code: "USER_INTERRUPTED", message: expect.stringMatching(/stopped the read with Stop or Esc/) });
     expect(putBack).toBe(true);
@@ -177,5 +179,116 @@ describe("the reading overlay during an operation", () => {
     await expect(inFigma).rejects.toMatchObject({ code: "USER_INTERRUPTED", message: expect.stringMatching(/interacted with Figma/) });
     // The user's own input wins: nothing is put back over it.
     expect(putBack).toBe(false);
+  });
+});
+
+/** The tab's visibility as the test sets it; Figma reacts to clicks only while the tab is visible. */
+let hidden = false;
+function setHidden(value: boolean): void {
+  hidden = value;
+  document.dispatchEvent(new Event("visibilitychange"));
+}
+function simulateHiddenTab(): () => void {
+  hidden = false;
+  Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+  return () => delete (document as unknown as { hidden?: boolean }).hidden;
+}
+const rowOf = (id: string) => document.querySelector(`[data-testid="${id}-layers-panel-row"]`)!.closest('[role="row"]')!;
+const cellOf = (id: string) => rowOf(id).querySelector('[role="gridcell"]:not([aria-hidden="true"])')!;
+
+describe("a read while the tab goes to the background", () => {
+  it("waits to select a layer until the tab is back, instead of clicking where Figma ignores it", async () => {
+    const restore = simulateHiddenTab();
+    try {
+      const pause = new BackgroundPause(document, Date.now() + 5_000);
+      const source = new DomRowSource(document, pause);
+      const row = readRenderedRows(document).find((r) => r.id === "1335:5269")!;
+      let clicks = 0;
+      cellOf("1335:5269").addEventListener("click", () => (clicks += 1));
+      setHidden(true);
+      const selecting = source.select(row);
+      await new Promise((r) => setTimeout(r, 30));
+      expect(clicks).toBe(0);
+      setHidden(false);
+      await expect(selecting).resolves.toBe(true);
+      expect(clicks).toBe(1);
+      pause.dispose();
+    } finally {
+      restore();
+    }
+  });
+
+  it("clicks again once the tab is back when the tab went to the background as it clicked", async () => {
+    const restore = simulateHiddenTab();
+    try {
+      const pause = new BackgroundPause(document, Date.now() + 10_000);
+      const source = new DomRowSource(document, pause);
+      const row = readRenderedRows(document).find((r) => r.id === "1335:5270")!;
+      let clicks = 0;
+      cellOf("1335:5270").addEventListener("click", () => {
+        clicks += 1;
+        // The first click arrives as the user switches tabs, so Figma never applies it.
+        if (clicks === 1) {
+          setHidden(true);
+          setTimeout(() => setHidden(false), 50);
+          return;
+        }
+        if (!document.hidden) rowOf("1335:5270").setAttribute("aria-selected", "true");
+      });
+      await expect(source.select(row)).resolves.toBe(true);
+      expect(clicks).toBe(2);
+      pause.dispose();
+    } finally {
+      restore();
+    }
+  });
+
+  it("puts the panel back once the tab returns when the read ran out of time in the background", async () => {
+    const restore = simulateHiddenTab();
+    try {
+      let putBack = false;
+      const pause = new BackgroundPause(document, Date.now() + 5_000);
+      const run = new OverlayRun("page-1", document, window).start(
+        new ReadingOverlay(document),
+        () => {
+          setHidden(true);
+          throw new StopExploration("time_budget");
+        },
+        () => (putBack = true),
+        pause,
+      );
+      await expect(run).rejects.toMatchObject({ code: "BUDGET_EXCEEDED", message: expect.stringMatching(/in the background/) });
+      expect(putBack).toBe(false);
+      setHidden(false);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(putBack).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  it("leaves the panel to the user who used Figma before the tab came back, and to another file", async () => {
+    const restore = simulateHiddenTab();
+    try {
+      for (const meanwhile of [() => document.body.dispatchEvent(trustedPress()), () => (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL("https://www.figma.com/design/OtherFileKey0000000000/Other")]) {
+        let putBack = false;
+        const run = new OverlayRun("page-1", document, window).start(
+          new ReadingOverlay(document),
+          () => {
+            setHidden(true);
+            throw new StopExploration("time_budget");
+          },
+          () => (putBack = true),
+          new BackgroundPause(document, Date.now() + 5_000),
+        );
+        await expect(run).rejects.toMatchObject({ code: "BUDGET_EXCEEDED" });
+        meanwhile();
+        setHidden(false);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(putBack).toBe(false);
+      }
+    } finally {
+      restore();
+    }
   });
 });
