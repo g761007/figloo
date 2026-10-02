@@ -231,6 +231,10 @@ tests/acceptance/    在已登入瀏覽器上執行的核心情境驗收
 release/             pnpm package 的輸出（不提交）
 ```
 
+## 授權
+
+Figloo 以 [MIT 授權](LICENSE)釋出。
+
 ## 疑難排解
 
 先從這些地方查看：

@@ -1,5 +1,6 @@
 {
   "name": "figloo",
+  "license": "MIT",
   "private": true,
   "packageManager": "pnpm@10.33.3",
   "engines": {

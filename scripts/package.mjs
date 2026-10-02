@@ -67,6 +67,7 @@ try {
     description: "Lets a coding agent explore the Figma design open in the browser through the Figloo extension.",
     author: plugin.author,
     repository: { type: "git", url: plugin.repository },
+    license: plugin.license,
     icon: "icon.png",
     server: {
       type: "node",

@@ -229,6 +229,10 @@ tests/acceptance/    Core-scenario acceptance run for a signed-in browser
 release/             Output of pnpm package (not committed)
 ```
 
+## License
+
+Figloo is released under the [MIT License](LICENSE).
+
 ## Troubleshooting
 
 Where to look:

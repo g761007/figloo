@@ -2,6 +2,12 @@
 
 Notable changes to Figloo, newest first, for each version published as a [GitHub release](https://github.com/g761007/figloo/releases). The release pages also carry install steps and file checksums. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Figloo is released under the MIT License.
+
 ## [0.3.1] - 2026-10-02
 
 The first published release since 0.1.0. It includes the changes made as 0.2.0 and 0.3.0, which were not released on their own.
@@ -59,6 +65,7 @@ The first published release since 0.1.0. It includes the changes made as 0.2.0 a
 - The toolbar icon and popup show the tab's status, the selected layer's path and children, and a prompt to copy for the agent.
 - `figloo-mcp pair` prints the pairing token and port to paste into the extension's options page.
 
+[Unreleased]: https://github.com/g761007/figloo/compare/v0.3.1...HEAD
 [0.3.1]: https://github.com/g761007/figloo/releases/tag/v0.3.1
 [0.1.0]: https://github.com/g761007/figloo/releases/tag/v0.1.0
 [0.0.1]: https://github.com/g761007/figloo/releases/tag/v0.0.1

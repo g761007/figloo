@@ -1,6 +1,7 @@
 {
   "name": "@figloo/extension",
   "version": "0.3.1",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {

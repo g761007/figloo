@@ -6,6 +6,7 @@
   "author": { "name": "Daniel Hsieh" },
   "homepage": "https://github.com/g761007/figloo",
   "repository": "https://github.com/g761007/figloo",
+  "license": "MIT",
   "keywords": ["figma", "design", "mcp"],
   "mcpServers": "https://github.com/g761007/figloo/releases/download/v0.3.1/figloo-mcp-0.3.1.mcpb"
 }
