@@ -8,7 +8,7 @@
 // refs, counts, sizes, and hashes, not layer names or other design content.
 //
 //   node tests/acceptance/core-scenario.mjs
-//   FIGLOO_ACCEPT_RUNS=10 FIGLOO_ACCEPT_MCP_ENTRY=release/figloo-mcp-0.3.2.mjs node tests/acceptance/core-scenario.mjs
+//   FIGLOO_ACCEPT_RUNS=10 FIGLOO_ACCEPT_MCP_ENTRY=release/figloo-mcp-0.4.0.mjs node tests/acceptance/core-scenario.mjs
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";

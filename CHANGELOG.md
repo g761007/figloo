@@ -4,6 +4,8 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-03
+
 ### Added
 
 - `capture` and `snapshot_layer` put the user's zoom and place on the canvas back once they are done, as they already did with the selection, and say so in `viewRestored`. This needs "Adapt content for screen readers" in Figma, whose screen reader mirror tells exactly where the view is. The view stays where it is when the user uses Figma meanwhile.
@@ -96,7 +98,8 @@ The first published release since 0.1.0. It includes the changes made as 0.2.0 a
 - The toolbar icon and popup show the tab's status, the selected layer's path and children, and a prompt to copy for the agent.
 - `figloo-mcp pair` prints the pairing token and port to paste into the extension's options page.
 
-[Unreleased]: https://github.com/g761007/figloo/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/g761007/figloo/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/g761007/figloo/releases/tag/v0.4.0
 [0.3.2]: https://github.com/g761007/figloo/releases/tag/v0.3.2
 [0.3.1]: https://github.com/g761007/figloo/releases/tag/v0.3.1
 [0.1.0]: https://github.com/g761007/figloo/releases/tag/v0.1.0
