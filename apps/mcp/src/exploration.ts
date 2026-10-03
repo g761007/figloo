@@ -388,7 +388,7 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
       description:
         "Screenshot a layer of a context, zoomed to fit the screen, or the whole page when ref is omitted. " +
         "Returns a JPEG at most 1568 px on its long edge as visual reference; read exact values with inspect_nodes. " +
-        "The Figma tab must be visible. The view zooms to the target and stays there; the user's selection is put back.",
+        "The Figma tab must be visible. The view zooms to the target for the screenshot; the user's selection is put back, and so are their zoom and place on the canvas when Figma's screen reader mirror is on (viewRestored).",
       inputSchema: {
         contextId: z.string(),
         ref: z.string().optional().describe("A ref returned earlier in this context; omit for the whole page"),
@@ -417,6 +417,7 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
           cropSource: result.cropSource,
           zoom: result.zoom,
           userSelectionRestored: result.userSelectionRestored,
+          viewRestored: result.viewRestored,
         };
         log(`capture ref=${ref ? "layer" : "page"} ${output.width}x${output.height} crop=${output.cropSource} bytes=${Math.round((result.image.data.length * 3) / 4)} ms=${Math.round(result.elapsedMs)}`);
         return {

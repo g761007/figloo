@@ -133,7 +133,7 @@ node apps/mcp/dist/index.js pair
 
 - 在裝了擴充功能的瀏覽器中登入 Figma。對檔案有檢視權限就夠了。
 - 使用 Figma 的英文介面，並保持介面展開：Cmd+\ 可以切換，縮到最小的介面會隱藏圖層面板。
-- 在 Main menu、Preferences、Accessibility settings 中打開「Adapt content for screen readers」。這樣截圖就能依圖層在畫面上的位置裁切，`get_visual_neighbors` 也能得知圖層的位置。
+- 在 Main menu、Preferences、Accessibility settings 中打開「Adapt content for screen readers」。這樣截圖就能依圖層在畫面上的位置裁切，`get_visual_neighbors` 能得知圖層的位置，截圖後 Figloo 也能還原你的縮放比例與畫面位置。
 - Agent 工作期間，請讓 Figma 分頁留在畫面上，放在 agent 視窗旁邊就可以。Figma 在背景分頁中會忽略選取與展開，所以 Figloo 會回報 `TAB_IN_BACKGROUND`，不會自行猜測。頁面快照則會等待：分頁在背景時暫停，回到畫面後繼續。
 
 ## 工具列圖示
@@ -184,7 +184,7 @@ pnpm --filter @figloo/extension icons
 
 開著多個 Figma 分頁時，從分頁開始的工具要指定分頁的 `tabId`。從 popup 視窗複製的提示會寫出分頁；沒有提示時，`get_status` 會請 agent 向使用者確認要用哪個檔案。
 
-Figma 只在分頁可見時套用選取、展開、縮放與切換頁面。讀取頁面、選取與已展開的圖層，在背景分頁也能運作；`get_visual_neighbors`、`inspect_nodes`、`capture`、`export_asset`、切換頁面與展開收合的圖層，則會回報 `TAB_IN_BACKGROUND`，直到 Figma 分頁回到畫面上。`snapshot_layer` 開始時需要分頁在畫面上，之後分頁進入背景時會暫停。把 Figma 放在 agent 視窗旁邊就夠了。這些工具會依序選取圖層，`capture` 還會縮放畫面；之後會還原使用者的選取，包括同時選取的多個圖層，但不會還原縮放。
+Figma 只在分頁可見時套用選取、展開、縮放與切換頁面。讀取頁面、選取與已展開的圖層，在背景分頁也能運作；`get_visual_neighbors`、`inspect_nodes`、`capture`、`export_asset`、切換頁面與展開收合的圖層，則會回報 `TAB_IN_BACKGROUND`，直到 Figma 分頁回到畫面上。`snapshot_layer` 開始時需要分頁在畫面上，之後分頁進入背景時會暫停。把 Figma 放在 agent 視窗旁邊就夠了。這些工具會依序選取圖層，`capture` 與 `snapshot_layer` 還會縮放畫面；之後會還原使用者的選取，包括同時選取的多個圖層。開啟「Adapt content for screen readers」時，縮放比例與畫面位置也會還原（`viewRestored`）。
 
 ## figloo-implement skill
 

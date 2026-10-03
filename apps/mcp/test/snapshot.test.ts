@@ -61,6 +61,7 @@ function complete(layers: SnapshotLayer[]) {
     zoom: 0.926,
     walkMs: 5_600,
     userSelectionRestored: true,
+    viewRestored: true,
     uiOps: 491,
     elapsedMs: 38_800,
     image,
@@ -171,6 +172,12 @@ describe("snapshot_layer", () => {
     const again = await snap({ contextId: await anchor(), ref: "570:1" });
     expect(again).toMatchObject({ fromCache: true, createdAt: first.createdAt, outline: first.outline });
     expect(snapshotsOf()).toHaveLength(1);
+  });
+
+  it("says whether the user's view was put back, which an answer from the file never moves", async () => {
+    const { anchor, snap } = await setup({ snapshot: () => ({ ok: true, result: { ...complete(screen), viewRestored: false } }) });
+    expect(await snap({ contextId: await anchor(), ref: "570:1" })).toMatchObject({ fromCache: false, viewRestored: false });
+    expect(await snap({ contextId: await anchor(), ref: "570:1" })).toMatchObject({ fromCache: true, viewRestored: true });
   });
 
   it("returns the screenshot along with the outline", async () => {
@@ -296,7 +303,7 @@ describe("snapshot_layer", () => {
   it("reports a subtree that is too large with the root's children, which the context may then use", async () => {
     const children = [{ ...root, ref: "570:2", name: "Header", depth: 1, parentRef: "570:1" }, { ...root, ref: "570:5", name: "Marks", type: "Group", depth: 1, parentRef: "570:1" }];
     const { anchor, call, errorOf, snapshotsOf } = await setup({
-      snapshot: () => ({ ok: true, result: { status: "too_large", identity, maxLayers: 400, children, childrenHasMore: false, userSelectionRestored: true, uiOps: 300, elapsedMs: 9_000 } }),
+      snapshot: () => ({ ok: true, result: { status: "too_large", identity, maxLayers: 400, children, childrenHasMore: false, userSelectionRestored: true, viewRestored: true, uiOps: 300, elapsedMs: 9_000 } }),
     });
     const contextId = await anchor();
     const error = errorOf(await call("snapshot_layer", { contextId, ref: "570:1" }));

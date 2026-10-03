@@ -57,8 +57,10 @@ async function runOp(message: OpMessage): Promise<unknown> {
         return { ok: true, result: await explorer.inspectNodes(message.params as InspectParams) };
       case "prepare_capture":
         return { ok: true, result: await explorer.prepareCapture(message.params as CaptureParams) };
-      case "finish_capture":
-        return { ok: true, result: await explorer.finishCapture((message.params as { token: string }).token) };
+      case "finish_capture": {
+        const { token, keepView } = message.params as { token: string; keepView: boolean };
+        return { ok: true, result: await explorer.finishCapture(token, keepView) };
+      }
       case "read_subtree":
         return { ok: true, result: await explorer.readSubtree(message.params as ReadSubtreeParams) };
       case "prepare_export":

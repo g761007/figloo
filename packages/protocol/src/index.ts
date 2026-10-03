@@ -483,6 +483,10 @@ export type CaptureParams = z.infer<typeof CaptureParamsSchema>;
 export const RectSchema = z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive() });
 export type Rect = z.infer<typeof RectSchema>;
 
+/** How the canvas shows the page: where the page's origin is in the viewport, in CSS pixels, and the zoom. */
+export const CanvasViewSchema = z.object({ x: z.number(), y: z.number(), zoom: z.number().positive() });
+export type CanvasView = z.infer<typeof CanvasViewSchema>;
+
 /** Returned by the tab after it moved the view for a capture; the worker then captures and crops. */
 export const CapturePlanSchema = z.object({
   identity: PageIdentitySchema,
@@ -494,6 +498,8 @@ export const CapturePlanSchema = z.object({
   canvas: RectSchema,
   viewport: z.object({ width: z.number().positive(), height: z.number().positive() }),
   zoom: z.string().nullable(),
+  /** The user's view before the capture moved it, to put back; null without Figma's screen reader mirror. */
+  view: CanvasViewSchema.nullable(),
 });
 export type CapturePlan = z.infer<typeof CapturePlanSchema>;
 
@@ -507,6 +513,8 @@ export const CaptureResultSchema = z.object({
   cropSource: z.enum(["layer", "canvas"]),
   zoom: z.string().nullable(),
   userSelectionRestored: z.boolean(),
+  /** The user's zoom and place on the canvas were put back after the screenshot. */
+  viewRestored: z.boolean(),
   elapsedMs: z.number().nonnegative(),
 });
 export type CaptureResult = z.infer<typeof CaptureResultSchema>;
@@ -542,6 +550,7 @@ export const CaptureOutputSchema = z.object({
   cropSource: z.enum(["layer", "canvas"]),
   zoom: z.string().nullable(),
   userSelectionRestored: z.boolean(),
+  viewRestored: z.boolean(),
 });
 export type CaptureOutput = z.infer<typeof CaptureOutputSchema>;
 
@@ -774,6 +783,8 @@ export type SnapshotParams = z.infer<typeof SnapshotParamsSchema>;
 export const ReadSubtreeParamsSchema = SnapshotParamsSchema.extend({
   maxLayers: z.number().int().positive(),
   timeBudgetMs: z.number().int().positive(),
+  /** The user's view before the capture, put back once reading ends; null when it is unknown. */
+  view: CanvasViewSchema.nullable(),
 });
 export type ReadSubtreeParams = z.infer<typeof ReadSubtreeParamsSchema>;
 
@@ -819,6 +830,8 @@ const SnapshotReadSchema = z.object({
   /** Time spent walking the layers panel, before reading each layer. */
   walkMs: z.number().nonnegative(),
   userSelectionRestored: z.boolean(),
+  /** The user's zoom and place on the canvas were put back as they were before the capture. */
+  viewRestored: z.boolean(),
   uiOps: z.number().int().nonnegative(),
   elapsedMs: z.number().nonnegative(),
 });
@@ -837,6 +850,7 @@ const SnapshotTooLargeSchema = z.object({
   children: z.array(LayerNodeSchema),
   childrenHasMore: z.boolean(),
   userSelectionRestored: z.boolean(),
+  viewRestored: z.boolean(),
   uiOps: z.number().int().nonnegative(),
   elapsedMs: z.number().nonnegative(),
 });
@@ -932,6 +946,8 @@ export const SnapshotOutputSchema = z.object({
   outlineLayers: z.number().int().nonnegative(),
   /** Continues the outline with query_snapshot when it was cut. */
   nextCursor: z.string().nullable(),
+  /** False when this call moved the user's view in Figma and could not put it back; true from the cache, which does not move it. */
+  viewRestored: z.boolean(),
   elapsedMs: z.number().nonnegative(),
 });
 export type SnapshotOutput = z.infer<typeof SnapshotOutputSchema>;

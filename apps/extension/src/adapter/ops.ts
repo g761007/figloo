@@ -1,5 +1,6 @@
 import type {
   AnchorResult,
+  CanvasView,
   CapturedFile,
   CaptureParams,
   ExportParams,
@@ -39,6 +40,7 @@ import { readPagesList } from "./pages.js";
 import { layersPanel, readRenderedRows, type Row } from "./row.js";
 import { readInTurn, resumePoint } from "./resume.js";
 import { LayerTree, StopExploration, hiddenLayers, learnParents, type IndexEntry, type Page } from "./tree.js";
+import { restoreView } from "./view.js";
 import { BackgroundPause } from "./visibility.js";
 
 /** Per-operation budgets from the plan: 15 s of UI work and a bounded number of UI operations. */
@@ -52,12 +54,14 @@ const PAGE_SWITCH_TIMEOUT_MS = 8_000;
 /** How long the pages list must stay the same before it is reported, and the most list_pages waits for that. */
 const PAGES_SETTLE_MS = 200;
 const PAGES_WAIT_MS = 2_000;
-/** A capture the worker never finished restores the user's selection on its own after this long. */
+/** A capture the worker never finished restores the user's selection and view on its own after this long. */
 const PENDING_CAPTURE_TIMEOUT_MS = 10_000;
 /** Wider margin when the crop is estimated from the layer's size instead of measured. */
 const CAPTURE_FALLBACK_MARGIN_PX = 48;
 const ZOOM_ANIMATION_MS = 500;
 const TOAST_TIMEOUT_MS = 4_000;
+/** The mirror shows a new view about 0.5 s after it stops changing (Arc, 2026-10-03). */
+const VIEW_UPDATE_TIMEOUT_MS = 1_500;
 const BACKGROUND_MESSAGE = "the Figma tab is in the background, where Figma does not apply selection, zoom, or page changes";
 /** A snapshot's UI budget per allowed layer: the walk opens a layer at most once, and reading reveals few rows. */
 const SNAPSHOT_UI_OPS_PER_LAYER = 3;
@@ -113,6 +117,8 @@ const MAX_EXPORT_NOTES = 20;
 interface PendingCapture {
   token: string;
   before: UserSelection;
+  /** The user's view before the capture moved it. */
+  view: CanvasView | null;
   user: UserWatch;
   timer: ReturnType<typeof setTimeout>;
 }
@@ -386,6 +392,7 @@ export class Explorer {
       let crop: Rect = canvas;
       let cropSource: "layer" | "canvas" = "canvas";
       const zoomBefore = source.zoomLabel();
+      const view = await userView(source);
       if (params.ref !== null) {
         const row = await tree.find(params.ref);
         if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${params.ref} is no longer in the layers panel`);
@@ -417,12 +424,13 @@ export class Explorer {
       await sleep(200);
       // Zooming shows a toast such as "Zoom to selection" for about three seconds; keep it out of the image.
       await source.settle(() => !(this.doc.querySelector('[data-testid="visual-bell-message"]')?.textContent?.trim()), TOAST_TIMEOUT_MS);
-      return { crop, cropSource, canvas, zoom: source.zoomLabel() };
+      return { crop, cropSource, canvas, zoom: source.zoomLabel(), view };
     });
     const token = crypto.randomUUID();
     const pending: PendingCapture = {
       token,
       before,
+      view: value.view,
       user: watchForUser(this.win),
       timer: setTimeout(() => void this.finishCapture(token), PENDING_CAPTURE_TIMEOUT_MS),
     };
@@ -430,22 +438,58 @@ export class Explorer {
     return { identity, token, ...value, viewport: { width: this.win.innerWidth, height: this.win.innerHeight } };
   }
 
-  async finishCapture(token: string): Promise<{ userSelectionRestored: boolean; interrupted: boolean }> {
+  /**
+   * Puts the user's selection back, and their view unless `keepView`: a snapshot reads at the
+   * capture's view and puts the view back once it is done.
+   */
+  async finishCapture(token: string, keepView = false): Promise<{ userSelectionRestored: boolean; viewRestored: boolean; interrupted: boolean }> {
     const pending = this.pendingCapture;
-    if (!pending || pending.token !== token) return { userSelectionRestored: false, interrupted: false };
+    if (!pending || pending.token !== token) return { userSelectionRestored: false, viewRestored: false, interrupted: false };
     this.pendingCapture = null;
     clearTimeout(pending.timer);
-    pending.user.dispose();
-    // If the user clicked or typed while the capture ran, their new selection wins.
-    if (pending.user.interrupted()) return { userSelectionRestored: false, interrupted: true };
-    let restored = false;
-    await this.run(
-      async () => undefined,
-      async (tree, source) => {
-        restored = await this.restoreSelection(tree, source, pending.before);
-      },
-    );
-    return { userSelectionRestored: restored, interrupted: false };
+    try {
+      // If the user clicked or typed while the capture ran, their new selection and view win.
+      if (pending.user.interrupted()) return { userSelectionRestored: false, viewRestored: false, interrupted: true };
+      let restored = false;
+      await this.run(
+        async () => undefined,
+        async (tree, source) => {
+          restored = await this.restoreSelection(tree, source, pending.before);
+        },
+      );
+      const viewRestored = keepView ? false : await this.putViewBack(pending.view, pending.user);
+      return { userSelectionRestored: restored, viewRestored, interrupted: false };
+    } finally {
+      pending.user.dispose();
+    }
+  }
+
+  /** Puts the user's view back, unless they used Figma since, the tab is in the background, or another operation runs. */
+  private async putViewBack(view: CanvasView | null, user: UserWatch): Promise<boolean> {
+    if (!view || user.interrupted() || this.doc.hidden || this.running) return false;
+    const source = new DomRowSource(this.doc);
+    const canvas = source.canvasRect();
+    if (!canvas) return false;
+    const center = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
+    this.running = true;
+    try {
+      return await restoreView(view, {
+        read: () => source.canvasView(),
+        center,
+        wheel: (deltaX, deltaY, zoom) => source.wheel(deltaX, deltaY, zoom, center),
+        next: async (before) => {
+          const changed = () => {
+            const now = source.canvasView();
+            return now === null || now.x !== before.x || now.y !== before.y || now.zoom !== before.zoom;
+          };
+          await source.settle(changed, VIEW_UPDATE_TIMEOUT_MS);
+          return source.canvasView();
+        },
+        stopped: () => user.interrupted() || this.doc.hidden,
+      });
+    } finally {
+      this.running = false;
+    }
   }
 
   /**
@@ -461,13 +505,19 @@ export class Explorer {
     const identity = this.checkExpected(params.expect);
     learnParents(this.index, params.known ?? []);
     if (this.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
-    await this.showPropertiesTab();
+    // The screenshot was taken before this op, so the overlay cannot end up in it.
+    const overlay = new ReadingOverlay(this.doc);
+    // Stop on the overlay changes nothing in Figma, so the view goes back then too; other input means the user took over.
+    const user = watchForUser(this.win, overlay);
+    const viewBack = () => this.putViewBack(params.view, user).finally(() => user.dispose());
+    await this.showPropertiesTab().catch(async (error: unknown) => {
+      await viewBack();
+      throw error;
+    });
     let before: UserSelection = { kind: "none" };
     let restored = false;
     let rootPath: string[] = [];
     const deadline = Date.now() + params.timeBudgetMs;
-    // The screenshot was taken before this op, so the overlay cannot end up in it.
-    const overlay = new ReadingOverlay(this.doc);
     const pause = new BackgroundPause(this.doc, deadline, (paused) => overlay.setPaused(paused));
     const ran = await this.run(
       async (tree, source) => {
@@ -556,10 +606,16 @@ export class Explorer {
         restored = await this.restoreSelection(tree, source, before);
       },
       { timeBudgetMs: params.timeBudgetMs, maxUiOps: SNAPSHOT_UI_OPS_PER_LAYER * params.maxLayers, collapseAfterInterrupt: true, overlay, pause },
-    ).finally(() => {
-      overlay.remove();
-      pause.dispose();
-    });
+    )
+      .finally(() => {
+        overlay.remove();
+        pause.dispose();
+      })
+      .catch(async (error: unknown) => {
+        await viewBack();
+        throw error;
+      });
+    const viewRestored = await viewBack();
     const { value, uiOps, elapsedMs } = ran;
     if (value.status === "too_large") {
       return {
@@ -569,6 +625,7 @@ export class Explorer {
         children: value.children.map((row) => this.toNode(row)),
         childrenHasMore: value.childrenHasMore,
         userSelectionRestored: restored,
+        viewRestored,
         uiOps,
         elapsedMs,
       };
@@ -612,6 +669,7 @@ export class Explorer {
       zoom,
       walkMs: value.walkMs,
       userSelectionRestored: restored,
+      viewRestored,
       uiOps,
       elapsedMs,
     };
@@ -990,6 +1048,21 @@ function layerSize(doc: Document): { width: number; height: number } | null {
 function parseZoom(label: string | null): number | null {
   const match = label ? /^([\d.]+)%$/.exec(label) : null;
   return match ? Number(match[1]) / 100 : null;
+}
+
+/**
+ * The user's view, once the mirror has caught up with it: the zoom label follows a zoom at once and
+ * the mirror about 0.5 s later. Null without the mirror, or when it does not catch up in time.
+ */
+async function userView(source: DomRowSource): Promise<CanvasView | null> {
+  if (!source.canvasView()) return null;
+  const caughtUp = () => {
+    const view = source.canvasView();
+    const shown = parseZoom(source.zoomLabel());
+    // The label rounds the zoom to the whole percent.
+    return view !== null && (shown === null || Math.abs(view.zoom - shown) <= 0.005 + 1e-9);
+  };
+  return (await source.settle(caughtUp, VIEW_UPDATE_TIMEOUT_MS)) ? source.canvasView() : null;
 }
 
 /** Samples a rectangle until two reads agree and, when known, it has the expected size. */

@@ -22,7 +22,7 @@
 | 編輯權限 | 不在目標範圍，未驗證 |
 | 英文 UI | 已驗證 |
 | 其他 UI 語言 | 未驗證。圖層類型與屬性欄位依英文標籤解析 |
-| 開啟「Adapt content for screen readers」 | 建議開啟。截圖依圖層在畫面上的位置裁切；未開啟時改以畫布中心推估，這種情況的效果未驗證 |
+| 開啟「Adapt content for screen readers」 | 建議開啟。截圖依圖層在畫面上的位置裁切；未開啟時改以畫布中心推估，這種情況的效果未驗證。截圖與快照結束後還原縮放比例與畫面位置，也需要這項設定 |
 | Figma UI 縮到最小 | 圖層面板不會渲染，狀態為 `DEGRADED`，需按 Cmd+\ 展開 |
 
 ## 功能
@@ -36,10 +36,10 @@
 | `get_neighbors` | 已驗證 | 展開收合的圖層時需要 |
 | `get_visual_neighbors` | 已驗證，需要開啟「Adapt content for screen readers」 | 需要 |
 | `inspect_nodes` | 已驗證 | 需要 |
-| `capture` | 已驗證 | 需要 |
+| `capture` | 已驗證；結束後還原縮放比例與畫面位置，需要開啟「Adapt content for screen readers」 | 需要 |
 | `export_asset` | 已驗證 SVG 與 PNG、設計師的設定、臨時設定與 ZIP；PDF 與 JPG 未驗證 | 需要 |
 | `export_assets` | 已驗證，12 個圖層一次匯出、從快照匯出、重新載入分頁後以快取的快照匯出；隱藏圖層跳過 | 需要 |
-| `snapshot_layer` | 已驗證，278 個圖層約 35 秒；最多 2,000 層，讀不完時分次接著讀，以較短的時間上限驗證過分段讀取的結果與一次讀完的相同；需要開啟「Adapt content for screen readers」才能量到大部分圖層的位置。讀取期間顯示遮罩，可用「Stop」或 Esc 中止；設計沒變時重讀，比對出 0 個變更 | 開始時需要；讀取中進入背景會暫停，回到畫面後繼續 |
+| `snapshot_layer` | 已驗證，278 個圖層約 35 秒；最多 2,000 層，讀不完時分次接著讀，以較短的時間上限驗證過分段讀取的結果與一次讀完的相同；需要開啟「Adapt content for screen readers」才能量到大部分圖層的位置。讀取期間顯示遮罩，可用「Stop」或 Esc 中止；設計沒變時重讀，比對出 0 個變更；結束後還原縮放比例與畫面位置 | 開始時需要；讀取中進入背景會暫停，回到畫面後繼續 |
 | `query_snapshot` | 已驗證，只讀快照檔；`changed: true` 篩選只由單元測試涵蓋 | 否 |
 | `summarize_snapshot` | 已驗證，只讀快照檔；以本機三份真實快照核對，顏色、文字樣式與 instance 的數量都與另外統計的結果相同 | 否 |
 | 工具列圖示與 popup | 已驗證，包括「Diagnostics」複製的報告不含設計資訊 | 點圖示時分頁本來就在畫面上 |
@@ -48,7 +48,7 @@
 ## 已知限制
 
 1. 改變選取、展開、縮放或切換頁面的操作，只在 Figma 分頁顯示在畫面上時有效。分頁在背景時會回報 `TAB_IN_BACKGROUND`，Figloo 不會把分頁帶到前景。讀取頁面、選取與已展開的圖層在背景也能用。`snapshot_layer` 例外：讀取開始後，分頁進入背景時會暫停等待，不會中止。
-2. `capture` 會縮放畫面，結束後選取會還原，但縮放不會還原。
+2. `capture` 與 `snapshot_layer` 會縮放畫面。結束後會還原選取；開啟「Adapt content for screen readers」時，也會還原縮放比例與畫面位置，結果寫在 `viewRestored`。未開啟這項設定、使用者在途中操作 Figma，或讀取結束時分頁在背景，畫面就不會還原。
 3. Instance 內部圖層的 ID 只在單次頁面載入有效。重新整理後 context 會失效，這類圖層也沒有連結。
 4. 同一時間只有一個 MCP 伺服器服務 extension。其他 agent 工作階段待命，需要 Figma 時在持有者閒置 10 秒後接手；持有者忙碌時回報 `BUSY`。Figloo 0.1.0 的伺服器不支援交接，需要重新啟動那個工作階段。
 5. `inspect_nodes` 每次最多 5 個圖層，數值是屬性面板顯示的文字，不另外換算。
@@ -80,3 +80,4 @@
 - [Popup 的診斷資訊與 bug report 表單](2026-10-02-diagnostics.md)
 - [分段續讀的快照](2026-10-02-resumable-snapshots.md)
 - [快照的變更比對](2026-10-03-snapshot-changes.md)
+- [截圖與快照後還原畫面](2026-10-03-view-restore.md)

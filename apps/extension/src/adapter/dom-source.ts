@@ -1,10 +1,12 @@
-import type { Rect } from "@figloo/protocol";
+import type { CanvasView, Rect } from "@figloo/protocol";
 import { layersPanel, readRenderedRows, rowElement, type Row } from "./row.js";
 import type { Align, RowSource } from "./tree.js";
 import type { BackgroundPause } from "./visibility.js";
 
 const DEFAULT_ROW_HEIGHT = 32;
 const RENDER_TIMEOUT_MS = 1_500;
+/** The screen reader mirror's box is this wide at 100% zoom. */
+const MIRROR_BOX_DESIGN_PX = 1_000;
 
 /**
  * Figma applies caret clicks only while its tab is visible (seen in Arc on 2026-09-30); in a hidden
@@ -148,6 +150,26 @@ export class DomRowSource implements RowSource {
   zoomLabel(): string | null {
     const label = this.doc.querySelector('button[aria-label$="zoom and view options"]')?.getAttribute("aria-label");
     return label ? label.split(",")[0]!.trim() : null;
+  }
+
+  /**
+   * How the canvas shows the page, from the screen reader mirror: it lays layers out in a box
+   * 1,000 design pixels wide whose corner is the page's origin, and moves and sizes the box about
+   * 0.5 s after the view stops changing (Arc, 2026-10-03). Null without the mirror.
+   */
+  canvasView(): CanvasView | null {
+    const mirror = this.doc.querySelector('#hidden-input-activedescendant[role="main"]');
+    const box = [...(mirror?.children ?? [])].find((el) => el.firstElementChild?.hasAttribute("data-nodeid"));
+    if (!(box instanceof HTMLElement)) return null;
+    const px = (value: string) => (value.endsWith("px") ? parseFloat(value) : Number.NaN);
+    const [x, y, width] = [px(box.style.left), px(box.style.top), px(box.style.width)] as const;
+    return Number.isFinite(x) && Number.isFinite(y) && width > 0 ? { x, y, zoom: width / MIRROR_BOX_DESIGN_PX } : null;
+  }
+
+  /** Wheel input on the canvas at `at`, as a trackpad sends it: with `zoom` it zooms about that point, otherwise it scrolls. */
+  wheel(deltaX: number, deltaY: number, zoom: boolean, at: { x: number; y: number }): void {
+    const init = { deltaX, deltaY, deltaMode: 0, ctrlKey: zoom, clientX: at.x, clientY: at.y, bubbles: true, cancelable: true, composed: true };
+    this.doc.querySelector("canvas")?.dispatchEvent(new WheelEvent("wheel", init));
   }
 
   async settle(condition: () => boolean, timeoutMs = RENDER_TIMEOUT_MS): Promise<boolean> {

@@ -6,6 +6,7 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ### Added
 
+- `capture` and `snapshot_layer` put the user's zoom and place on the canvas back once they are done, as they already did with the selection, and say so in `viewRestored`. This needs "Adapt content for screen readers" in Figma, whose screen reader mirror tells exactly where the view is. The view stays where it is when the user uses Figma meanwhile.
 - `snapshot_layer` compares a new snapshot with the previous one of the same root: it counts the layers new, changed, and removed, names the removed ones, and marks the others in the outline with what changed, such as `[changed: layout, content]`. `query_snapshot` with `changed: true` lists them. An expired snapshot is kept 30 days for this comparison.
 - "Diagnostics" in the popup shows a short report for bug reports and copies it: the extension, protocol, and server versions, the browser, the connection, the tab's readiness and the parts of Figma's UI Figloo found, and the codes of the latest errors. It holds no file, page, or layer names and no links. A bug report form on GitHub asks for it.
 - `export_assets` exports several layers one after another into one folder of the project: the given refs, or every layer a snapshot marks with export settings. Files keep Figma's names, with the layer's ref added when a name repeats; a call does up to 50 layers in about 150 seconds and hands back the rest.

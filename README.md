@@ -131,7 +131,7 @@ This prints the pairing token and port stored in `~/.figloo/config.json` (create
 
 - Sign in to Figma in the browser that has the extension. View access to the file is enough.
 - Use Figma's English UI, and keep the UI expanded: Cmd+\ toggles it, and a minimized UI hides the layers panel.
-- Turn on "Adapt content for screen readers" under Main menu, Preferences, Accessibility settings. Screenshots then crop to the layer's position on screen, and `get_visual_neighbors` can tell where layers are.
+- Turn on "Adapt content for screen readers" under Main menu, Preferences, Accessibility settings. Screenshots then crop to the layer's position on screen, `get_visual_neighbors` can tell where layers are, and Figloo can put your zoom and place on the canvas back after a screenshot.
 - Keep the Figma tab on screen while the agent works; next to the agent's window is enough. Figma ignores selection and expansion in background tabs, so Figloo reports `TAB_IN_BACKGROUND` instead of guessing. A page snapshot waits instead: it pauses while the tab is in the background and goes on when it is back.
 
 ## Toolbar icon
@@ -182,7 +182,7 @@ A typical request goes: `get_status`, then `list_pages` and `explore_page` (or `
 
 When several Figma tabs are open, the tools that start from a tab take its `tabId`. The prompt copied from the popup names its tab; without one, `get_status` asks the agent to check with the user which file to use.
 
-Figma applies selection, expansion, zoom, and page changes only while its tab is visible. Reading pages, the selection, and already expanded layers works from a background tab; `get_visual_neighbors`, `inspect_nodes`, `capture`, `export_asset`, page switches, and expanding collapsed layers return `TAB_IN_BACKGROUND` until the Figma tab is on screen. `snapshot_layer` needs the tab on screen to start, then pauses while it is in the background. Keeping Figma beside the agent window is enough. These tools select layers one after another, and `capture` zooms the view; the user's selection, including several selected layers, is put back afterwards, the zoom is not.
+Figma applies selection, expansion, zoom, and page changes only while its tab is visible. Reading pages, the selection, and already expanded layers works from a background tab; `get_visual_neighbors`, `inspect_nodes`, `capture`, `export_asset`, page switches, and expanding collapsed layers return `TAB_IN_BACKGROUND` until the Figma tab is on screen. `snapshot_layer` needs the tab on screen to start, then pauses while it is in the background. Keeping Figma beside the agent window is enough. These tools select layers one after another, and `capture` and `snapshot_layer` zoom the view; the user's selection, including several selected layers, is put back afterwards, and so are the zoom and the place on the canvas when "Adapt content for screen readers" is on (`viewRestored`).
 
 ## The figloo-implement skill
 

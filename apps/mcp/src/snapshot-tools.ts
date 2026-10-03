@@ -174,7 +174,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         "The Figma tab must be on screen to start. Meanwhile Figma shows an overlay with the progress and a Stop button, and the user can use other windows; " +
         "if the tab goes to the background, reading pauses and goes on when it is back, within the call's 3 minutes. " +
         "To cancel, the user should press Stop or Esc on the overlay, which puts the layers panel back; a click elsewhere in Figma also stops it but keeps the user's new selection. " +
-        "The user's selection is put back; the view stays zoomed to the root.",
+        "The user's selection is put back, and so are their zoom and place on the canvas when Figma's screen reader mirror is on (viewRestored), unless the user used Figma meanwhile or the tab is in the background when reading ends.",
       inputSchema: {
         contextId: z.string(),
         ref: z.string().describe("A ref returned earlier in this context, outside instances, or the root of an earlier snapshot"),
@@ -203,6 +203,8 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         let file: SnapshotFile | null = saved?.status === "found" ? saved.file : null;
         let jpeg = file ? await snapshots.readImage(id) : null;
         const fromCache = file !== null && jpeg !== null;
+        // An answer from the cache leaves the user's view alone.
+        let viewRestored = true;
         if (!file || !jpeg) {
           // Earlier calls that ran out of time left how far they got.
           const resume = earlier
@@ -230,6 +232,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
               `layer ${ref} holds more than ${result.maxLayers} layers; its direct children${result.childrenHasMore ? " (first 50)" : ""}: ${children}`,
             );
           }
+          viewRestored = result.viewRestored;
           // A call that goes on keeps the first call's screenshot; one that started over brings its own.
           const going = earlier !== null && !result.restarted ? earlier : null;
           const shot = going ? going.jpeg : Buffer.from(result.image.data, "base64");
@@ -275,6 +278,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
               outline: "",
               outlineLayers: 0,
               nextCursor: null,
+              viewRestored,
               elapsedMs: Date.now() - started,
             };
             return { content: [{ type: "text" as const, text: JSON.stringify(output) }], structuredContent: output as unknown as Record<string, unknown> };
@@ -315,6 +319,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
           outline: page.map((layer) => outlineLine(layer, marks.get(layer.ref))).join("\n"),
           outlineLayers: page.length,
           nextCursor: next === null ? null : encodeQueryCursor(id, next, outlineQuery),
+          viewRestored,
           elapsedMs: Date.now() - started,
         }));
         log(`snapshot_layer fromCache=${fromCache} outline=${count}/${snapshotFile.layers.length} bytes=${Buffer.byteLength(JSON.stringify(output))}`);

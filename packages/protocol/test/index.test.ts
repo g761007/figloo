@@ -136,7 +136,7 @@ describe("exploration schemas", () => {
 
 describe("snapshot schemas", () => {
   const identity = { pageId: "p", fileKey: "abc", page: null };
-  const counts = { userSelectionRestored: true, uiOps: 120, elapsedMs: 61_000 };
+  const counts = { userSelectionRestored: true, viewRestored: true, uiOps: 120, elapsedMs: 61_000 };
   const layer = {
     ref: "1:3",
     name: "Title",

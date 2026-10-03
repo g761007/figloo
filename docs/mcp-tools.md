@@ -146,7 +146,7 @@ Read what Figma's inspection panel shows for up to 5 layers of a context. layout
 
 ## capture
 
-Screenshot a layer of a context, zoomed to fit the screen, or the whole page when ref is omitted. Returns a JPEG at most 1568 px on its long edge as visual reference; read exact values with inspect_nodes. The Figma tab must be visible. The view zooms to the target and stays there; the user's selection is put back.
+Screenshot a layer of a context, zoomed to fit the screen, or the whole page when ref is omitted. Returns a JPEG at most 1568 px on its long edge as visual reference; read exact values with inspect_nodes. The Figma tab must be visible. The view zooms to the target for the screenshot; the user's selection is put back, and so are their zoom and place on the canvas when Figma's screen reader mirror is on (viewRestored).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -162,6 +162,7 @@ Screenshot a layer of a context, zoomed to fit the screen, or the whole page whe
 | `cropSource` | "layer" or "canvas" |
 | `zoom` | string or null |
 | `userSelectionRestored` | boolean |
+| `viewRestored` | boolean |
 
 ## export_asset
 
@@ -213,7 +214,7 @@ Export several layers of a context with Figma's Export button, one after another
 
 ## snapshot_layer
 
-Read a layer and everything inside it, for implementing a page: a screenshot, and for each layer its place, size, and all that inspect_nodes shows, saved as a snapshot that query_snapshot reads without Figma. Use it on the page's root, such as the frame the user selected (get_anchor). Instances count as one layer; read inside them with get_neighbors. A root snapshotted before can be passed with any context of the same file, even after the page reloaded; every ref of its snapshot then works in that context. Returns the screenshot, the snapshot id, and an outline with one line per layer: ref, type, name, x,y and width×height in design pixels from the root's top-left corner (? when Figma shows no place), the start of its text, and marks for hidden layers, instances with layers of their own, and export settings. A layer at (x, y) shows at image.rootInImage + (x, y) × image.scale in the screenshot. image.alignment says whether rootInImage was checked against the screenshot: confirmed, corrected (Figma reported a stale place), or unconfirmed (it may be off by a few dozen pixels; the outline's places, relative to the root, are not affected). A saved snapshot comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. When the root was snapshotted before, changes counts the layers new, changed, and removed since that snapshot, names the removed ones, and the outline marks the others [new] or [changed: …] with what changed; query_snapshot with changed: true lists them. An expired snapshot is kept 30 days for this comparison. Reading takes about 40 s for 300 layers, for up to 2000 layers; a larger subtree fails and lists the root's children. One call reads for at most 3 minutes. When it runs out of time first, it returns complete: false with progress and no outline: call snapshot_layer again with the same contextId and ref, and it goes on where it stopped, until complete is true. The Figma tab must be on screen to start. Meanwhile Figma shows an overlay with the progress and a Stop button, and the user can use other windows; if the tab goes to the background, reading pauses and goes on when it is back, within the call's 3 minutes. To cancel, the user should press Stop or Esc on the overlay, which puts the layers panel back; a click elsewhere in Figma also stops it but keeps the user's new selection. The user's selection is put back; the view stays zoomed to the root.
+Read a layer and everything inside it, for implementing a page: a screenshot, and for each layer its place, size, and all that inspect_nodes shows, saved as a snapshot that query_snapshot reads without Figma. Use it on the page's root, such as the frame the user selected (get_anchor). Instances count as one layer; read inside them with get_neighbors. A root snapshotted before can be passed with any context of the same file, even after the page reloaded; every ref of its snapshot then works in that context. Returns the screenshot, the snapshot id, and an outline with one line per layer: ref, type, name, x,y and width×height in design pixels from the root's top-left corner (? when Figma shows no place), the start of its text, and marks for hidden layers, instances with layers of their own, and export settings. A layer at (x, y) shows at image.rootInImage + (x, y) × image.scale in the screenshot. image.alignment says whether rootInImage was checked against the screenshot: confirmed, corrected (Figma reported a stale place), or unconfirmed (it may be off by a few dozen pixels; the outline's places, relative to the root, are not affected). A saved snapshot comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. When the root was snapshotted before, changes counts the layers new, changed, and removed since that snapshot, names the removed ones, and the outline marks the others [new] or [changed: …] with what changed; query_snapshot with changed: true lists them. An expired snapshot is kept 30 days for this comparison. Reading takes about 40 s for 300 layers, for up to 2000 layers; a larger subtree fails and lists the root's children. One call reads for at most 3 minutes. When it runs out of time first, it returns complete: false with progress and no outline: call snapshot_layer again with the same contextId and ref, and it goes on where it stopped, until complete is true. The Figma tab must be on screen to start. Meanwhile Figma shows an overlay with the progress and a Stop button, and the user can use other windows; if the tab goes to the background, reading pauses and goes on when it is back, within the call's 3 minutes. To cancel, the user should press Stop or Esc on the overlay, which puts the layers panel back; a click elsewhere in Figma also stops it but keeps the user's new selection. The user's selection is put back, and so are their zoom and place on the canvas when Figma's screen reader mirror is on (viewRestored), unless the user used Figma meanwhile or the tab is in the background when reading ends.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -239,6 +240,7 @@ Read a layer and everything inside it, for implementing a page: a screenshot, an
 | `outline` | string |
 | `outlineLayers` | integer, at least 0 |
 | `nextCursor` | string or null |
+| `viewRestored` | boolean |
 | `elapsedMs` | number, at least 0 |
 
 ## query_snapshot

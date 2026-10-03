@@ -392,7 +392,7 @@ async function sendToTab(tabId: number, op: string, params: unknown): Promise<Ta
 
 /**
  * The tab moves its view to the target and clears the selection; the worker captures what is on
- * screen, crops it to the target, and the tab then puts the user's selection back.
+ * screen, crops it to the target, and the tab then puts the user's selection and view back.
  */
 async function captureTab(tabId: number, params: unknown): Promise<TabOpResponse> {
   return (await takeCapture(tabId, params)).response;
@@ -400,9 +400,14 @@ async function captureTab(tabId: number, params: unknown): Promise<TabOpResponse
 
 /**
  * A capture, whether the user stepped in before their selection could be put back, and the whole
- * screenshot with the plan it was taken by, for a snapshot to check the crop against.
+ * screenshot with the plan it was taken by, for a snapshot to check the crop against. With
+ * `keepView`, the view stays where the capture took it, for a snapshot to read there.
  */
-async function takeCapture(tabId: number, params: unknown): Promise<{ response: TabOpResponse; interrupted: boolean; dataUrl?: string; plan?: CapturePlan }> {
+async function takeCapture(
+  tabId: number,
+  params: unknown,
+  keepView = false,
+): Promise<{ response: TabOpResponse; interrupted: boolean; dataUrl?: string; plan?: CapturePlan }> {
   const started = Date.now();
   // Read the tab again: it may have changed while this request waited in the queue.
   const tab = await chrome.tabs.get(tabId).catch(() => null);
@@ -416,8 +421,8 @@ async function takeCapture(tabId: number, params: unknown): Promise<{ response: 
   try {
     const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
     const { crop, ...image } = await cropCapture(dataUrl, plan.crop, plan.viewport);
-    const finished = await sendToTab(tabId, "finish_capture", { token: plan.token });
-    const done = finished.ok ? (finished.result as { userSelectionRestored?: boolean; interrupted?: boolean } | undefined) : undefined;
+    const finished = await sendToTab(tabId, "finish_capture", { token: plan.token, keepView });
+    const done = finished.ok ? (finished.result as { userSelectionRestored?: boolean; viewRestored?: boolean; interrupted?: boolean } | undefined) : undefined;
     const result: CaptureResult = {
       identity: plan.identity,
       image: { ...image, mimeType: "image/jpeg" },
@@ -425,11 +430,12 @@ async function takeCapture(tabId: number, params: unknown): Promise<{ response: 
       cropSource: plan.cropSource,
       zoom: plan.zoom,
       userSelectionRestored: done?.userSelectionRestored === true,
+      viewRestored: done?.viewRestored === true,
       elapsedMs: Date.now() - started,
     };
     return { response: { ok: true, result }, interrupted: done?.interrupted === true, dataUrl, plan };
   } catch (error) {
-    await sendToTab(tabId, "finish_capture", { token: plan.token });
+    await sendToTab(tabId, "finish_capture", { token: plan.token, keepView: false });
     return { response: { ok: false, error: { code: "INTERNAL", message: `capture failed: ${error instanceof Error ? error.message : String(error)}` } }, interrupted: false };
   }
 }
@@ -442,18 +448,20 @@ const SNAPSHOT_CLEANUP_MS = 15_000;
 
 /**
  * Captures the root zoomed to fit the screen, then has the tab read every layer below it without
- * moving the view, so each layer's place on screen can be found in the screenshot.
+ * moving the view, so each layer's place on screen can be found in the screenshot. The tab puts
+ * the user's view back once it is done.
  */
 async function snapshotTab(tabId: number, params: unknown): Promise<TabOpResponse> {
   const started = Date.now();
   const { expect, ref, known, resume, timeBudgetMs: shorter } = SnapshotParamsSchema.parse(params);
-  const shot = await takeCapture(tabId, { expect, ref, known });
+  const shot = await takeCapture(tabId, { expect, ref, known }, true);
   if (!shot.response.ok) return shot.response;
   if (shot.interrupted) return { ok: false, error: { code: "USER_INTERRUPTED", message: "the user interacted with Figma during the screenshot" } };
   let { image, crop } = shot.response.result as CaptureResult;
   const timeBudgetMs = Math.round((shorter ?? SNAPSHOT_TIME_BUDGET_MS) - SNAPSHOT_CLEANUP_MS - (Date.now() - started));
   if (timeBudgetMs <= 0) return { ok: false, error: { code: "BUDGET_EXCEEDED", message: "the screenshot used up the snapshot's time budget" } };
-  const read = await sendToTab(tabId, "read_subtree", { expect, ref, known, ...(resume ? { resume } : {}), maxLayers: MAX_SNAPSHOT_LAYERS, timeBudgetMs });
+  const view = shot.plan?.view ?? null;
+  const read = await sendToTab(tabId, "read_subtree", { expect, ref, known, ...(resume ? { resume } : {}), maxLayers: MAX_SNAPSHOT_LAYERS, timeBudgetMs, view });
   if (!read.ok) return read;
   const result = SnapshotReadResultSchema.parse(read.result);
   const elapsedMs = Date.now() - started;
