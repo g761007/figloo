@@ -12,13 +12,27 @@ export function exportSection(root: ParentNode): Element | null {
   return root.querySelector('[data-testid="export-inspection-panel"]');
 }
 
+const SCALE_INPUT = 'input[aria-label^="Export constraints"]';
+/** The file type control: a select button since October 2026, before that a listbox marked as legacy. */
+const FORMAT_SELECT = 'button[role="combobox"][aria-haspopup="listbox"]';
+const LEGACY_FORMAT = '[data-testid="legacy-export-file-type-input"]';
+
+/** The file type a control or option shows, named as the tools name it: the select calls JPG JPEG. */
+function formatName(text: string | null | undefined): string | null {
+  const name = text?.trim() || null;
+  return name === "JPEG" ? "JPG" : name;
+}
+
+const rowFormat = (row: Element | null | undefined) => formatName(row?.querySelector(`${FORMAT_SELECT}, ${LEGACY_FORMAT}`)?.textContent);
+
+/** Rows are told by their scale field, which both file type controls sit next to. */
 export function exportRows(section: Element): ExportRow[] {
   return [...section.querySelectorAll('[role="row"]')]
-    .filter((row) => row.querySelector('[data-testid="legacy-export-file-type-input"]'))
+    .filter((row) => row.querySelector(SCALE_INPUT))
     .map((row) => ({
       element: row,
-      format: row.querySelector('[data-testid="legacy-export-file-type-input"]')?.textContent?.trim() || null,
-      scale: row.querySelector<HTMLInputElement>('input[aria-label^="Export constraints"]')?.value || null,
+      format: rowFormat(row),
+      scale: row.querySelector<HTMLInputElement>(SCALE_INPUT)?.value || null,
     }));
 }
 
@@ -44,8 +58,8 @@ async function until(condition: () => boolean, timeoutMs = 2_000): Promise<boole
   return true;
 }
 
-function visibleOption(selector: string, text: string): Element | undefined {
-  return [...document.querySelectorAll(selector)].find((el) => el.textContent?.trim() === text && el.getBoundingClientRect().width > 0);
+function visibleOption(selector: string, text: string, name: (el: Element) => string | null | undefined = (el) => el.textContent?.trim()): Element | undefined {
+  return [...document.querySelectorAll(selector)].find((el) => name(el) === text && el.getBoundingClientRect().width > 0);
 }
 
 /** What a setting row exports, such as "PNG 2x". */
@@ -75,8 +89,14 @@ const sameSettings = (a: string[], b: string[]) => [...a].sort().join("|") === [
 export async function addTemporarySetting(section: Element, original: string[], format: ExportFormat, scale: ExportScale): Promise<string | null> {
   const add = section.querySelector('button[aria-label="Add export settings"]');
   if (!add) return "Figma shows no button to add an export setting";
+  const anyRows = () => section.querySelectorAll('[role="row"]').length;
+  const rowsBefore = anyRows();
   synthesizeClick(add);
-  if (!(await until(() => exportRows(section).length > original.length))) return "Figma did not add an export setting";
+  if (!(await until(() => exportRows(section).length > original.length))) {
+    // Figloo cannot remove a setting it cannot read, so the user has to.
+    if (anyRows() > rowsBefore) return "Figma added an export setting, but Figloo cannot read Figma's export section, which may have changed; remove the new setting in Figma's Export section";
+    return "Figma did not add an export setting";
+  }
   // Follow the new row by position: while it is being set up it can export the same as another row.
   // Every step checks that the other rows still export what they did, so no other row is changed.
   const index = extraIndex(section, original);
@@ -85,7 +105,7 @@ export async function addTemporarySetting(section: Element, original: string[], 
     const others = rows.filter((_, at) => at !== index).map(settingOf);
     return rows.length === original.length + 1 && sameSettings(others, original) ? (rows[index]?.element ?? null) : null;
   };
-  // Next to other settings, opening a new setting's format menu first leaves it marked open with no
+  // Next to other settings, opening a new setting's legacy format menu first leaves it marked open with no
   // options until the setting is removed. Choosing its scale first, even the one it has, avoids that.
   // A new setting also starts at the smallest scale the others do not use, so this is needed anyway.
   if (!(await setExportScale(temporary, scale, true))) return `Figma did not switch the export scale to ${scale}`;
@@ -105,26 +125,33 @@ export async function removeTemporarySetting(section: Element, original: string[
   return until(() => exportRows(section).length === original.length);
 }
 
-/** The file type control only opens from the keyboard: Space on its listbox shows the options. */
+/** The select opens on a click; the legacy control only from the keyboard, with Space on its listbox. */
 async function setExportFormat(row: () => Element | null, format: ExportFormat): Promise<boolean> {
   const label = format.toUpperCase();
-  const current = () => row()?.querySelector('[data-testid="legacy-export-file-type-input"]')?.textContent?.trim();
+  const current = () => rowFormat(row());
   if (current() === label) return true;
+  const select = row()?.querySelector(FORMAT_SELECT);
   const listbox = row()?.querySelector<HTMLElement>('[role="listbox"][aria-label="Export file type"]');
-  if (!listbox) return false;
-  listbox.focus();
-  const init = { key: " ", code: "Space", keyCode: 32, which: 32, bubbles: true, cancelable: true, composed: true };
-  listbox.dispatchEvent(new KeyboardEvent("keydown", init));
-  listbox.dispatchEvent(new KeyboardEvent("keyup", init));
-  if (!(await until(() => visibleOption('[role="option"]', label) !== undefined))) return false;
-  synthesizeClick(visibleOption('[role="option"]', label)!);
-  await until(() => visibleOption('[role="option"]', label) === undefined);
+  if (select) {
+    synthesizeClick(select);
+  } else if (listbox) {
+    listbox.focus();
+    const init = { key: " ", code: "Space", keyCode: 32, which: 32, bubbles: true, cancelable: true, composed: true };
+    listbox.dispatchEvent(new KeyboardEvent("keydown", init));
+    listbox.dispatchEvent(new KeyboardEvent("keyup", init));
+  } else {
+    return false;
+  }
+  const option = () => visibleOption('[role="option"]', label, (el) => formatName(el.textContent));
+  if (!(await until(() => option() !== undefined))) return false;
+  synthesizeClick(option()!);
+  await until(() => option() === undefined);
   return until(() => current() === label);
 }
 
 /** Scale presets come from the menu next to the scale field; `always` picks one even when it is set. */
 async function setExportScale(row: () => Element | null, scale: ExportScale, always = false): Promise<boolean> {
-  const input = () => row()?.querySelector<HTMLInputElement>('input[aria-label^="Export constraints"]');
+  const input = () => row()?.querySelector<HTMLInputElement>(SCALE_INPUT);
   if (!always && input()?.value === scale) return true;
   const menu = row()?.querySelector('button[aria-label="Select an option"]');
   if (!menu) return false;

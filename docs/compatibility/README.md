@@ -1,6 +1,6 @@
 # 相容性與已知限制
 
-最後更新：2026-10-03。各項結論的細節見文末各階段的驗證紀錄。
+最後更新：2026-10-06。各項結論的細節見文末各階段的驗證紀錄。
 
 ## 瀏覽器與作業系統
 
@@ -37,7 +37,7 @@
 | `get_visual_neighbors` | 已驗證，需要開啟「Adapt content for screen readers」 | 需要 |
 | `inspect_nodes` | 已驗證 | 需要 |
 | `capture` | 已驗證；結束後還原縮放比例與畫面位置，需要開啟「Adapt content for screen readers」 | 需要 |
-| `export_asset` | 已驗證 SVG 與 PNG、設計師的設定、臨時設定與 ZIP；PDF 與 JPG 未驗證 | 需要 |
+| `export_asset` | 已驗證 SVG、PNG 與 JPG、設計師的設定、臨時設定與 ZIP，以及 2026-10 改版後的格式選單；PDF 未驗證 | 需要 |
 | `export_assets` | 已驗證，12 個圖層一次匯出、從快照匯出、重新載入分頁後以快取的快照匯出；隱藏圖層跳過 | 需要 |
 | `snapshot_layer` | 已驗證，278 個圖層約 35 秒；最多 2,000 層，讀不完時分次接著讀，以較短的時間上限驗證過分段讀取的結果與一次讀完的相同；需要開啟「Adapt content for screen readers」才能量到大部分圖層的位置。讀取期間顯示遮罩，可用「Stop」或 Esc 中止；設計沒變時重讀，比對出 0 個變更；結束後還原縮放比例與畫面位置 | 開始時需要；讀取中進入背景會暫停，回到畫面後繼續 |
 | `query_snapshot` | 已驗證，只讀快照檔；`changed: true` 篩選只由單元測試涵蓋 | 否 |
@@ -78,6 +78,7 @@
 - [`list_pages` 的頁面列表讀取](2026-10-02-pages-list.md)
 - [批次匯出與重新載入後的快照 ref](2026-10-02-export-assets.md)
 - [Popup 的診斷資訊與 bug report 表單](2026-10-02-diagnostics.md)
+- [匯出區塊的新版格式選單](2026-10-06-export-format-select.md)
 - [分段續讀的快照](2026-10-02-resumable-snapshots.md)
 - [快照的變更比對](2026-10-03-snapshot-changes.md)
 - [截圖與快照後還原畫面](2026-10-03-view-restore.md)
