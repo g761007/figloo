@@ -334,8 +334,8 @@ async function exportTab(tabId: number, params: unknown): Promise<TabOpResponse>
     const finished = await sendToTab(tabId, "finish_export", { token, expected: plan.settings.length, waitMs: EXPORT_CAPTURE_WAIT_MS });
     if (!finished.ok) return finished;
     const { files, notes, userSelectionRestored } = ExportFinishSchema.parse(finished.result);
-    // The MCP server opens any ZIP and keeps only plan.onlyFormat, so every file goes along as is.
-    const base = { identity: plan.identity, onlyFormat: plan.onlyFormat, usedExistingSettings: !plan.temporary, userSelectionRestored };
+    // The MCP server opens any ZIP and keeps only plan.onlyFormat at the requested scale, so every file goes along as is.
+    const base = { identity: plan.identity, onlyFormat: plan.onlyFormat, settings: plan.settings, usedExistingSettings: !plan.temporary, userSelectionRestored };
     if (files.length > 0) {
       return { ok: true, result: { ...base, source: "direct", files: files.map((f) => ({ ...f, downloadPath: null })), elapsedMs: Date.now() - started } };
     }

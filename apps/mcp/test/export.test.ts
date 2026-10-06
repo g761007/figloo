@@ -92,13 +92,14 @@ async function setup(reply: (request: RequestMessage) => Reply, { rootFromEnv = 
   return { root, requests, exportAsset };
 }
 
-const direct = (files: { name: string; mimeType: string; data: Buffer }[], onlyFormat: string | null = null): Reply => ({
+const direct = (files: { name: string; mimeType: string; data: Buffer }[], onlyFormat: string | null = null, settings?: { format: string; scale: string | null }[]): Reply => ({
   ok: true,
   result: {
     identity,
     source: "direct",
     files: files.map((f) => ({ name: f.name, mimeType: f.mimeType, data: f.data.toString("base64"), downloadPath: null })),
     onlyFormat,
+    ...(settings ? { settings } : {}),
     usedExistingSettings: false,
     userSelectionRestored: true,
     elapsedMs: 900,
@@ -195,6 +196,68 @@ describe("export_asset", () => {
     const missing = await exportPdf({ format: "pdf" });
     expect(missing.isError).toBe(true);
     expect(errorOf(missing).message).toMatch(/exported 關閉\.svg, 關閉@2x\.png, but no pdf file/);
+  });
+
+  it("keeps only the requested scale when the layer's own settings use the same format at another", async () => {
+    // Figma names the second file of a format inconsistently, such as Frame-1.png or Frame@3x.png, so only sizes tell them apart.
+    const at2x = pngHeader(786, 1704);
+    const at3x = pngHeader(1179, 2556);
+    const twoPngs = [
+      { name: "Frame.png", mimeType: "image/png", data: at2x },
+      { name: "Frame-1.png", mimeType: "image/png", data: at3x },
+    ];
+    const { root, exportAsset } = await setup(() =>
+      direct(twoPngs, "png", [
+        { format: "PNG", scale: "3x" },
+        { format: "PNG", scale: "2x" },
+      ]),
+    );
+    const output = ExportOutputSchema.parse((await exportAsset({ format: "png", scale: "3x", saveTo: "out/frame@3x.png" })).structuredContent);
+    expect(output.files.map((f) => f.name)).toEqual(["Frame-1.png"]);
+    expect(readFileSync(join(root, "out/frame@3x.png")).equals(at3x)).toBe(true);
+
+    const at1x = pngHeader(393, 852);
+    const { exportAsset: exportSmaller } = await setup(() =>
+      direct(
+        [
+          { name: "Frame.png", mimeType: "image/png", data: at2x },
+          { name: "Frame-1.png", mimeType: "image/png", data: at1x },
+        ],
+        "png",
+        [
+          { format: "PNG", scale: "1x" },
+          { format: "PNG", scale: "2x" },
+        ],
+      ),
+    );
+    const smaller = ExportOutputSchema.parse((await exportSmaller({ format: "png", scale: "1x" })).structuredContent);
+    expect(smaller.files.map((f) => [f.name, f.bytes])).toEqual([["Frame-1.png", at1x.length]]);
+  });
+
+  it("refuses a file name for saveTo when several files remain, before writing any", async () => {
+    // A setting of a fixed width cannot be ordered by scale, so both PNGs remain.
+    const { root, exportAsset } = await setup(() =>
+      direct(
+        [
+          { name: "Frame.png", mimeType: "image/png", data: pngHeader(512, 1110) },
+          { name: "Frame@3x.png", mimeType: "image/png", data: pngHeader(1179, 2556) },
+        ],
+        "png",
+        [
+          { format: "PNG", scale: "3x" },
+          { format: "PNG", scale: "512w" },
+        ],
+      ),
+    );
+    writeFileSync(join(root, "frame.png"), "kept");
+    const refused = await exportAsset({ format: "png", scale: "3x", saveTo: "frame.png" });
+    expect(refused.isError).toBe(true);
+    expect(errorOf(refused)).toMatchObject({ code: "SAVE_REFUSED", message: expect.stringMatching(/Frame\.png, Frame@3x\.png.*folder/) });
+    expect(readFileSync(join(root, "frame.png"), "utf8")).toBe("kept");
+
+    const { root: other, exportAsset: exportInto } = await setup(() => direct([{ name: "Close.svg", mimeType: "image/svg+xml", data: Buffer.from(SVG) }, { name: "Close.png", mimeType: "image/png", data: PNG }]));
+    expect((await exportInto({ saveTo: "icons/close.svg" })).isError).toBe(true);
+    expect(() => readFileSync(join(other, "icons/close.svg"))).toThrow();
   });
 
   it("shows only images small enough to view, and still saves the large ones", async () => {

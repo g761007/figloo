@@ -641,6 +641,7 @@ export const ExportRequestSchema = ExportParamsSchema.omit({ token: true });
 export type ExportRequest = z.infer<typeof ExportRequestSchema>;
 
 export const ExportSettingSchema = z.object({ format: z.string(), scale: z.string().nullable() });
+export type ExportSetting = z.infer<typeof ExportSettingSchema>;
 
 /** What the tab did before Figma produced the files. */
 export const ExportPlanSchema = z.object({
@@ -677,6 +678,8 @@ export const ExportResultSchema = z.object({
   ),
   /** Keep only files in this format, once any ZIP Figma packed them into is opened. */
   onlyFormat: ExportFormatSchema.nullable(),
+  /** Every setting the Export button exported; extensions up to 0.4.0 leave it out. */
+  settings: z.array(ExportSettingSchema).optional(),
   usedExistingSettings: z.boolean(),
   userSelectionRestored: z.boolean(),
   elapsedMs: z.number().nonnegative(),

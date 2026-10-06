@@ -7,6 +7,7 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 ### Fixed
 
 - `export_asset` and `export_assets` failed every time with `UI_NOT_READY: Figma did not add an export setting` after Figma replaced the file type control of export settings with a new select. Each failed call left a PNG setting behind in the tab, and a layer's own settings were ignored, so a call without `format` exported SVG. `snapshot_layer` reported no export settings for any layer, so retake snapshots made since then. Figloo now reads both the new select and the old control, names Figma's JPEG `JPG` as the tools do, and says so when Figma added a setting that Figloo cannot read instead of reporting that Figma added none.
+- `export_asset` with `format` and `scale` returned two files when the layer's own settings use that format at another scale, such as the designer's PNG 1x next to a requested PNG 3x, and a `saveTo` file name then failed with `EEXIST` because it was taken for a folder. For PNG and JPG only the file at the requested scale comes back now, told apart by its size since Figma names the extra file inconsistently, such as `-1` or `@3x`. When several files still come back, a `saveTo` with a file extension is refused before anything is written and the message lists the files; a folder ending with `/` saves them all. `export_assets` keeps the requested scale the same way. Keeping one scale needs the extension and the MCP server of this release together; the `saveTo` check needs only the server.
 
 ## [0.4.0] - 2026-10-03
 

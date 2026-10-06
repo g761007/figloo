@@ -79,6 +79,7 @@
 - [批次匯出與重新載入後的快照 ref](2026-10-02-export-assets.md)
 - [Popup 的診斷資訊與 bug report 表單](2026-10-02-diagnostics.md)
 - [匯出區塊的新版格式選單](2026-10-06-export-format-select.md)
+- [同格式多倍率時只交回要求的倍率](2026-10-06-export-scale-files.md)
 - [分段續讀的快照](2026-10-02-resumable-snapshots.md)
 - [快照的變更比對](2026-10-03-snapshot-changes.md)
 - [截圖與快照後還原畫面](2026-10-03-view-restore.md)

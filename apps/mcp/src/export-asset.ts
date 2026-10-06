@@ -15,6 +15,7 @@ import {
   type ExportOutput,
   type ExportResult,
   type ExportScale,
+  type ExportSetting,
 } from "@figloo/protocol";
 import { BridgeError, type Bridge } from "./bridge.js";
 import { knownParents, type ContextStore, type ExplorationContext } from "./contexts.js";
@@ -53,6 +54,13 @@ export function resolveSaveTarget(root: string, saveTo: string, fileName: string
   const rel = relative(root, target);
   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) throw new SaveRefused(`${saveTo} is outside the project directory ${root}`);
   return target;
+}
+
+/** Refuses a file name for saveTo when several files remain, so none is written to a folder of that name. */
+function checkSaveTo(saveTo: string, names: string[]): void {
+  if (names.length > 1 && !saveTo.endsWith("/") && extname(saveTo) !== "") {
+    throw new SaveRefused(`Figma exported ${names.length} files (${names.join(", ")}); pass a folder ending with / as saveTo to save them all`);
+  }
 }
 
 /** Files inside a ZIP. In the browser Figma packs several files, or a layer whose name has a slash, into one. */
@@ -130,6 +138,22 @@ interface ExportedFile {
   downloadPath: string | null;
 }
 
+/** How much a scale such as "2x" enlarges; null for a fixed width or height such as "512w". */
+const factorOf = (scale: string | null) => (scale && /^\d+(\.\d+)?x$/.test(scale) ? Number.parseFloat(scale) : null);
+
+/**
+ * The file of `scale` among files of one format from several settings. Figma names them
+ * inconsistently, such as Frame-1.png or Frame@3x.png, so a larger scale is told by a larger image.
+ */
+function fileOfScale(files: ExportedFile[], settings: ExportSetting[], format: ExportFormat, scale: ExportScale): ExportedFile | null {
+  const factors = settings.filter((setting) => setting.format === format.toUpperCase()).map((setting) => factorOf(setting.scale));
+  const widths = files.map((file) => imageSize(file.bytes, file.mimeType)?.width ?? null);
+  if (factors.length !== files.length || factors.includes(null) || widths.includes(null)) return null;
+  const rank = (factors as number[]).sort((a, b) => a - b).indexOf(factorOf(scale)!);
+  const bySize = files.map((file, at) => ({ file, width: widths[at]! })).sort((a, b) => a.width - b.width);
+  return rank < 0 ? null : bySize[rank]!.file;
+}
+
 /** Exports one layer through the tab and returns the files asked for, with any ZIP Figma packed them into opened. */
 async function exportLayer(deps: ExportDeps, context: ExplorationContext, ref: string, format?: ExportFormat, scale?: ExportScale): Promise<{ result: ExportResult; files: ExportedFile[] }> {
   let result: ExportResult;
@@ -156,11 +180,13 @@ async function exportLayer(deps: ExportDeps, context: ExplorationContext, ref: s
     }
   }
   // A temporary setting next to the designer's ones exports theirs too; keep only what was asked for.
-  const kept = result.onlyFormat ? exported.filter((file) => file.mimeType === FORMAT_MIME[result.onlyFormat!]) : exported;
+  let kept = result.onlyFormat ? exported.filter((file) => file.mimeType === FORMAT_MIME[result.onlyFormat!]) : exported;
   if (kept.length === 0) {
     const names = exported.map((f) => f.name).join(", ");
     throw new BridgeError("INTERNAL", names ? `Figma exported ${names}, but no ${result.onlyFormat} file` : "Figma's export was an empty ZIP archive");
   }
+  const ofScale = result.onlyFormat && result.settings && kept.length > 1 ? fileOfScale(kept, result.settings, result.onlyFormat, scale ?? "1x") : null;
+  if (ofScale) kept = [ofScale];
   return { result, files: kept };
 }
 
@@ -184,9 +210,9 @@ export function registerExportTool(server: McpServer, deps: ExportDeps, toolErro
       description:
         "Export a layer of a context with Figma's Export button and hand the files over: SVG markup inline, and PNG or JPG up to 1568 px as an image. " +
         "Choose format and scale for the project, for example by checking how it already stores icons: SVG for web or Android vector drawables, PDF or PNG at 1x, 2x, and 3x for iOS, PNG at 1x to 4x for Android densities. One call exports one scale. " +
-        "With format, a temporary setting in that format and scale is added and removed again, unless the layer already has that exact setting, and only files in that format are returned. " +
+        "With format, a temporary setting in that format and scale is added and removed again, unless the layer already has that exact setting, and only files in that format are returned, for PNG and JPG only the one at that scale. " +
         "Without format, the designer's own export settings decide, and a layer without settings exports as SVG. " +
-        "With saveTo, the files are also written inside the project directory. Figma names files after the layer without a scale suffix, so give a full file name such as icons/close@2x.png for each scale, or end saveTo with a slash to keep Figma's name. " +
+        "With saveTo, the files are also written inside the project directory. Figma names files after the layer without a scale suffix, so give a full file name such as icons/close@2x.png for each scale, or end saveTo with a slash to keep Figma's name; several files need a folder. " +
         "Figloo normally receives the file inside the page, so the browser saves nothing; if that fails it falls back to the browser's download and reports its path. The Figma tab must be visible. " +
         "For many layers, such as every icon of a page, use export_assets.",
       inputSchema: {
@@ -205,6 +231,7 @@ export function registerExportTool(server: McpServer, deps: ExportDeps, toolErro
         if (!context) throw new BridgeError("CONTEXT_NOT_FOUND", `no context ${contextId}`);
         if (!context.knownRefs.has(ref)) throw new BridgeError("UNKNOWN_REF", `ref ${ref} was not returned in context ${contextId}`);
         const { result, files: kept } = await exportLayer(deps, context, ref, format, scale);
+        if (saveTo !== undefined) checkSaveTo(saveTo, kept.map((file) => file.name));
         const root = projectRoot(deps);
         const images: { type: "image"; data: string; mimeType: string }[] = [];
         const files: ExportOutput["files"] = [];
