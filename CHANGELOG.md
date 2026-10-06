@@ -4,6 +4,8 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-06
+
 ### Fixed
 
 - `export_asset` and `export_assets` failed every time with `UI_NOT_READY: Figma did not add an export setting` after Figma replaced the file type control of export settings with a new select. Each failed call left a PNG setting behind in the tab, and a layer's own settings were ignored, so a call without `format` exported SVG. `snapshot_layer` reported no export settings for any layer, so retake snapshots made since then. Figloo now reads both the new select and the old control, names Figma's JPEG `JPG` as the tools do, and says so when Figma added a setting that Figloo cannot read instead of reporting that Figma added none.
@@ -103,7 +105,8 @@ The first published release since 0.1.0. It includes the changes made as 0.2.0 a
 - The toolbar icon and popup show the tab's status, the selected layer's path and children, and a prompt to copy for the agent.
 - `figloo-mcp pair` prints the pairing token and port to paste into the extension's options page.
 
-[Unreleased]: https://github.com/g761007/figloo/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/g761007/figloo/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/g761007/figloo/releases/tag/v0.4.1
 [0.4.0]: https://github.com/g761007/figloo/releases/tag/v0.4.0
 [0.3.2]: https://github.com/g761007/figloo/releases/tag/v0.3.2
 [0.3.1]: https://github.com/g761007/figloo/releases/tag/v0.3.1

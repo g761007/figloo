@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Figloo",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Lets a local coding agent explore the Figma design around your current selection.",
   "minimum_chrome_version": "116",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzW0fEhusqt+dsSWc31tmZI1T8RI5EQWxXsoepTVjLtkxyKQky9rJ/oroDOn2yu+TjtDu2Il7WM7ufEaYYmnckCIirvTCj44p75QuIxSjmYWFuPXSRhVJDX+WHkfY11aznMQ0YDFUrk4LphIwqU75AdMNUCf4RhELeqHyB6HuUrMuKU0eewV/5MdMgBo78Yy6ZDP6Zl9a5Q+WQ9HcUMGqZ/mwt+pC55J6JIsJFR8ZMrR+AUq8kZSaTNwmcNgdzJc0hd9x8/Vvwye48p4s6BhwaPsMHx4S/7P7x4VqFI8VHOaGxVwPcxbT9c/Xo5g4KUtDmQ6P3rxGvBAKe0PWr17DnQIDAQAB",
