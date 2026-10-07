@@ -128,7 +128,7 @@ Codex 另外需要在 `~/.codex/config.toml` 註冊 MCP 伺服器，見[在 agen
 
 ## 疑難排解
 
-先從 `get_status` 開始：請 agent 呼叫它，它的 `hint` 會說明要修正什麼。其他可以查看的地方，以及從 `DISCONNECTED` 到 `BUSY` 的常見問題，見 [docs/troubleshooting.zh-TW.md](docs/troubleshooting.zh-TW.md)。
+先從 `get_status` 開始：請 agent 呼叫它，它的 `hint` 會說明要修正什麼，每個分頁也會列出它的限制與處理方式。不在 agent 工作階段中時，`figloo-mcp doctor` 會檢查 Node.js、設定檔，以及連接埠由誰持有。其他可以查看的地方，以及從 `DISCONNECTED` 到 `BUSY` 的常見問題，見 [docs/troubleshooting.zh-TW.md](docs/troubleshooting.zh-TW.md)。
 
 ## 隱私與安全
 

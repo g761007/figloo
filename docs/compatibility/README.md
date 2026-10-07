@@ -23,8 +23,8 @@
 | 訪客，未登入 | 有限。無法選取圖層，所以沒有錨點、屬性讀取與匯出；頁面列舉、進入頁面、子樹與整頁截圖可用 |
 | 編輯權限 | 不在目標範圍。Figma 在右側欄顯示 Design 面板，沒有 Figloo 讀的屬性面板。0.4.3 起 `get_status` 回報 `access: "edit"` 與 `DEGRADED`，`inspect_nodes`、`snapshot_layer` 與匯出直接回報錯誤；圖層與截圖可用 |
 | 英文 UI | 已驗證 |
-| 其他 UI 語言 | 未驗證。圖層類型與屬性欄位依英文標籤解析 |
-| 開啟「Adapt content for screen readers」 | 建議開啟。截圖依圖層在畫面上的位置裁切；未開啟時改以畫布中心推估，這種情況的效果未驗證。截圖與快照結束後還原縮放比例與畫面位置，也需要這項設定 |
+| 其他 UI 語言 | 未驗證。圖層類型與屬性欄位依英文標籤解析；0.5.0 起 `get_status` 以 `NOT_ENGLISH` 限制提示 |
+| 開啟「Adapt content for screen readers」 | 建議開啟；未開啟時 0.5.0 起 `get_status` 以 `NO_SCREEN_READER_MIRROR` 限制提示。截圖依圖層在畫面上的位置裁切；未開啟時改以畫布中心推估，這種情況的效果未驗證。截圖與快照結束後還原縮放比例與畫面位置，也需要這項設定 |
 | Figma UI 縮到最小 | 圖層面板不會渲染，狀態為 `DEGRADED`，需按 Cmd+\ 展開 |
 
 ## 功能
@@ -85,6 +85,7 @@
 - [圖層面板的「Fixed」與「Scrolls」分組標題](2026-10-07-section-header-rows.md)
 - [解析守門：讀不懂時明說](2026-10-07-parse-guard.md)
 - [登入版 canary](2026-10-07-signed-in-canary.md)
+- [分頁限制、錯誤分類、介面依賴清單與 doctor](2026-10-07-status-and-doctor.md)
 - [分段續讀的快照](2026-10-02-resumable-snapshots.md)
 - [快照的變更比對](2026-10-03-snapshot-changes.md)
 - [截圖與快照後還原畫面](2026-10-03-view-restore.md)

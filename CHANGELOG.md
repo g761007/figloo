@@ -4,8 +4,17 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+### Fixed
+
+- A signed-in page without the right sidebar was reported as a guest session, which has none; now Figloo says it cannot find the sidebar and that Figma may have changed its UI.
+
 ### Added
 
+- `get_status` lists each tab's `limitations`: what Figloo cannot do there, such as in a guest session, with edit access, with a minimized UI, with Figma's screen reader mirror off, or with a non-English UI, the tools that fail or do less, and what the user can do. When the one open file is `READY` but limited, the `hint` says so too; before, a missing screen reader mirror went unmentioned.
+- Tool errors carry a `category` and `retry` advice: `yes` when the same call can work as it is, `after_user` once the user did what the hint asks, and `no` when the agent should do something else first. `docs/mcp-tools.md` lists both for every error code.
+- `figloo-mcp doctor` checks, without starting a server or taking the port from anyone, Node.js, the config file and its pairing token, and who holds the port: nobody, a Figloo session with its version and whether an extension is connected to it, an older Figloo that cannot hand over, or another program. Each problem comes with its fix, and the command exits with 1 while any is left. `docs/agent-install.md` has agents run it after installing.
+- When the server turns the extension away, `get_status` names both versions and which side to update, or asks to pair again when the token does not match. The extension's options page keeps the server's explanation instead of a bare close code.
+- The extension checks the parts of Figma's page it depends on from one list, each marked by how stable its selector is, and reports the ones it did not find in `get_status` and the popup's Diagnostics. A signed-in tab without the right sidebar or the properties panel gets a `UI_CHANGED` limitation.
 - A signed-in canary, `pnpm test:canary`, checks on real Figma what a guest cannot reach: the selection, the inspection panel, snapshots, exports, and putting the view back. It runs on the maintainer's machine with a browser profile signed in to a dedicated test account that only views the test file, and `tests/canary/login.mjs` opens that profile for signing in by hand.
 
 ## [0.4.3] - 2026-10-07

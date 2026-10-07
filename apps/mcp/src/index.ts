@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Bridge } from "./bridge.js";
 import { configDir, configPath, loadOrCreateConfig, projectName } from "./config.js";
+import { formatDoctor, runDoctor } from "./doctor.js";
 import { createServer } from "./server.js";
 import { SnapshotStore } from "./snapshots.js";
 
@@ -11,6 +12,13 @@ import { SnapshotStore } from "./snapshots.js";
 declare const __FIGLOO_VERSION__: string | undefined;
 const VERSION: string = typeof __FIGLOO_VERSION__ === "string" ? __FIGLOO_VERSION__ : createRequire(import.meta.url)("../package.json").version;
 const command = process.argv[2] ?? "serve";
+
+// Before the config is read, which would create it: doctor reports a missing one instead.
+if (command === "doctor") {
+  const checks = await runDoctor({ version: VERSION, ...(process.env.FIGLOO_PORT ? { portOverride: process.env.FIGLOO_PORT } : {}) });
+  console.log(formatDoctor(VERSION, checks));
+  process.exit(checks.some((check) => check.status === "problem") ? 1 : 0);
+}
 const config = loadOrCreateConfig();
 
 if (command === "pair") {
@@ -19,7 +27,7 @@ if (command === "pair") {
   process.exit(0);
 }
 if (command !== "serve") {
-  console.error(`Unknown command "${command}". Use "serve" (default) or "pair".`);
+  console.error(`Unknown command "${command}". Use "serve" (default), "pair", or "doctor".`);
   process.exit(2);
 }
 

@@ -97,6 +97,8 @@ With the release file, run `node figloo-mcp-<version>.mjs pair`.
 
 This prints the pairing token and port stored in `~/.figloo/config.json` (created on first run, mode 0600; override the directory with `FIGLOO_CONFIG_DIR`). Open the extension's options page, paste both values, and click "Save and connect". From then on the extension connects automatically whenever the MCP server is running, and reconnects after either side restarts.
 
+`node apps/mcp/dist/index.js doctor` (or `node figloo-mcp-<version>.mjs doctor`) checks Node.js, the config file, and who holds the port at any time, without starting a server.
+
 ### 4. Prepare Figma
 
 - Sign in to Figma in the browser that has the extension. View access to the file is enough.

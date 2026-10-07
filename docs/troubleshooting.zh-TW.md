@@ -6,15 +6,30 @@
 
 先從這些地方查看：
 
-- **`get_status`**：請 agent 呼叫它。它會回報 bridge、擴充功能的連線，以及每個 Figma 分頁的就緒狀態與原因，並附上說明下一步的 `hint`。
+- **`figloo-mcp doctor`**：在終端機執行（`node apps/mcp/dist/index.js doctor`，使用 release 檔案時是 `node figloo-mcp-<version>.mjs doctor`）。不需要任何 agent 工作階段，它會檢查 Node.js、設定檔與配對 token，以及連接埠由誰持有：沒有人、某個 Figloo 工作階段（附上版本，以及是否有擴充功能連著），無法交接的舊版 Figloo，或其他程式。它不啟動伺服器，也不搶任何人的連接埠。
+- **`get_status`**：請 agent 呼叫它。它會回報 bridge、擴充功能的連線，以及每個 Figma 分頁的就緒狀態與原因，並附上說明下一步的 `hint`。每個分頁會列出 `limitations`：Figloo 在這個分頁不能做什麼、受影響的工具，以及使用者能怎麼處理，對照見下表。伺服器拒絕擴充功能的連線時，它會說明原因：該更新哪一邊，或配對 token 不符。
 - **工具列圖示與 popup 視窗**：提示文字與 popup 視窗會顯示目前分頁的就緒狀態與 agent 連線，兩者內容相同。Popup 視窗中的「Diagnostics」提供可以貼到 bug report 的報告，不含檔案、頁面或圖層的名稱。
 - **選項頁面**：顯示連線狀態、Figloo 正在服務的 agent 工作階段、最近一次在工作階段之間交接的時間，以及最後一次的連線錯誤。
 - **Service worker 主控台**：在 `chrome://extensions`（或 `arc://extensions`）的 Figloo 卡片上點「service worker」。
 - **伺服器日誌**：伺服器每次被呼叫時，會在 stderr 寫一行，包含數量、UI 操作次數與耗時，但不含圖層名稱。要查看時，請在沒有 agent 工作階段執行伺服器的情況下，在終端機手動執行，例如 `node apps/mcp/dist/index.js`。
 
+`get_status` 的分頁限制：
+
+| 代碼 | 意思 | 處理方式 |
+|---|---|---|
+| `UI_MINIMIZED` | Figma 介面縮到最小，圖層面板沒有渲染，所有工具都受影響。 | 按 Cmd+\，或點檔名旁的展開按鈕。 |
+| `GUEST` | 沒有登入 Figma，無法選取圖層：讀不到選取、屬性、匯出與快照，截圖只能截整個頁面。 | 在裝了擴充功能的瀏覽器中登入 Figma。 |
+| `EDIT_ACCESS` | 編輯權限下 Figma 顯示 Design 面板，Figloo 不讀這個面板：沒有屬性、快照與匯出；圖層與截圖可用。 | Figloo 以檢視權限為目標，這個檔案中沒有辦法處理。 |
+| `UI_CHANGED` | 已登入，卻找不到右側欄或屬性面板，可能是 Figma 改了介面。 | 重新載入 Figma 分頁；仍然不行時，附上 popup 的 Diagnostics 回報。 |
+| `NO_KEYBOARD_TARGET` | 找不到 Figma 畫布的鍵盤目標，截圖與快照無法縮放。 | 重新載入 Figma 分頁。 |
+| `NO_SCREEN_READER_MIRROR` | 沒有開啟「Adapt content for screen readers」：`get_visual_neighbors` 會失敗，截圖以推估裁切，快照量不到大部分圖層的位置，畫面也不會還原。 | 在 Main menu、Preferences、Accessibility settings 中開啟。 |
+| `NOT_ENGLISH` | Figma 介面是其他語言，而 Figloo 依英文標籤讀取面板。 | 把 Figma 切換成英文。 |
+
+工具錯誤附有 `retry`：`yes` 表示原樣再呼叫可能成功，或許要等一下；`after_user` 表示使用者照 hint 處理後再試；`no` 表示 agent 要先做別的事，例如重新取得 context。
+
 常見問題：
 
-- `get_status` 顯示 `DISCONNECTED`：確認擴充功能已載入並完成配對，再查看選項頁面。它會顯示最後一次的連線錯誤，例如 token 被拒絕或連接埠無法連線。
+- `get_status` 顯示 `DISCONNECTED`：確認擴充功能已載入並完成配對，再查看選項頁面。它會顯示最後一次的連線錯誤，例如 token 被拒絕、連接埠無法連線，或 protocol 版本不符與兩邊的版本。`figloo-mcp doctor` 會說明是否有工作階段持有連接埠，以及是否有擴充功能連著。
 - 選項頁面顯示 `unpaired`：token 欄位是空的。請再執行一次 `pair` 指令，貼上印出的值。
 - 分頁顯示 `DEGRADED`，並提到「guest session」：這個瀏覽器設定檔沒有登入 Figma，所以無法選取圖層。
 - 分頁顯示 `DEGRADED`，並提到「Figma UI is minimized」：介面隱藏時不會渲染圖層面板。請按 Cmd+\，或點檔名旁的展開按鈕。

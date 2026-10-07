@@ -62,12 +62,14 @@ interface Pending {
 }
 
 /** What the holder reports about itself on GET /holder and in answer to POST /handover. */
-const HolderInfoSchema = z.object({
+export const HolderInfoSchema = z.object({
   session: SessionIdentitySchema,
   busy: z.boolean(),
   lastActivityAt: z.number().nullable(),
   /** The tabs the extension last pushed to the holder, so a standby session can name a tabId. */
   tabs: z.array(TabStatusSchema).default([]),
+  /** The connected extension's version, or null without one; holders before 0.5.0 leave it out. */
+  extensionVersion: z.string().nullable().optional(),
 });
 type HolderInfo = z.infer<typeof HolderInfoSchema>;
 
@@ -224,7 +226,7 @@ export class Bridge {
   }
 
   private holderInfo(): HolderInfo {
-    return { session: this.session, busy: this.busy, lastActivityAt: this.lastActivityAt, tabs: this.tabs };
+    return { session: this.session, busy: this.busy, lastActivityAt: this.lastActivityAt, tabs: this.tabs, extensionVersion: this.connected ? (this.info?.extensionVersion ?? null) : null };
   }
 
   /** Listens on the port once; concurrent callers share the attempt. */

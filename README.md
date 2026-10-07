@@ -126,7 +126,7 @@ Codex also needs the MCP server registered in `~/.codex/config.toml`, as shown i
 
 ## Troubleshooting
 
-Start with `get_status`: ask the agent to call it, and its `hint` says what to fix. [docs/troubleshooting.md](docs/troubleshooting.md) lists where else to look and the common problems, from `DISCONNECTED` to `BUSY`.
+Start with `get_status`: ask the agent to call it, and its `hint` says what to fix, while each tab lists the limitations it has and what to do about them. Outside an agent session, `figloo-mcp doctor` checks Node.js, the config file, and who holds the port. [docs/troubleshooting.md](docs/troubleshooting.md) lists where else to look and the common problems, from `DISCONNECTED` to `BUSY`.
 
 ## Privacy and security
 

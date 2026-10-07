@@ -99,6 +99,8 @@ node apps/mcp/dist/index.js pair
 
 這會印出存在 `~/.figloo/config.json` 中的配對 token 與連接埠。這個檔案在第一次執行時建立，權限為 0600，也可以用 `FIGLOO_CONFIG_DIR` 指定其他目錄。開啟擴充功能的選項頁面，貼上這兩個值，再按「Save and connect」。之後只要 MCP 伺服器在執行，擴充功能就會自動連線，任一方重新啟動後也會重新連線。
 
+`node apps/mcp/dist/index.js doctor`（或 `node figloo-mcp-<version>.mjs doctor`）隨時可以檢查 Node.js、設定檔，以及連接埠由誰持有，不會啟動伺服器。
+
 ### 4. 準備 Figma
 
 - 在裝了擴充功能的瀏覽器中登入 Figma。對檔案有檢視權限就夠了。

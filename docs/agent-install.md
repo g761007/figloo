@@ -74,7 +74,13 @@ Give the user these steps with the real folder path, token, and port filled in:
 
 **Done when** the user confirms both.
 
-## 7. User: prepare Figma
+## 7. Check the setup
+
+Run `node ~/.figloo/releases/<version>/figloo-mcp-<version>.mjs doctor`. It checks Node.js, the config file and its pairing token, and who holds the port, without starting the server. Lines with ✗ are problems, each followed by its fix; lines with ! are worth telling the user. Right after installing, no agent session runs the new server yet, so a free port is fine. If another session holds the port with an older Figloo, tell the user it takes over once that session is restarted.
+
+**Done when** doctor reports no ✗ lines, or you told the user how to fix them.
+
+## 8. User: prepare Figma
 
 Tell the user that Figloo reads Figma through its web UI, which needs, in the browser that has the extension:
 
@@ -84,8 +90,8 @@ Tell the user that Figloo reads Figma through its web UI, which needs, in the br
 
 **Done when** you told the user; they can do this later.
 
-## 8. Hand over
+## 9. Hand over
 
-The MCP server loads only in a new agent session. Tell the user to start one, open a Figma design file in the browser, and ask the agent to call Figloo's `get_status`. It should report the extension as connected and the tab as `READY`; otherwise its `hint` says what to fix. [docs/troubleshooting.md](https://github.com/g761007/figloo/blob/main/docs/troubleshooting.md) lists common problems.
+The MCP server loads only in a new agent session. Tell the user to start one, open a Figma design file in the browser, and ask the agent to call Figloo's `get_status`. It should report the extension as connected and the tab as `READY` with no `limitations`; otherwise its `hint` says what to fix, and each limitation names the tools it affects and what the user can do. [docs/troubleshooting.md](https://github.com/g761007/figloo/blob/main/docs/troubleshooting.md) lists common problems.
 
 To update Figloo later, run these steps again, then reload the extension on `chrome://extensions`.
