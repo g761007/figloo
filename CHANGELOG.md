@@ -4,6 +4,10 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-07
+
+Update the extension and the MCP server together: the extension finds what it cannot read, and the server reports it. The bridge protocol is still 0.3.0 and the new fields are optional, so an older half keeps working without the new reports.
+
 ### Added
 
 - `get_status` reports `access: "edit"` for a file opened with edit access, which Figloo tells by the Design and Prototype tabs Figma shows in the right sidebar in place of Properties. Such a tab is `DEGRADED`, and its detail says that properties, snapshots, and exports do not work there while layers and screenshots do.

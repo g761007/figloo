@@ -61,7 +61,7 @@ Plugin 會從對應版本的 GitHub release 下載伺服器的 bundle，所以�
 claude mcp add -s user figloo -- node /absolute/path/to/figloo/apps/mcp/dist/index.js
 ```
 
-使用 release 檔案時，改用它的路徑，例如 `node /absolute/path/to/figloo-mcp-0.4.2.mjs`。在工作階段中，`/mcp` 會顯示伺服器是否已連線。
+使用 release 檔案時，改用它的路徑，例如 `node /absolute/path/to/figloo-mcp-0.4.3.mjs`。在工作階段中，`/mcp` 會顯示伺服器是否已連線。
 
 其他 MCP client 可以用類似下面的設定啟動伺服器（請替換路徑）：
 

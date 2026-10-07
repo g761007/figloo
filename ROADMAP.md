@@ -2,7 +2,7 @@
 
 Where Figloo is going, by area and by release. Figloo is versioned 0.x: a minor version adds features, a patch fixes problems, and tools and results may still change between minor versions. [CHANGELOG.md](CHANGELOG.md) lists what each release changed. The detailed plan behind this roadmap, in Traditional Chinese, is [docs/plans/2026-10-06-productization-and-reliability.md](docs/plans/2026-10-06-productization-and-reliability.md).
 
-Current release: 0.4.2.
+Current release: 0.4.3.
 
 ## Principles
 
@@ -30,7 +30,7 @@ These changed no released files, so they shipped without a release.
 
 On its first green run, the canary showed that Figloo stopped at the "Fixed" and "Scrolls" header rows Figma puts among the children of a frame with layers that stay put while it scrolls, and that the integration tests passed anyway with no layers read. 0.4.2 fixes the reading and makes the tests fail on reads that stop early.
 
-## 0.4.3: fail loudly
+## 0.4.3 (released): fail loudly
 
 When Figloo cannot read part of Figma's UI, it now says so instead of returning an empty value that looks normal. A file opened with edit access, where Figma shows the Design panel instead of the inspection panel, is reported by `get_status` and refused at once by the tools that read properties and exports. Export settings and inspection panel sections Figloo cannot read are marked as unreadable, and snapshots count the layers that have them.
 
