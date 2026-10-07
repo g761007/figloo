@@ -2,13 +2,32 @@
 
 [English](README.md) | 繁體中文
 
-Figloo 由 Chrome 擴充功能與本機 MCP 伺服器組成，讓 coding agent 偵測已開啟的 Figma 設計稿分頁，以使用者目前的選取為錨點，透過 Figma 網頁介面探索附近的圖層與屬性，不必掃描整份文件。它只讀取 DOM 與網頁介面呈現的內容，不使用 Figma REST API、官方 Figma MCP、Figma plugin 或私有的內部狀態。它可能會改變檢視範圍與選取，但絕不編輯設計稿。
+Figloo 是 coding agent 的本機 Figma bridge 與 design context layer。它讓 agent 從你的選取出發，探索瀏覽器中開著的設計稿：瀏覽附近的圖層、讀取與 Figma 屬性面板顯示完全相同的版面與視覺屬性、截圖、匯出 icon 與圖片，並把整個畫面存成快照，作為實作的依據。它由 Chrome 擴充功能與本機 MCP 伺服器組成，只讀取 Figma 網頁介面呈現的內容，不使用 Figma REST API、官方 Figma MCP、Figma plugin 或私有的內部狀態。它可能會改變檢視範圍與選取，但絕不編輯設計稿。
 
 > 本文件譯自英文版 [README.md](README.md)，兩者不一致時以英文版為準。
 
+## 為什麼用 Figloo
+
+- **有檢視權限就夠了。** Figma 的 REST API 與官方 MCP 伺服器依席位設定額度：View 或 Collab 席位每月最多 6 次呼叫（見 [REST API](https://developers.figma.com/docs/rest-api/rate-limits) 與 [MCP 伺服器](https://developers.figma.com/docs/figma-mcp-server/rate-limits-access/) 的說明，以 2026 年 10 月為準）。Figloo 讀取你已經開著的 Figma 分頁，不需要 token 或付費席位，也沒有每月額度。
+- **從你指的地方開始。** Agent 從你選取的圖層出發，每次呼叫只讀取檔案中有上限的一部分，不掃描整份檔案。
+- **讀一次，依快照實作。** `snapshot_layer` 讀取整個畫面，最多 2,000 個圖層，並存成快照。之後 agent 查詢數值、摘要畫面用到的顏色、文字樣式與間距、和上一份快照比對，都不必再操作 Figma。
+- **在本機執行。** 沒有 Figloo 伺服器或帳號，bridge 只監聽 `127.0.0.1`。見[隱私與安全](#隱私與安全)。
+
+如果團隊有 Dev 或 Full 席位，Figma 官方的 MCP 伺服器直接讀取檔案，是更直接的做法。Figloo 適合只有檢視權限、想讓 coding agent 依眼前設計稿工作的工程師。
+
+## 運作方式
+
+```text
+Coding agent ──stdio (MCP)──▶ Figloo MCP 伺服器 ──ws://127.0.0.1:47129──▶ Figloo 擴充功能 ──DOM──▶ Figma 分頁
+```
+
+Agent 透過 MCP 呼叫 Figloo 的工具。由 agent 啟動的伺服器，經本機的 WebSocket 把每次呼叫交給擴充功能。擴充功能的 content script 讀取 Figma 分頁的圖層面板與屬性面板，像你一樣選取與展開圖層，結束後還原你的選取。快照由伺服器存在 `~/.figloo/snapshots/`。
+
 ## 狀態
 
-MVP 已完成，也就是[計畫](docs/plans/2026-09-30-figloo-mvp-plan.md)中的 M0 到 M4 里程碑。Agent 可以列出 Figma 檔案的頁面、開啟頁面或從使用者的選取出發、每次在有上限的範圍內逐層瀏覽圖層、讀取 Figma 屬性面板顯示的內容、截圖，以及匯出 icon 與圖片。要實作一個頁面時，`snapshot_layer` 會一次讀取頁面中的每個圖層並截圖，存成快照，之後 `query_snapshot` 不必再操作 Figma 就能查詢圖層。Figloo 的目標使用者是對檔案有檢視權限的工程師；它絕不編輯設計稿。
+Figloo 涵蓋 Design-to-Code 的探索流程：列出檔案的頁面、從使用者的選取出發、每次在有上限的範圍內逐層瀏覽圖層、讀取屬性面板、截圖、逐一或批次匯出資產，以及為整個畫面建立、查詢、摘要與比對快照。目標使用者是對檔案有檢視權限的工程師。
+
+Figloo 以真實的 Figma 頁面持續開發與測試。版本仍是 0.x，工具與回傳結果在 minor 版本之間可能改變：各版本的變更見 [CHANGELOG.md](CHANGELOG.md)，接下來的方向見 [ROADMAP.md](ROADMAP.md)。
 
 - [docs/mcp-tools.md](docs/mcp-tools.md)：每個工具的參數、回傳結果與錯誤碼。
 - [docs/compatibility/](docs/compatibility/README.md)：支援的瀏覽器與 Figma 設定、已知限制，以及在真實 Figma 頁面上驗證過的項目。
@@ -27,7 +46,7 @@ Agent 會檢查 Node.js、下載最新版本並核對檢查碼、註冊 MCP 伺�
 2. 在擴充功能的選項頁面貼上 token 與連接埠。
 3. 在 Figma 中使用英文介面，並開啟「Adapt content for screen readers」。
 
-最後開一個新的 agent 工作階段，打開 Figma 設計檔，請 agent 呼叫 `get_status`。[安裝](#安裝)與[設定](#設定)兩節是同樣步驟的手動版本。
+最後開一個新的 agent 工作階段，打開 Figma 設計檔，請 agent 呼叫 `get_status`。[docs/installation.zh-TW.md](docs/installation.zh-TW.md) 是同樣步驟的手動版本。
 
 ## 需求
 
@@ -38,103 +57,11 @@ Agent 會檢查 Node.js、下載最新版本並核對檢查碼、註冊 MCP 伺�
 
 ## 安裝
 
-### 使用 release 檔案
-
-`pnpm package` 會在 `release/` 產生三個可以交給其他人的檔案：
-
-| 檔案 | 用法 |
-|---|---|
-| `figloo-extension-<version>.zip` | 解壓縮到一個會保留的資料夾，瀏覽器會從那裡載入擴充功能。 |
-| `figloo-mcp-<version>.mjs` | 放在任何位置都可以。它就是完整的 MCP 伺服器，只需要 Node.js 24。 |
-| `figloo-mcp-<version>.mcpb` | 同一個伺服器的 MCP bundle。Claude Code plugin 會從對應版本的 GitHub release 下載它，所以要附在那個 release 上。 |
-
-接著依照[設定](#設定)的步驟進行，把原始碼中的路徑換成解壓縮後的資料夾與 `.mjs` 檔案。
-
-### 從原始碼
-
-```sh
-pnpm install
-pnpm build
-```
-
-`pnpm build` 會依相依順序建置 workspace 中的套件。請在 `typecheck` 與 `test` 之前執行，因為另外兩個套件會使用 `@figloo/protocol` 的建置結果。pnpm 可能會提示略過了 esbuild 的建置腳本，建置並不需要它。
+[快速開始](#快速開始)會請 agent 安裝最新版本。要手動安裝，無論使用 release 檔案或從原始碼，見 [docs/installation.zh-TW.md](docs/installation.zh-TW.md#安裝)。
 
 ## 設定
 
-### 1. 載入擴充功能
-
-1. 開啟 `chrome://extensions`（或 `arc://extensions`），打開「開發人員模式」，再按「載入未封裝項目」（Load unpacked）。
-2. 選擇 `apps/extension/dist`，或 release 檔案解壓縮後的資料夾。
-
-擴充功能的 ID 由 `apps/extension/static/manifest.json` 的 `key` 欄位固定，所以在每台電腦上都相同（`offikfnknfkgijgianpfcghbccmkcjnb`）。本機伺服器只接受這個 ID 的連線。
-
-擴充功能會要求存取所有網站（`<all_urls>`），因為 Chrome 只允許具備這項權限的擴充功能，在使用者沒有點擊圖示的情況下截取分頁畫面。它的 content script 仍然只在 Figma 設計稿中執行。
-
-`export_asset` 會在頁面內接收 Figma 匯出的檔案：每次匯出期間，擴充功能會包住 Figma 用來開始下載的函式，取得檔案後再放回原本的函式，所以瀏覽器不會存下任何檔案。`downloads` 權限只用於備援：無法在頁面內取得檔案時，擴充功能會等候瀏覽器自己下載這次的匯出，並回報存檔位置。
-
-更新 Figloo 後，請執行 `pnpm build`，再按擴充功能卡片上的重新載入按鈕，讓瀏覽器載入新檔案與新的權限。
-
-### 2. 在 agent 中註冊 MCP 伺服器
-
-使用 Claude Code 時，Figloo plugin 會一併安裝 MCP 伺服器與 [figloo-implement skill](#figloo-implement-skill)：
-
-```text
-/plugin marketplace add g761007/figloo
-/plugin install figloo@figloo
-```
-
-Plugin 會從對應版本的 GitHub release 下載伺服器的 bundle，所以你的電腦要能存取那個 release。如果之前手動註冊過 Figloo，每個工作階段都會同時執行兩個 Figloo 伺服器，請用 `claude mcp remove figloo -s user` 移除手動的註冊。
-
-不使用 plugin 時，註冊一次就能用在所有專案，之後請開一個新的工作階段：
-
-```sh
-claude mcp add -s user figloo -- node /absolute/path/to/figloo/apps/mcp/dist/index.js
-```
-
-使用 release 檔案時，改用它的路徑，例如 `node /absolute/path/to/figloo-mcp-0.4.1.mjs`。在工作階段中，`/mcp` 會顯示伺服器是否已連線。
-
-其他 MCP client 可以用類似下面的設定啟動伺服器（請替換路徑）：
-
-```json
-{
-  "mcpServers": {
-    "figloo": {
-      "command": "node",
-      "args": ["/absolute/path/to/figloo/apps/mcp/dist/index.js"]
-    }
-  }
-}
-```
-
-`snapshot_layer` 最多可能需要三分鐘。Claude Code 的預設值等得夠久；如果你設定了 `MCP_TOOL_TIMEOUT` 或 `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`，請設在 200000 毫秒以上。Codex 預設在 60 秒後停止工具呼叫，所以請在 `~/.codex/config.toml` 中為 Figloo 調高 `tool_timeout_sec`：
-
-```toml
-[mcp_servers.figloo]
-command = "node"
-args = ["/absolute/path/to/figloo/apps/mcp/dist/index.js"]
-tool_timeout_sec = 300
-```
-
-伺服器透過 stdio 使用 MCP，並在同一個程序中監聽 `ws://127.0.0.1:47129`，等候擴充功能連線。要改用其他連接埠，請設定 `FIGLOO_PORT`，或修改設定檔中的 `port`。連接埠被其他程式占用時，`get_status` 會回報，伺服器不會因此當掉。
-
-多個 agent 工作階段可以輪流使用 Figloo。每個工作階段各自啟動一個伺服器，同一時間由其中一個，也就是持有者，監聽連接埠並服務擴充功能，其他的則待命。待命的工作階段呼叫需要 Figma 的工具時，會在持有者閒置 10 秒後接手。持有者正在工作時，工具會回報 `BUSY`，並寫出 Figloo 正在服務的工作階段。持有者結束後，待命的工作階段會在幾秒內自動接手。工作階段以 agent、專案資料夾與啟動時間命名，例如 `Claude Code · shop (started 09:15)`；`get_status`、工具列圖示、popup 視窗與選項頁面都會顯示 Figloo 正在服務哪一個。Figloo 0.1.0 的伺服器無法交接，仍在執行它的工作階段需要重新啟動。
-
-### 3. 配對一次
-
-```sh
-node apps/mcp/dist/index.js pair
-```
-
-使用 release 檔案時，執行 `node figloo-mcp-<version>.mjs pair`。
-
-這會印出存在 `~/.figloo/config.json` 中的配對 token 與連接埠。這個檔案在第一次執行時建立，權限為 0600，也可以用 `FIGLOO_CONFIG_DIR` 指定其他目錄。開啟擴充功能的選項頁面，貼上這兩個值，再按「Save and connect」。之後只要 MCP 伺服器在執行，擴充功能就會自動連線，任一方重新啟動後也會重新連線。
-
-### 4. 準備 Figma
-
-- 在裝了擴充功能的瀏覽器中登入 Figma。對檔案有檢視權限就夠了。
-- 使用 Figma 的英文介面，並保持介面展開：Cmd+\ 可以切換，縮到最小的介面會隱藏圖層面板。
-- 在 Main menu、Preferences、Accessibility settings 中打開「Adapt content for screen readers」。這樣截圖就能依圖層在畫面上的位置裁切，`get_visual_neighbors` 能得知圖層的位置，截圖後 Figloo 也能還原你的縮放比例與畫面位置。
-- Agent 工作期間，請讓 Figma 分頁留在畫面上，放在 agent 視窗旁邊就可以。Figma 在背景分頁中會忽略選取與展開，所以 Figloo 會回報 `TAB_IN_BACKGROUND`，不會自行猜測。頁面快照則會等待：分頁在背景時暫停，回到畫面後繼續。
+設定分四個步驟：載入擴充功能、在 agent 中註冊 MCP 伺服器（Claude Code 的 plugin 會一併安裝 [figloo-implement skill](#figloo-implement-skill)）、配對一次，以及準備 Figma。[docs/installation.zh-TW.md](docs/installation.zh-TW.md#設定) 逐步說明，也解釋擴充功能要求的權限。
 
 ## 工具列圖示
 
@@ -197,7 +124,19 @@ Claude Code plugin 已經包含這個 skill。不使用 plugin 時，複製或�
 | Claude Code | `~/.claude/skills/figloo-implement` | `/figloo-implement` |
 | Codex | `~/.agents/skills/figloo-implement` | `$figloo-implement` |
 
-Codex 另外需要在 `~/.codex/config.toml` 註冊 MCP 伺服器，見[在 agent 中註冊 MCP 伺服器](#2-在-agent-中註冊-mcp-伺服器)。
+Codex 另外需要在 `~/.codex/config.toml` 註冊 MCP 伺服器，見[在 agent 中註冊 MCP 伺服器](docs/installation.zh-TW.md#2-在-agent-中註冊-mcp-伺服器)。
+
+## 疑難排解
+
+先從 `get_status` 開始：請 agent 呼叫它，它的 `hint` 會說明要修正什麼。其他可以查看的地方，以及從 `DISCONNECTED` 到 `BUSY` 的常見問題，見 [docs/troubleshooting.zh-TW.md](docs/troubleshooting.zh-TW.md)。
+
+## 隱私與安全
+
+Figloo 在你的電腦上執行。MCP 伺服器只監聽 `127.0.0.1`，而且只接受 Figloo 擴充功能的連線，以固定的擴充功能 ID 與配對 token 識別。Figloo 沒有自己的伺服器或帳號，設計內容只交給呼叫工具的 agent；agent 如何處理這些內容，例如送到它使用的模型服務，由 agent 決定。快照存在 `~/.figloo/snapshots/`。細節與回報漏洞的方式見 [SECURITY.md](SECURITY.md)（英文）。
+
+## Roadmap
+
+[ROADMAP.md](ROADMAP.md)（英文）依領域列出接下來的方向：可靠性、開發者體驗、設計理解、效能、相容性與發佈。
 
 ## 開發
 
@@ -217,7 +156,7 @@ claude plugin eval plugins/figloo --mocks off --ablation none   # skill 是否�
 
 `docs/mcp-tools.md` 與伺服器註冊的工具不一致時，`pnpm test` 會失敗。
 
-每次 push 到 `main` 與每個 pull request，GitHub Actions 都會執行 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)：建置、型別檢查、一次一個套件執行單元測試，以及打包。下方的整合測試需要瀏覽器與 Figma 連結，所以只在本機執行。
+每次 push 到 `main` 與每個 pull request，GitHub Actions 都會執行 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)：建置、型別檢查、一次一個套件執行單元測試，以及打包。下方的整合測試需要瀏覽器與 Figma 連結，所以在本機執行，另外每天由 [`.github/workflows/figma-canary.yml`](.github/workflows/figma-canary.yml) 對公開的測試檔執行一次，及早發現 Figma 網頁介面的改版。
 
 發佈一個版本：
 
@@ -227,7 +166,7 @@ claude plugin eval plugins/figloo --mocks off --ablation none   # skill 是否�
 
 從 Actions 頁面手動執行 Release workflow 是演練：只把檔案與說明保留成 artifact，不會發佈任何東西。
 
-整合測試 `tests/integration/get-status.e2e.mjs` 會以建置好的擴充功能啟動 Playwright 的 Chromium，透過選項頁面配對，以訪客身分開啟 Figma 檔案，並在 MCP 程序重新啟動前後，以及第二個伺服器接手又結束時，檢查 `get_status`。它需要網路連線、已建置的 workspace、先下載瀏覽器，以及一個知道連結就能檢視的 Figma 設計檔。連結不進版控：把範例檔複製成 git 會忽略的 `tests/integration/.env.local` 並填入連結，或改設定 `FIGLOO_E2E_FIGMA_URL`：
+整合測試 `tests/integration/get-status.e2e.mjs` 會以建置好的擴充功能啟動 Playwright 的 Chromium，透過選項頁面配對，以訪客身分開啟 Figma 檔案，並在 MCP 程序重新啟動前後，以及第二個伺服器接手又結束時，檢查 `get_status`。它需要網路連線、已建置的 workspace、先下載瀏覽器，以及一個知道連結就能檢視、至少有兩頁的 Figma 設計檔。連結不進版控：把範例檔複製成 git 會忽略的 `tests/integration/.env.local` 並填入連結，或改設定 `FIGLOO_E2E_FIGMA_URL`：
 
 ```sh
 pnpm exec playwright install chromium
@@ -235,6 +174,8 @@ cp tests/integration/.env.example tests/integration/.env.local
 ```
 
 Google Chrome 正式版從 137 起會忽略 `--load-extension`，所以測試不使用本機安裝的 Chrome。第二個腳本 `tests/integration/explore.e2e.mjs` 會把圖層導覽程式注入可見的訪客 Figma 分頁，檢查展開、列舉、分段取回、越過同名圖層往上找，以及還原面板，所以檔案裡需要有兩個同名、且各自有子圖層的相鄰圖層。設定 `FIGLOO_E2E_HEADED=1` 可以看著它執行。
+
+Figma canary workflow 每天執行這兩個腳本，也可以從 Actions 頁面手動執行。它從 repository secret `FIGLOO_CANARY_FIGMA_URL` 讀取連結，沒有設定時會失敗。它的 log 是公開的，而且會印出圖層名稱，所以必須使用專為測試建立的檔案，絕不能用真正的設計稿。
 
 核心情境驗收需要已登入的瀏覽器，所以不包含在 `pnpm test` 中。在擴充功能已配對、Figma 分頁留在畫面上、沒有其他 Figloo 伺服器在執行，並且選取了卡片中的一個圖層時，它會把完整流程執行十次，檢查每次的結果都相同：
 
@@ -250,12 +191,13 @@ node tests/acceptance/core-scenario.mjs
 apps/extension/      Chrome 擴充功能（Manifest V3）：@figloo/extension
 apps/mcp/            透過 stdio 溝通的本機 MCP 伺服器與 WebSocket bridge：@figloo/mcp
 packages/protocol/   共用的 zod schema、型別與常數：@figloo/protocol
+docs/                安裝、疑難排解、工具契約與 agent 安裝步驟
 docs/plans/          規劃文件
 docs/compatibility/  在真實 Figma 頁面上驗證過的項目與已知限制
 plugins/figloo/      Claude Code plugin：figloo-implement skill、它的評估案例，以及它下載的伺服器 bundle 的設定
 .claude-plugin/      Marketplace 的 manifest，讓這個 repo 可以用 /plugin marketplace add 加入
 scripts/             release 打包、release 檢查與 release 說明
-.github/workflows/   CI，以及版本 tag 觸發的 release workflow
+.github/workflows/   CI、版本 tag 觸發的 release workflow，以及每天執行的 Figma canary
 tests/fixtures/      回歸測試用的 Figma markup 擷取與匯出檔案
 tests/integration/   對真實 Chromium 與 Figma 執行的端對端測試
 tests/acceptance/    在已登入瀏覽器上執行的核心情境驗收
@@ -265,32 +207,3 @@ release/             pnpm package 的輸出（不提交）
 ## 授權
 
 Figloo 以 [MIT 授權](LICENSE)釋出。
-
-## 疑難排解
-
-先從這些地方查看：
-
-- **`get_status`**：請 agent 呼叫它。它會回報 bridge、擴充功能的連線，以及每個 Figma 分頁的就緒狀態與原因，並附上說明下一步的 `hint`。
-- **工具列圖示與 popup 視窗**：提示文字與 popup 視窗會顯示目前分頁的就緒狀態與 agent 連線，兩者內容相同。Popup 視窗中的「Diagnostics」提供可以貼到 bug report 的報告，不含檔案、頁面或圖層的名稱。
-- **選項頁面**：顯示連線狀態、Figloo 正在服務的 agent 工作階段、最近一次在工作階段之間交接的時間，以及最後一次的連線錯誤。
-- **Service worker 主控台**：在 `chrome://extensions`（或 `arc://extensions`）的 Figloo 卡片上點「service worker」。
-- **伺服器日誌**：伺服器每次被呼叫時，會在 stderr 寫一行，包含數量、UI 操作次數與耗時，但不含圖層名稱。要查看時，請在沒有 agent 工作階段執行伺服器的情況下，在終端機手動執行，例如 `node apps/mcp/dist/index.js`。
-
-常見問題：
-
-- `get_status` 顯示 `DISCONNECTED`：確認擴充功能已載入並完成配對，再查看選項頁面。它會顯示最後一次的連線錯誤，例如 token 被拒絕或連接埠無法連線。
-- 選項頁面顯示 `unpaired`：token 欄位是空的。請再執行一次 `pair` 指令，貼上印出的值。
-- 分頁顯示 `DEGRADED`，並提到「guest session」：這個瀏覽器設定檔沒有登入 Figma，所以無法選取圖層。
-- 分頁顯示 `DEGRADED`，並提到「Figma UI is minimized」：介面隱藏時不會渲染圖層面板。請按 Cmd+\，或點檔名旁的展開按鈕。
-- 剛安裝擴充功能後，分頁一直是 `LOADING` 或變成 `INCOMPATIBLE`：請重新載入 Figma 分頁，讓 content script 注入頁面。
-- `export_asset` 回報 `EXPORT_BLOCKED`：Figma 沒有交出任何檔案，瀏覽器也沒有開始下載。如果瀏覽器擋下了 figma.com 的連續下載，請在網站設定中允許，再試一次。
-- `export_asset` 回報 `LAYER_HIDDEN`：這個圖層或它所在的上層在 Figma 中是隱藏的，Figma 不會匯出它，在 Figma 裡直接按 Export 也一樣。
-- `export_asset` 回報 `EXPORT_PENDING`：瀏覽器正在等待儲存備援的下載，通常是停在另存新檔的對話框。請確認儲存，或關閉「每次下載前詢問儲存位置」。
-- `snapshot_layer` 回傳 `complete: false`：這個圖層超過一次呼叫在三分鐘內讀得完的量。請用同一個 root 再呼叫，直到 `complete` 為 true；在那之前，`query_snapshot` 會回報 `SNAPSHOT_INCOMPLETE`。
-- `snapshot_layer` 回報 `SUBTREE_TOO_LARGE`：這個圖層中有超過 2,000 個圖層。請改為對訊息中列出的某個子層建立快照。
-- 在 Codex 中，`snapshot_layer` 在 60 秒後失敗：請調高 `tool_timeout_sec`，見[在 agent 中註冊 MCP 伺服器](#2-在-agent-中註冊-mcp-伺服器)。
-- 工具回報 `BUSY` 並寫出另一個工作階段：Figloo 正在服務那個工作階段，它正在工作，或在 10 秒內用過 Figloo。稍後再試，或先在那個工作階段完成工作。
-- `get_status` 或工具說連接埠由執行舊版 Figloo 的工作階段持有：那個工作階段啟動的是 Figloo 0.1.0，無法交接。請重新啟動或關閉那個工作階段。
-- 工具說持有 Figloo 的工作階段沒有回應：那個工作階段的伺服器卡住了。請關閉那個工作階段。
-- 安裝 plugin 後看不到 Figloo 的工具：plugin 無法下載對應版本的伺服器 bundle。`/plugin` 會列出錯誤；請確認那個版本的 GitHub release 有 `.mcpb` 檔案，而且你的電腦可以存取。
-- Agent 看到兩組 Figloo 工具：手動註冊的 Figloo 伺服器和 plugin 的同時在執行。請用 `claude mcp remove figloo -s user` 移除手動的註冊。

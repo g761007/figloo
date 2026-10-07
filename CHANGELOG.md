@@ -4,6 +4,15 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+### Added
+
+- A GitHub Actions workflow runs the integration tests every day against a public Figma file as a guest, to notice changes in Figma's web UI before users run into them.
+- `SECURITY.md` describes the local bridge, the extension's permissions, the data Figloo keeps and where design content goes, and how to report a vulnerability. `ROADMAP.md` lists what comes next.
+
+### Changed
+
+- The README starts with what Figloo is for and how it works. Installation and troubleshooting moved to `docs/installation.md` and `docs/troubleshooting.md`, each also in Traditional Chinese.
+
 ## [0.4.1] - 2026-10-06
 
 ### Fixed

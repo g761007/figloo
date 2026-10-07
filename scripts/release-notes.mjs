@@ -62,7 +62,7 @@ const notes = [
   "",
   "Or let your agent do it: the README's Quickstart has one sentence to paste into Claude Code or Codex, which installs Figloo by following `docs/agent-install.md` and walks you through the steps only you can do.",
   "",
-  "The [README](https://github.com/g761007/figloo#readme) has the details and troubleshooting.",
+  "The [README](https://github.com/g761007/figloo#readme) has the details, and [docs/troubleshooting.md](https://github.com/g761007/figloo/blob/main/docs/troubleshooting.md) the common problems.",
   // The section's Added, Changed, and Fixed headings sit one level below this one.
   ...(changes ? ["", "## Changes", "", changes] : []),
 ];

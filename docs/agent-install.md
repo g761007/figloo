@@ -86,6 +86,6 @@ Tell the user that Figloo reads Figma through its web UI, which needs, in the br
 
 ## 8. Hand over
 
-The MCP server loads only in a new agent session. Tell the user to start one, open a Figma design file in the browser, and ask the agent to call Figloo's `get_status`. It should report the extension as connected and the tab as `READY`; otherwise its `hint` says what to fix. The [README](https://github.com/g761007/figloo#troubleshooting) lists common problems.
+The MCP server loads only in a new agent session. Tell the user to start one, open a Figma design file in the browser, and ask the agent to call Figloo's `get_status`. It should report the extension as connected and the tab as `READY`; otherwise its `hint` says what to fix. [docs/troubleshooting.md](https://github.com/g761007/figloo/blob/main/docs/troubleshooting.md) lists common problems.
 
 To update Figloo later, run these steps again, then reload the extension on `chrome://extensions`.

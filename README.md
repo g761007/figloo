@@ -2,11 +2,30 @@
 
 English | [繁體中文](README.zh-TW.md)
 
-Figloo is a Chrome extension plus a local MCP server that lets a coding agent detect an open Figma design tab, use the user's current selection as an anchor, and explore nearby layers and their properties through the Figma web UI, without scanning the whole document. It only reads what the DOM and web UI expose: no Figma REST API, official Figma MCP, Figma plugin, or private internal state. It may change the view and selection, but it never edits the design.
+Figloo is a local Figma bridge and design context layer for coding agents. It lets an agent explore the design you have open in your browser, starting from your selection: walk the layers around it, read layout and visual properties exactly as Figma's inspection panel shows them, take screenshots, export icons and images, and save snapshots of whole screens to implement from. It is a Chrome extension plus a local MCP server, and it only reads what Figma's web UI shows: no Figma REST API, official Figma MCP, Figma plugin, or private internal state. It may change the view and selection, but it never edits the design.
+
+## Why Figloo
+
+- **View access is enough.** Figma's REST API and its official MCP server set their limits by seat: a View or Collab seat gets up to 6 calls a month ([REST API](https://developers.figma.com/docs/rest-api/rate-limits), [MCP server](https://developers.figma.com/docs/figma-mcp-server/rate-limits-access/), as of October 2026). Figloo reads the Figma tab you already have open, so it needs no token or paid seat, and it has no monthly quota.
+- **It starts from what you point at.** The agent begins at the layers you selected, and every call reads a bounded part of the file instead of scanning all of it.
+- **Read once, implement from the snapshot.** `snapshot_layer` reads a whole screen, up to 2,000 layers, and saves it. The agent then looks up values, summarizes the colors, text styles, and spacing it uses, and compares it with the previous snapshot, without touching Figma again.
+- **Local.** There is no Figloo server or account, and the bridge listens only on `127.0.0.1`. See [Privacy and security](#privacy-and-security).
+
+If your team has Dev or Full seats, Figma's own MCP server reads the file directly and is the more direct route. Figloo is for engineers with view access who want their coding agent to work from the design in front of them.
+
+## How it works
+
+```text
+Coding agent ──stdio (MCP)──▶ Figloo MCP server ──ws://127.0.0.1:47129──▶ Figloo extension ──DOM──▶ Figma tab
+```
+
+The agent calls Figloo's tools over MCP. The server, which the agent starts, passes each call to the extension over a local WebSocket. The extension's content script reads the Figma tab's layers panel and inspection panel, selecting and expanding layers the way you would, and puts your selection back afterwards. The server saves snapshots under `~/.figloo/snapshots/`.
 
 ## Status
 
-The MVP (milestones M0 to M4 of the [plan](docs/plans/2026-09-30-figloo-mvp-plan.md)) is complete. An agent can list the pages of a Figma file, open a page or start from the user's selection, walk the layer tree one bounded page at a time, read what Figma's inspection panel shows, take screenshots, and export icons and images. To implement a page, `snapshot_layer` reads every layer of it at once, with a screenshot, and saves the result so that `query_snapshot` can look layers up without touching Figma again. Figloo targets engineers with view access to a file; it never edits the design.
+Figloo covers the design-to-code exploration workflow: listing a file's pages, starting from the user's selection, walking the layer tree a bounded page at a time, reading the inspection panel, taking screenshots, exporting assets one at a time or in batches, and taking, querying, summarizing, and comparing snapshots of whole screens. It targets engineers with view access to a file.
+
+Figloo is developed and tested against real Figma pages. Its version is still 0.x, so tools and results may change between minor versions: [CHANGELOG.md](CHANGELOG.md) lists what each release changed, and [ROADMAP.md](ROADMAP.md) what comes next.
 
 - [docs/mcp-tools.md](docs/mcp-tools.md): every tool's parameters, results, and error codes.
 - [docs/compatibility/](docs/compatibility/README.md): supported browsers and Figma settings, known limitations, and what was verified on real Figma pages.
@@ -25,7 +44,7 @@ The agent checks Node.js, downloads the latest release and verifies its checksum
 2. Paste the token and port into the extension's options page.
 3. In Figma, use the English UI and turn on "Adapt content for screen readers".
 
-Then start a new agent session, open a Figma design file, and ask the agent to call `get_status`. [Install](#install) and [Set up](#set-up) describe the same steps by hand.
+Then start a new agent session, open a Figma design file, and ask the agent to call `get_status`. [docs/installation.md](docs/installation.md) describes the same steps by hand.
 
 ## Requirements
 
@@ -36,103 +55,11 @@ Then start a new agent session, open a Figma design file, and ask the agent to c
 
 ## Install
 
-### From release files
-
-`pnpm package` builds three files into `release/` that can be handed to someone else:
-
-| File | What to do with it |
-|---|---|
-| `figloo-extension-<version>.zip` | Unzip it into a folder you keep; the browser loads the extension from there. |
-| `figloo-mcp-<version>.mjs` | Keep it anywhere; it is the whole MCP server and needs only Node.js 24. |
-| `figloo-mcp-<version>.mcpb` | The same server as an MCP bundle. The Claude Code plugin downloads it from the GitHub release of its version, so attach it to that release. |
-
-Then follow [Set up](#set-up), using the unzipped folder and the `.mjs` file in place of the paths from a checkout.
-
-### From source
-
-```sh
-pnpm install
-pnpm build
-```
-
-`pnpm build` runs the workspace packages in dependency order; run it before `typecheck` and `test`, because both other packages consume the built output of `@figloo/protocol`. pnpm may warn that it ignored esbuild's build script; the build does not need it.
+The [Quickstart](#quickstart) has your agent install the latest release. To install by hand, from the release files or from source, see [docs/installation.md](docs/installation.md#install).
 
 ## Set up
 
-### 1. Load the extension
-
-1. Open `chrome://extensions` (or `arc://extensions`), turn on the Developer mode toggle, and click "Load unpacked".
-2. Select `apps/extension/dist`, or the folder you unzipped the release file into.
-
-The extension ID is pinned by the `key` field in `apps/extension/static/manifest.json`, so it is the same on every machine (`offikfnknfkgijgianpfcghbccmkcjnb`). The local server only accepts connections from that ID.
-
-The extension asks for access to all sites (`<all_urls>`) because Chrome only lets an extension screenshot a tab without a click on its icon when it has that permission. Its content script still runs only on Figma design files.
-
-`export_asset` receives Figma's exported file inside the page: for the length of one export, the extension wraps the functions Figma uses to start a download, takes the file, and puts the originals back, so the browser saves nothing. The `downloads` permission is only for the fallback: when the file cannot be taken in the page, the extension watches for the browser's own download of that export and reports where it was saved.
-
-After updating Figloo, run `pnpm build` and click the reload button on the extension's card, so the browser loads the new files and any new permission.
-
-### 2. Register the MCP server with your agent
-
-For Claude Code, the Figloo plugin installs the MCP server together with the [figloo-implement skill](#the-figloo-implement-skill):
-
-```text
-/plugin marketplace add g761007/figloo
-/plugin install figloo@figloo
-```
-
-The plugin downloads the server bundle from the GitHub release of its version, so the release has to be reachable from your machine. A Figloo server you registered by hand would run next to the plugin's in every session; remove it with `claude mcp remove figloo -s user`.
-
-Without the plugin, register the server once for all your projects, then start a new session:
-
-```sh
-claude mcp add -s user figloo -- node /absolute/path/to/figloo/apps/mcp/dist/index.js
-```
-
-With the release file, use its path instead, for example `node /absolute/path/to/figloo-mcp-0.4.1.mjs`. In a session, `/mcp` shows whether the server connected.
-
-For other MCP clients, a configuration like this starts the server (replace the path):
-
-```json
-{
-  "mcpServers": {
-    "figloo": {
-      "command": "node",
-      "args": ["/absolute/path/to/figloo/apps/mcp/dist/index.js"]
-    }
-  }
-}
-```
-
-`snapshot_layer` can take up to three minutes. Claude Code waits long enough by default; if you set `MCP_TOOL_TIMEOUT` or `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`, keep them above 200000 milliseconds. Codex stops a tool call after 60 seconds by default, so raise `tool_timeout_sec` for Figloo in `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.figloo]
-command = "node"
-args = ["/absolute/path/to/figloo/apps/mcp/dist/index.js"]
-tool_timeout_sec = 300
-```
-
-The server speaks MCP over stdio and, in the same process, listens on `ws://127.0.0.1:47129` for the extension. Set `FIGLOO_PORT` or edit `port` in the config file to change the port. If another program holds the port, `get_status` reports it instead of the server crashing.
-
-Several agent sessions can use Figloo, one at a time. Each session starts its own server; one of them, the holder, listens on the port and serves the extension, and the others stand by. When a tool in a standby session needs Figma, that session takes the extension over once the holder has been idle for 10 seconds. While the holder is working, the tool returns `BUSY` and names the session Figloo is working for. When the holder exits, a standby session takes over on its own within a few seconds. Sessions are named after the agent, the project folder, and when they started, for example `Claude Code · shop (started 09:15)`; `get_status`, the toolbar icon, the popup, and the options page show which one Figloo serves. Servers from Figloo 0.1.0 cannot hand over, so restart sessions that still run one.
-
-### 3. Pair once
-
-```sh
-node apps/mcp/dist/index.js pair
-```
-
-With the release file, run `node figloo-mcp-<version>.mjs pair`.
-
-This prints the pairing token and port stored in `~/.figloo/config.json` (created on first run, mode 0600; override the directory with `FIGLOO_CONFIG_DIR`). Open the extension's options page, paste both values, and click "Save and connect". From then on the extension connects automatically whenever the MCP server is running, and reconnects after either side restarts.
-
-### 4. Prepare Figma
-
-- Sign in to Figma in the browser that has the extension. View access to the file is enough.
-- Use Figma's English UI, and keep the UI expanded: Cmd+\ toggles it, and a minimized UI hides the layers panel.
-- Turn on "Adapt content for screen readers" under Main menu, Preferences, Accessibility settings. Screenshots then crop to the layer's position on screen, `get_visual_neighbors` can tell where layers are, and Figloo can put your zoom and place on the canvas back after a screenshot.
-- Keep the Figma tab on screen while the agent works; next to the agent's window is enough. Figma ignores selection and expansion in background tabs, so Figloo reports `TAB_IN_BACKGROUND` instead of guessing. A page snapshot waits instead: it pauses while the tab is in the background and goes on when it is back.
+Setting up takes four steps: load the extension, register the MCP server with your agent (in Claude Code, the plugin also installs the [figloo-implement skill](#the-figloo-implement-skill)), pair once, and prepare Figma. [docs/installation.md](docs/installation.md#set-up) walks through them and explains the permissions the extension asks for.
 
 ## Toolbar icon
 
@@ -195,7 +122,19 @@ The Claude Code plugin includes it. To use it without the plugin, copy or link t
 | Claude Code | `~/.claude/skills/figloo-implement` | `/figloo-implement` |
 | Codex | `~/.agents/skills/figloo-implement` | `$figloo-implement` |
 
-Codex also needs the MCP server registered in `~/.codex/config.toml`, as shown in [Register the MCP server](#2-register-the-mcp-server-with-your-agent).
+Codex also needs the MCP server registered in `~/.codex/config.toml`, as shown in [Register the MCP server](docs/installation.md#2-register-the-mcp-server-with-your-agent).
+
+## Troubleshooting
+
+Start with `get_status`: ask the agent to call it, and its `hint` says what to fix. [docs/troubleshooting.md](docs/troubleshooting.md) lists where else to look and the common problems, from `DISCONNECTED` to `BUSY`.
+
+## Privacy and security
+
+Figloo runs on your machine. The MCP server listens only on `127.0.0.1` and accepts only the Figloo extension, identified by its pinned ID and the pairing token. Figloo has no server or account of its own, and it hands design content only to the agent that called the tool; what the agent does with it, such as sending it to its model provider, is up to the agent. Snapshots stay in `~/.figloo/snapshots/`. [SECURITY.md](SECURITY.md) has the details and how to report a vulnerability.
+
+## Roadmap
+
+[ROADMAP.md](ROADMAP.md) lists what comes next, by area: reliability, developer experience, design intelligence, performance, compatibility, and distribution.
 
 ## Development
 
@@ -215,7 +154,7 @@ claude plugin eval plugins/figloo --mocks off --ablation none   # whether the sk
 
 `pnpm test` fails when `docs/mcp-tools.md` no longer matches the tools the server registers.
 
-GitHub Actions runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml) on every push to `main` and every pull request: build, typecheck, the unit tests one package at a time, and packaging. The integration tests below need a browser and a Figma link, so they only run locally.
+GitHub Actions runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml) on every push to `main` and every pull request: build, typecheck, the unit tests one package at a time, and packaging. The integration tests below need a browser and a Figma link, so they run locally, and once a day in [`.github/workflows/figma-canary.yml`](.github/workflows/figma-canary.yml) against a public test file, to catch changes in Figma's web UI early.
 
 To release a version:
 
@@ -225,7 +164,7 @@ To release a version:
 
 Running the Release workflow by hand from the Actions tab is a dry run: it keeps the files and the notes as an artifact and publishes nothing.
 
-The integration test (`tests/integration/get-status.e2e.mjs`) launches Playwright's Chromium with the built extension, pairs it through the options page, opens a Figma file as a guest, and checks `get_status` before and after restarting the MCP process, and while a second server takes the extension over and exits again. It needs network access, a built workspace, the browser download, and a Figma design file that anyone with the link can view. The link is not committed: copy the example file to `tests/integration/.env.local`, which git ignores, and fill it in, or set `FIGLOO_E2E_FIGMA_URL` instead:
+The integration test (`tests/integration/get-status.e2e.mjs`) launches Playwright's Chromium with the built extension, pairs it through the options page, opens a Figma file as a guest, and checks `get_status` before and after restarting the MCP process, and while a second server takes the extension over and exits again. It needs network access, a built workspace, the browser download, and a Figma design file that anyone with the link can view and that has at least two pages. The link is not committed: copy the example file to `tests/integration/.env.local`, which git ignores, and fill it in, or set `FIGLOO_E2E_FIGMA_URL` instead:
 
 ```sh
 pnpm exec playwright install chromium
@@ -233,6 +172,8 @@ cp tests/integration/.env.example tests/integration/.env.local
 ```
 
 Branded Google Chrome 137 and newer ignore `--load-extension`, which is why the test does not use the installed Chrome. A second script, `tests/integration/explore.e2e.mjs`, injects the layer navigation code into a visible guest Figma tab and checks expanding, listing, paging, climbing past same-named layers, and restoring the panel, so the file needs two same-named sibling layers with children. Set `FIGLOO_E2E_HEADED=1` to watch them.
+
+The Figma canary workflow runs both scripts every day, and on demand from the Actions tab. It reads the link from the repository secret `FIGLOO_CANARY_FIGMA_URL` and fails when the secret is missing. Its logs are public and show layer names, so the file must be one made for the test, never a real design.
 
 The core-scenario acceptance run needs a signed-in browser, so it is not part of `pnpm test`. With the extension paired, the Figma tab on screen, no other Figloo server running, and one layer inside a card selected, it runs the whole flow ten times and checks that every run returns the same result:
 
@@ -248,12 +189,13 @@ node tests/acceptance/core-scenario.mjs
 apps/extension/      Chrome extension (Manifest V3): @figloo/extension
 apps/mcp/            Local MCP server over stdio plus the WebSocket bridge: @figloo/mcp
 packages/protocol/   Shared zod schemas, types, and constants: @figloo/protocol
+docs/                Installation, troubleshooting, the tool contract, and the agent install steps
 docs/plans/          Planning documents
 docs/compatibility/  What was verified on real Figma pages, and known limits
 plugins/figloo/      Claude Code plugin: the figloo-implement skill, its evals, and the server bundle it downloads
 .claude-plugin/      Marketplace manifest, so the repository can be added with /plugin marketplace add
 scripts/             Release packaging, the release check, and the release notes
-.github/workflows/   CI, and the release workflow a version tag starts
+.github/workflows/   CI, the release workflow a version tag starts, and the daily Figma canary
 tests/fixtures/      Captured Figma markup and export files for regression tests
 tests/integration/   End-to-end tests against real Chromium and Figma
 tests/acceptance/    Core-scenario acceptance run for a signed-in browser
@@ -263,32 +205,3 @@ release/             Output of pnpm package (not committed)
 ## License
 
 Figloo is released under the [MIT License](LICENSE).
-
-## Troubleshooting
-
-Where to look:
-
-- **`get_status`**: ask the agent to call it. It reports the bridge, the extension connection, and each Figma tab's readiness with the reason, plus a `hint` with the next step.
-- **Toolbar icon and popup**: the tooltip and the popup show the same readiness and agent connection for the current tab. "Diagnostics" in the popup gives a report for a bug report, without file, page, or layer names.
-- **Options page**: shows the connection state, the agent session Figloo serves, the last handover between sessions, and the last connection error.
-- **Service worker console**: on `chrome://extensions` (or `arc://extensions`), click "service worker" on the Figloo card.
-- **Server log**: the server writes one line per call to stderr, with counts, UI operations, and time, but no layer names. To read it, run the server by hand in a terminal, for example `node apps/mcp/dist/index.js`, while no agent session runs one.
-
-Common problems:
-
-- `get_status` says `DISCONNECTED`: make sure the extension is loaded and paired, then check the options page. It shows the last connection error, for example a refused token or an unreachable port.
-- The options page says `unpaired`: the token field is empty. Run the `pair` command again and paste the values.
-- A tab is `DEGRADED` with "guest session": you are not signed in to Figma in that browser profile, so layers cannot be selected.
-- A tab is `DEGRADED` with "Figma UI is minimized": the layers panel is not rendered while the UI is hidden. Press Cmd+\ or click the expand button next to the file name.
-- A tab stays `LOADING` or becomes `INCOMPATIBLE` right after installing the extension: reload the Figma tab so the content script is injected.
-- `export_asset` returns `EXPORT_BLOCKED`: Figma handed over no file and the browser started no download. If the browser blocked repeated downloads from figma.com, allow them in the site settings and retry.
-- `export_asset` returns `LAYER_HIDDEN`: the layer, or a layer it is inside, is hidden in Figma, and Figma exports nothing for it, even from its own Export button.
-- `export_asset` returns `EXPORT_PENDING`: the browser is waiting to save the fallback download, usually behind a Save dialog. Confirm it, or turn off asking where to save each file.
-- `snapshot_layer` returns `complete: false`: the layer has more than one call can read in three minutes. Call it again with the same root until `complete` is true; `query_snapshot` answers `SNAPSHOT_INCOMPLETE` until then.
-- `snapshot_layer` returns `SUBTREE_TOO_LARGE`: the layer holds more than 2,000 layers. Snapshot one of the children the message lists instead.
-- `snapshot_layer` fails after 60 seconds in Codex: raise `tool_timeout_sec`, see [Register the MCP server](#2-register-the-mcp-server-with-your-agent).
-- A tool returns `BUSY` and names another session: Figloo is serving that session, which is working or used Figloo in the last 10 seconds. Retry in a moment, or finish the work there first.
-- `get_status` or a tool says the port is held by a session running an older Figloo: that session started Figloo 0.1.0, which cannot hand over. Restart that session, or close it.
-- A tool says the session holding Figloo did not answer: that session's server is stuck. Close that session.
-- With the plugin installed, no Figloo tools show up: the plugin could not download the server bundle for its version. `/plugin` lists the error; check that the GitHub release of that version has the `.mcpb` file and can be reached from your machine.
-- The agent sees two sets of Figloo tools: a Figloo server registered by hand runs next to the plugin's. Remove it with `claude mcp remove figloo -s user`.
