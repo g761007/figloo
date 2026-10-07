@@ -41,10 +41,16 @@ export class DomRowSource implements RowSource {
   }
 
   rowCount(): number {
-    // Rows are absolutely positioned inside a container sized to the whole flat list.
+    // Rows are absolutely positioned inside a container sized to the whole flat list. Section headers
+    // are shorter than layer rows, so the count goes on from the bottom of the last rendered row.
     const container = layersPanel(this.doc)?.querySelector('[role="row"][aria-rowindex]')?.parentElement;
     const height = container instanceof HTMLElement ? parseFloat(container.style.height) : Number.NaN;
-    if (Number.isFinite(height)) return Math.round(height / this.rowHeight());
+    if (Number.isFinite(height)) {
+      const last = this.renderedRowElements().at(-1);
+      const bottom = last ? last.top + last.height : Number.NaN;
+      if (last && Number.isFinite(bottom)) return last.rowIndex + Math.max(0, Math.round((height - bottom) / this.rowHeight()));
+      return Math.round(height / this.rowHeight());
+    }
     const scroller = this.scroller();
     return scroller ? Math.floor(scroller.scrollHeight / this.rowHeight()) : 0;
   }
@@ -53,7 +59,7 @@ export class DomRowSource implements RowSource {
     const scroller = this.scroller();
     if (!scroller) return this.rows();
     const height = this.rowHeight();
-    const top = (rowIndex - 1) * height;
+    const top = this.estimatedTop(rowIndex, height);
     const target = align === "start" ? top : align === "end" ? top + height - scroller.clientHeight : top + height / 2 - scroller.clientHeight / 2;
     this.scrollTo(scroller, target);
     await this.waitFor(() => this.rows().some((row) => row.rowIndex === rowIndex));
@@ -204,10 +210,33 @@ export class DomRowSource implements RowSource {
     scroller.dispatchEvent(new Event("scroll"));
   }
 
+  /** The height of a layer row; section headers are shorter. */
   private rowHeight(): number {
-    const row = layersPanel(this.doc)?.querySelector('[role="row"][aria-rowindex]');
+    const row = layersPanel(this.doc)?.querySelector('[data-testid$="-layers-panel-row"]')?.closest('[role="row"]');
     const height = row instanceof HTMLElement ? parseFloat(row.style.getPropertyValue("--fpl-tree-grid-row-height")) || row.offsetHeight : 0;
     return height > 0 ? height : DEFAULT_ROW_HEIGHT;
+  }
+
+  /** Rendered rows with their place in the list container, from their inline styles, by rowIndex. */
+  private renderedRowElements(): { rowIndex: number; top: number; height: number }[] {
+    const rows = [...(layersPanel(this.doc)?.querySelectorAll('[role="row"][aria-rowindex]') ?? [])].filter((el) => el instanceof HTMLElement);
+    return rows
+      .map((el) => ({
+        rowIndex: Number(el.getAttribute("aria-rowindex")),
+        top: (parseFloat(el.style.top) || 0) + Number(/translateY\((-?[\d.]+)px\)/.exec(el.style.transform)?.[1] ?? Number.NaN),
+        height: parseFloat(el.style.height),
+      }))
+      .sort((a, b) => a.rowIndex - b.rowIndex);
+  }
+
+  /**
+   * Where row `rowIndex` starts in the list: counted from the nearest rendered row, since section
+   * headers above it would make a count from the top too low. Falls back to uniform rows.
+   */
+  private estimatedTop(rowIndex: number, height: number): number {
+    const placed = this.renderedRowElements().filter((row) => Number.isFinite(row.top));
+    const nearest = placed.sort((a, b) => Math.abs(a.rowIndex - rowIndex) - Math.abs(b.rowIndex - rowIndex))[0];
+    return nearest ? nearest.top + (rowIndex - nearest.rowIndex) * height : (rowIndex - 1) * height;
   }
 
   private async waitFor(condition: () => boolean, timeoutMs = RENDER_TIMEOUT_MS): Promise<boolean> {

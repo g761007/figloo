@@ -21,6 +21,7 @@ function repoRoot(): string {
 }
 
 const FIXTURE = readFileSync(join(repoRoot(), "tests/fixtures/figma-layers-panel.html"), "utf8");
+const SECTIONS_FIXTURE = readFileSync(join(repoRoot(), "tests/fixtures/figma-layers-panel-sections.html"), "utf8");
 const FILE_URL = "https://www.figma.com/design/AbCdEfGhIjKlMnOpQrStUv/Sample-App?node-id=873-45095";
 
 beforeEach(() => {
@@ -51,6 +52,59 @@ describe("layers panel parsing on captured Figma markup", () => {
       el.setAttribute("style", el.getAttribute("style")!.replace(color, "color: var(--color-text-component);"));
     }
     expect(readRenderedRows(document).some((row) => row.hidden)).toBe(false);
+  });
+});
+
+describe("section headers on captured Figma markup", () => {
+  beforeEach(() => {
+    document.documentElement.innerHTML = new DOMParser().parseFromString(SECTIONS_FIXTURE, "text/html").documentElement.innerHTML;
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL("https://www.figma.com/design/AbCdEfGhIjKlMnOpQrStUv/Sample-App?node-id=0-1");
+  });
+
+  it("reads the Fixed and Scrolls rows as section headers, not layers", () => {
+    const rows = readRenderedRows(document);
+    expect(rows.filter((row) => row.header).map(({ name, level, rowIndex }) => ({ name, level, rowIndex }))).toEqual([
+      { name: "Fixed", level: 1, rowIndex: 2 },
+      { name: "Scrolls", level: 1, rowIndex: 5 },
+    ]);
+    expect(rows.filter((row) => !row.header)).toHaveLength(35);
+    // Figma leaves the headers out of the sibling positions and counts.
+    expect(rows.find((row) => row.id === "0:677")).toMatchObject({ rowIndex: 3, level: 1, position: 1, setSize: 18 });
+    expect(rows.find((row) => row.id === "0:580")).toMatchObject({ rowIndex: 6, level: 1, position: 3, setSize: 18 });
+  });
+
+  it("lists every child of a frame whose layers sit under section headers", async () => {
+    const explorer = new Explorer("page-1", document, window);
+    const expect_ = explorer.identity();
+    const all = await explorer.listNeighbors({ expect: expect_, ref: "0:78", relation: "children", from: 1, limit: 50 });
+    expect(all.nodes.map((node) => node.position)).toEqual(Array.from({ length: 18 }, (_, i) => i + 1));
+    expect(all.nodes.every((node) => node.parentRef === "0:78" && node.siblingCount === 18)).toBe(true);
+    expect(all).toMatchObject({ total: 18, hasMore: false, stopReason: "complete" });
+
+    const page = await explorer.listNeighbors({ expect: expect_, ref: "0:78", relation: "children", from: 3, limit: 4, after: all.nodes[1]!.ref });
+    expect(page.nodes.map((node) => node.ref)).toEqual(all.nodes.slice(2, 6).map((node) => node.ref));
+  });
+
+  it("climbs from a layer below a header to its frame", async () => {
+    const explorer = new Explorer("page-1", document, window);
+    const expect_ = explorer.identity();
+    const ancestors = await explorer.listNeighbors({ expect: expect_, ref: "0:580", relation: "ancestors", from: 1, limit: 20 });
+    expect(ancestors.nodes.map((node) => node.ref)).toEqual(["0:78"]);
+    const siblings = await explorer.listNeighbors({ expect: expect_, ref: "0:580", relation: "siblings", from: 1, limit: 50 });
+    expect(siblings.nodes).toHaveLength(18);
+  });
+
+  it("counts the rows from where they are drawn, since header rows are shorter than layer rows", () => {
+    // Scrolled so that the first rendered row is a header: 24 px tall, where layer rows are 32 px.
+    document.querySelector('[data-testid="0:78-layers-panel-row"]')!.closest('[role="row"]')!.remove();
+    expect(new DomRowSource(document).rowCount()).toBe(37);
+  });
+
+  it("scrolls to where a row is drawn, not to where uniform rows would put it", async () => {
+    const scroller = document.querySelector('[data-testid="objects-panel"]')!.parentElement!;
+    await new DomRowSource(document).reveal(37, "start");
+    // Row 37 starts at 1136 px: 35 layer rows of 32 px and two headers of 24 px come before it, not 36 rows of 32 px.
+    expect(scroller.scrollTop).toBe(1136);
   });
 });
 

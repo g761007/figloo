@@ -230,6 +230,9 @@ try {
   const tree = await client.callTool({ name: "get_neighbors", arguments: { contextId: pageContext.contextId, ref: withChildren.ref, relation: "children", depth: 2, limit: 30 } });
   assert(!tree.isError, `children with depth 2 (got ${JSON.stringify(tree.content)})`);
   const treeNodes = tree.structuredContent.nodes;
+  // An empty page that only offers more means the read stopped before the first child, as it did
+  // below Figma's "Fixed" and "Scrolls" section headers before 0.4.2.
+  assert(treeNodes.length > 0 && ["complete", "limit"].includes(tree.structuredContent.stopReason), `children of ${withChildren.ref} are listed (got ${treeNodes.length} layers, stopReason ${tree.structuredContent.stopReason})`);
   const firstLevel = new Set(treeNodes.filter((n) => n.parentRef === withChildren.ref).map((n) => n.ref));
   assert(treeNodes.every((n) => n.parentRef === withChildren.ref || firstLevel.has(n.parentRef)), "every layer in the subtree hangs off the ref or its children");
   log(`subtree of ${withChildren.ref}: ${treeNodes.length} layers, ${firstLevel.size} direct children, hasMore=${tree.structuredContent.hasMore}`);

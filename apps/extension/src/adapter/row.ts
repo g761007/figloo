@@ -20,6 +20,12 @@ export interface Row {
    * instances and of layers inside them turn a dimmer purple instead (seen in Arc on 2026-10-02).
    */
   hidden: boolean;
+  /**
+   * A section header such as "Fixed" or "Scrolls", which Figma puts among the children of a frame
+   * whose layers stay put while it scrolls (seen on 2026-10-07). It is not a layer: it has no ID and
+   * no sibling position, and it is shorter than a layer row.
+   */
+  header?: boolean;
 }
 
 const ROW_ID_SUFFIX = "-layers-panel-row";
@@ -33,7 +39,7 @@ export function layersPanel(root: ParentNode): Element | null {
 export function parseRow(el: Element): Row | null {
   const idHolder = el.querySelector(`[data-testid$="${ROW_ID_SUFFIX}"]`);
   const testId = idHolder?.getAttribute("data-testid");
-  if (!testId) return null;
+  if (!testId) return parseHeader(el);
   const numbers = ["aria-level", "aria-posinset", "aria-setsize", "aria-rowindex"].map((name) => Number(el.getAttribute(name)));
   if (numbers.some((n) => !Number.isInteger(n))) return null;
   const [level, position, setSize, rowIndex] = numbers;
@@ -53,7 +59,15 @@ export function parseRow(el: Element): Row | null {
   };
 }
 
-/** Rows currently rendered in the virtualized layers panel, in list order. */
+function parseHeader(el: Element): Row | null {
+  const label = el.querySelector('[data-testid="section-header-label"]');
+  const [level, rowIndex] = ["aria-level", "aria-rowindex"].map((name) => Number(el.getAttribute(name)));
+  if (!label || !Number.isInteger(level) || !Number.isInteger(rowIndex)) return null;
+  const name = label.textContent?.trim() ?? "";
+  return { id: "", name, type: null, level, position: 0, setSize: 0, rowIndex, hasChildren: false, expanded: false, selected: false, hidden: false, header: true };
+}
+
+/** Rows currently rendered in the virtualized layers panel, in list order, section headers included. */
 export function readRenderedRows(root: ParentNode): Row[] {
   const panel = layersPanel(root);
   if (!panel) return [];

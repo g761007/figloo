@@ -18,21 +18,25 @@ Current release: 0.4.1.
 
 A new tool is added only for a new kind of operation. Another filter over data Figloo already reads goes into `query_snapshot` or an existing parameter.
 
-## Now: documentation and the Figma canary
+## Done after 0.4.1: documentation and the Figma canary
 
-These change no released files, so they ship without a release.
+These changed no released files, so they shipped without a release.
 
 - A product-first README, with installation and troubleshooting in their own documents, in English and Traditional Chinese.
 - This roadmap and [SECURITY.md](SECURITY.md).
 - A daily canary on GitHub Actions that runs the integration tests against a public Figma file as a guest, to notice changes in Figma's web UI before users do.
 
-## 0.4.2: stabilization
+## 0.4.2: what the canary found first
 
-- **Fail loudly in the inspection panel.** When a section is present but Figloo cannot read it, report that instead of an empty value. Export settings come first: Figma changed them between 0.4.0 and 0.4.1, and snapshots taken meanwhile reported every layer as having none.
+On its first green run, the canary showed that Figloo stopped at the "Fixed" and "Scrolls" header rows Figma puts among the children of a frame with layers that stay put while it scrolls, and that the integration tests passed anyway with no layers read. 0.4.2 fixes the reading and makes the tests fail on reads that stop early.
+
+## 0.4.3: stabilization
+
+- **Fail loudly in the inspection panel.** When a section is present but Figloo cannot read it, report that instead of an empty value. Export settings come first: Figma changed them between 0.4.0 and 0.4.1, and snapshots taken meanwhile reported every layer as having none. A file opened with edit access, where Figloo cannot read the inspection panel at all and snapshots come back with no properties, must say so too.
 - **A signed-in canary**, run locally with a dedicated test account, for what only appears once a layer is selected, such as the inspection panel and the export section. A guest cannot select layers, so the daily canary does not reach them.
 - **Internal refactoring** with no change in behavior: split `apps/extension/src/adapter/ops.ts` and `apps/extension/src/background.ts`, and possibly `packages/protocol/src/index.ts`.
 
-Refactoring alone makes no release; 0.4.2 ships with the first item. A fix for a Figma change the canary finds ships at once, as the next patch.
+Refactoring alone makes no release; 0.4.3 ships with the first item. A fix for a problem the canary finds ships at once, as the next patch, as 0.4.2 did.
 
 ## 0.5.0: reliability and developer experience
 

@@ -13,6 +13,10 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 - The README starts with what Figloo is for and how it works. Installation and troubleshooting moved to `docs/installation.md` and `docs/troubleshooting.md`, each also in Traditional Chinese.
 
+### Fixed
+
+- For a frame with layers that stay put while it scrolls, Figma's layers panel lists its children under "Fixed" and "Scrolls" header rows. Figloo stopped at the first header: `get_neighbors` returned no children, siblings, or ancestors for the layers of such a frame, only `hasMore: true` and a cursor, and `snapshot_layer` could not read it. Header rows are now passed over, and since they are shorter than layer rows, the rows of the panel are counted and scrolled to from where Figma draws them. The daily canary found this, and the integration tests now fail when a read stops early instead of passing with fewer layers.
+
 ## [0.4.1] - 2026-10-06
 
 ### Fixed

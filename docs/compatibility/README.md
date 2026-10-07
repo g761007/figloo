@@ -1,6 +1,6 @@
 # 相容性與已知限制
 
-最後更新：2026-10-06。各項結論的細節見文末各階段的驗證紀錄。
+最後更新：2026-10-07。各項結論的細節見文末各階段的驗證紀錄。
 
 ## 瀏覽器與作業系統
 
@@ -8,9 +8,10 @@
 |---|---|---|
 | Arc 1.166.0（Chromium 154），macOS 27.0 | 已驗證。已登入、檢視權限、英文 UI 下，全部工具、popup 與匯出的直接交付都跑通 | M1 到 M3、匯出、popup 與 M4 驗收紀錄 |
 | Chrome for Testing 153.0.8010.12（Playwright，headless），macOS 27.0 | 自動化驗證。訪客分頁下的連線、分頁狀態、工具列圖示、頁面列舉、子樹、整頁截圖、popup 與錯誤處理 | 整合測試 |
+| Chrome for Testing（Playwright，headless），Ubuntu，GitHub Actions | 自動化驗證，每天由 Figma canary 執行同一組訪客整合測試；2026-10-07 起 | `.github/workflows/figma-canary.yml` |
 | Google Chrome 正式版 | 未驗證。Chrome 137 起不接受以命令列載入 extension，所以整合測試改用 Chrome for Testing；手動「載入未封裝項目」預期可用 | |
 | 其他 Chromium 瀏覽器，例如 Edge 或 Brave | 未驗證 | |
-| Windows 與 Linux | 未驗證。程式本身不依賴 macOS；打包需要 `zip` 指令 | |
+| Windows 與 Linux | Windows 未驗證；Linux 只有 GitHub Actions 那一列的訪客整合測試。程式本身不依賴 macOS；打包需要 `zip` 指令 | |
 | Figma 桌面 App | 不支援。Extension 只在瀏覽器中執行 | |
 
 ## Figma 條件
@@ -19,7 +20,7 @@
 |---|---|
 | 已登入、檢視權限 | 目標情境，已驗證 |
 | 訪客，未登入 | 有限。無法選取圖層，所以沒有錨點、屬性讀取與匯出；頁面列舉、進入頁面、子樹與整頁截圖可用 |
-| 編輯權限 | 不在目標範圍，未驗證 |
+| 編輯權限 | 不在目標範圍。2026-10-07 在自己的檔案上實測，屬性面板讀不到：快照的屬性與匯出設定全部是空的，每層都等到逾時 |
 | 英文 UI | 已驗證 |
 | 其他 UI 語言 | 未驗證。圖層類型與屬性欄位依英文標籤解析 |
 | 開啟「Adapt content for screen readers」 | 建議開啟。截圖依圖層在畫面上的位置裁切；未開啟時改以畫布中心推估，這種情況的效果未驗證。截圖與快照結束後還原縮放比例與畫面位置，也需要這項設定 |
@@ -33,7 +34,7 @@
 | `list_pages` | 已驗證 | 否 |
 | `explore_page` | 已驗證 | 切換頁面時需要 |
 | `get_anchor` | 已驗證，包含多選 | 否 |
-| `get_neighbors` | 已驗證 | 展開收合的圖層時需要 |
+| `get_neighbors` | 已驗證，包括子層之間有「Fixed」與「Scrolls」分組標題的 frame | 展開收合的圖層時需要 |
 | `get_visual_neighbors` | 已驗證，需要開啟「Adapt content for screen readers」 | 需要 |
 | `inspect_nodes` | 已驗證 | 需要 |
 | `capture` | 已驗證；結束後還原縮放比例與畫面位置，需要開啟「Adapt content for screen readers」 | 需要 |
@@ -80,6 +81,7 @@
 - [Popup 的診斷資訊與 bug report 表單](2026-10-02-diagnostics.md)
 - [匯出區塊的新版格式選單](2026-10-06-export-format-select.md)
 - [同格式多倍率時只交回要求的倍率](2026-10-06-export-scale-files.md)
+- [圖層面板的「Fixed」與「Scrolls」分組標題](2026-10-07-section-header-rows.md)
 - [分段續讀的快照](2026-10-02-resumable-snapshots.md)
 - [快照的變更比對](2026-10-03-snapshot-changes.md)
 - [截圖與快照後還原畫面](2026-10-03-view-restore.md)

@@ -393,6 +393,77 @@ describe("LayerTree whole subtree walk", () => {
   });
 });
 
+/**
+ * A screen whose layers panel splits its children under "Fixed" and "Scrolls" headers, as Figma
+ * does for a frame with layers that stay put while it scrolls (seen on 2026-10-07).
+ */
+function scrollingScreen(): FakeNode[] {
+  return [
+    {
+      id: "screen",
+      name: "Screen",
+      expanded: true,
+      children: [
+        { id: "", name: "Fixed", header: true },
+        { id: "status", name: "Status Bar" },
+        { id: "tabs", name: "Tab Bar", children: [{ id: "tab-home", name: "Home" }, { id: "tab-chat", name: "Chat" }] },
+        { id: "", name: "Scrolls", header: true },
+        { id: "feed", name: "Feed", children: [{ id: "post", name: "Post" }] },
+        { id: "footer", name: "Footer" },
+      ],
+    },
+    { id: "next", name: "Next screen" },
+  ];
+}
+
+describe("LayerTree with section headers", () => {
+  it("lists a frame's children past its Fixed and Scrolls headers, which are not layers", async () => {
+    const source = new FakeLayers(scrollingScreen(), 3);
+    const tree = makeTree(source);
+    const screen = source.flat().find((row) => row.id === "screen")!;
+
+    const page = await tree.childrenPage(screen, 1, 50);
+    expect(ids(page.rows)).toEqual(["status", "tabs", "feed", "footer"]);
+    expect(page.rows.map((row) => row.position)).toEqual([1, 2, 3, 4]);
+    expect(page).toMatchObject({ total: 4, hasMore: false, stopReason: "complete" });
+
+    const rest = await tree.childrenPage(screen, 3, 2, "tabs");
+    expect(ids(rest.rows)).toEqual(["feed", "footer"]);
+  });
+
+  it("finds the frame above a layer that sits below a header", async () => {
+    const source = new FakeLayers(scrollingScreen(), 3);
+    const feed = source.flat().find((row) => row.id === "feed")!;
+    source.top = feed.rowIndex;
+
+    const siblings = await makeTree(source).siblingsPage(feed, 1, 50);
+    expect(ids(siblings.rows)).toEqual(["status", "tabs", "feed", "footer"]);
+  });
+
+  it("walks the whole subtree without counting the headers as layers", async () => {
+    const source = new FakeLayers(scrollingScreen(), 3);
+    const before = source.expandedIds();
+    const tree = makeTree(source);
+    const screen = source.flat().find((row) => row.id === "screen")!;
+
+    const walk = await tree.walkSubtree(screen, 400);
+    expect(walk.complete).toBe(true);
+    expect(walk.layers.map(({ row, parentRef }) => [row.id, parentRef])).toEqual([
+      ["screen", null],
+      ["status", "screen"],
+      ["tabs", "screen"],
+      ["tab-home", "tabs"],
+      ["tab-chat", "tabs"],
+      ["feed", "screen"],
+      ["post", "feed"],
+      ["footer", "screen"],
+    ]);
+
+    await tree.restore();
+    expect(source.expandedIds()).toEqual(before);
+  });
+});
+
 describe("LayerTree after a page reload", () => {
   /** The card screen as a fresh page load shows it: every layer collapsed and no row read yet. */
   function reloaded(): FakeLayers {

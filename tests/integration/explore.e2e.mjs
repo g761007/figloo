@@ -56,6 +56,8 @@ try {
     }, { ref, relation, from, limit, ...(after ? { after } : {}) });
     if (!result.ok) throw new Error(`${relation} of ${ref} failed: ${result.code} ${result.message}`);
     assert(result.value.elapsedMs < 15_000, `${relation} of ${ref} stays within the 15 s budget`);
+    // A read that stopped early must fail here instead of passing with fewer layers.
+    assert(["complete", "limit"].includes(result.value.stopReason), `${relation} of ${ref} stopped early: ${result.value.stopReason}`);
     return result.value;
   };
 

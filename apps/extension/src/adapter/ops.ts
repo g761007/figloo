@@ -248,12 +248,13 @@ export class Explorer {
       .map((wrapper) => wrapper.querySelector("button"))
       .find((candidate) => candidate?.textContent?.trim() === name);
     if (!button) throw new OpError("NODE_NOT_FOUND", `there is no page named "${name}"`);
-    const firstRowBefore = readRenderedRows(this.doc)[0]?.id;
+    const firstLayer = () => readRenderedRows(this.doc).find((row) => !row.header)?.id;
+    const firstRowBefore = firstLayer();
     synthesizeClick(button);
     // The pages list marks the new page first; the layers panel follows once Figma has loaded it.
     const deadline = Date.now() + PAGE_SWITCH_TIMEOUT_MS;
     while (Date.now() < deadline) {
-      if (this.identity().page === name && readRenderedRows(this.doc)[0]?.id !== firstRowBefore) return;
+      if (this.identity().page === name && firstLayer() !== firstRowBefore) return;
       await sleep(50);
     }
     throw new OpError("UI_NOT_READY", `the layers panel did not show page "${name}" in time`);

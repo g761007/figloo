@@ -157,6 +157,7 @@ export class LayerTree {
     for (let i = row.rowIndex - 1; i >= 1; i -= 1) {
       const candidate = await this.rowAt(i, "end");
       if (!candidate) return null;
+      if (candidate.header) continue;
       if (candidate.level < row.level) {
         // In a pre-order list the first shallower row above is the parent.
         if (candidate.level !== row.level - 1) return null;
@@ -347,6 +348,7 @@ export class LayerTree {
     for (let i = opened.rowIndex + 1; ; i += 1) {
       const row = await this.rowAt(i, "start");
       if (!row || row.level <= root.level) return { layers, complete: true };
+      if (row.header) continue;
       if (skipBelow !== null && row.level > skipBelow) continue;
       skipBelow = null;
       while (open.at(-1)!.level >= row.level) open.pop();
@@ -443,7 +445,7 @@ export class LayerTree {
     for (let i = start; ; i += 1) {
       const row = await this.rowAt(i, "start");
       if (!row || row.level <= parent.level) return "end";
-      if (row.level === childLevel && !visit(row)) return "stopped";
+      if (row.level === childLevel && !row.header && !visit(row)) return "stopped";
     }
   }
 

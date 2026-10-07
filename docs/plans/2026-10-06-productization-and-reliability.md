@@ -41,8 +41,8 @@
 | 工作 | 原計畫 | 調整後 | 原因 |
 |---|---|---|---|
 | 文件整理、ROADMAP、SECURITY、guest canary | v0.4.x | 不發版 | 不改變發佈的程式；README 與文件推上 main 就生效 |
-| 解析守門 | 無 | v0.4.2 | 修正安靜失敗，屬於修錯誤 |
-| 拆 `ops.ts`、`background.ts`、`protocol/index.ts` | v0.4.x | 隨 v0.4.2 一起出；若 v0.4.2 只剩重構則不單獨發版 | 行為不變 |
+| 解析守門 | 無 | v0.4.3（原排 v0.4.2，見第 5 節） | 修正安靜失敗，屬於修錯誤 |
+| 拆 `ops.ts`、`background.ts`、`protocol/index.ts` | v0.4.x | 隨 v0.4.3 一起出；只剩重構則不單獨發版 | 行為不變 |
 | Capability-based degradation | v0.4.x | v0.5.0 | `get_status` 多了能力與受影響工具的回報，屬於新增功能 |
 | `figloo doctor`、recovery hint、升級提示 | v0.5.0 | v0.5.0 | 不變 |
 | Design Intelligence、Performance、Compatibility Expansion | v0.6.0、v0.7.0、v0.8+ | 不變 | v0.4.1 是 patch，不推遲後面的 minor |
@@ -178,9 +178,17 @@
 
 驗證：`git grep -i mvp` 只剩 `docs/plans/` 與 `docs/compatibility/` 的歷史文件；README 兩份與拆出的四份文件中，所有相對連結與錨點都能開，`#install`、`#set-up`、`#troubleshooting` 仍然存在；`docs/agent-install.md` 的路徑不變；canary 手動觸發一次跑通；commit 前檢查沒有私人測試檔的名稱與連結。
 
-### v0.4.2 — 穩定化（patch）
+### v0.4.2 — canary 抓到的分組標題（patch，2026-10-07 改排）
 
-- 解析守門（第 4.2 節），先涵蓋匯出區塊與屬性面板。
+canary 第一次跑通就發現：frame 裡有捲動時固定的圖層時，Figma 會在子層之間插入「Fixed」與「Scrolls」分組標題列，Figloo 讀到第一個標題就停下，`get_neighbors` 回傳 0 個子層卻只標 `hasMore`，整合測試的斷言對空結果也成立。依下方的發版條件，這個修正提前成為 v0.4.2，原本的內容順延到 v0.4.3。細節見 [分組標題的驗證紀錄](../compatibility/2026-10-07-section-header-rows.md)。
+
+- 讀取圖層面板時認得分組標題，走訪時跳過；總列數與捲動目標改依實際位置推算，因為標題列比圖層列矮。
+- 兩支整合測試改為讀取中途停下或讀到 0 層就失敗。
+- Arc 實測時另外發現：在編輯權限下，快照的屬性與匯出設定全部安靜地存成空值，每層都等到逾時。這屬於解析守門的範圍，列入 v0.4.3。
+
+### v0.4.3 — 穩定化（patch）
+
+- 解析守門（第 4.2 節），先涵蓋匯出區塊與屬性面板。編輯權限下屬性面板讀不到、快照全部存成空值的情況也要明確回報。
 - 登入版 canary 的本機腳本與排程方式（第 4.1 節），不進發佈檔。需要專用 Figma 測試帳號時通知使用者協助；在那之前以 guest canary 與手動驗收代替。
 - 拆 `adapter/ops.ts`、`background.ts`，`protocol/index.ts` 視時間（第 4.5 節）。
 
@@ -189,8 +197,8 @@
 發版條件（2026-10-07 由 Claude 依使用者授權決定）：
 
 - 重構隨時可以 commit 進 main，但只有重構時不發版。發版會讓使用者更新 extension 並重開工作階段，沒有使用者看得到的改變就不值得。
-- 解析守門完成時發 v0.4.2，已完成的重構一起帶上。
-- Canary 若先抓到 Figma 改版而需要修正，修正立刻以下一個 patch 發佈，不等解析守門；解析守門順延到再下一個 patch。
+- 解析守門完成時發 v0.4.3，已完成的重構一起帶上。
+- Canary 若先抓到 Figma 改版或 Figloo 的缺陷而需要修正，修正立刻以下一個 patch 發佈，不等解析守門；解析守門順延到再下一個 patch。v0.4.2 就是這樣產生的。
 
 ### v0.5.0 — 可靠性與安裝體驗（minor）
 
@@ -223,7 +231,8 @@
 | 優先 | 項目 | 版本 |
 |---|---|---|
 | P0 | README 移除 MVP 定位與重整（拆出的文件中英各一份）、ROADMAP.md、SECURITY.md、guest canary | 不發版 |
-| P1 | 解析守門、登入版 canary、拆 `ops.ts` 與 `background.ts`、`protocol/index.ts`（可延後） | v0.4.2 |
+| P1 | 分組標題的修正（canary 發現） | v0.4.2 |
+| P1 | 解析守門、登入版 canary、拆 `ops.ts` 與 `background.ts`、`protocol/index.ts`（可延後） | v0.4.3 |
 | P2 | Capability map、UI contract 清單、recovery hint、doctor、升級提示、Quickstart 實測 | v0.5.0 |
 | P3 | `figloo-implement` 強化、token 與 component mapping、語意摘要、workflow eval | v0.6.0 |
 | P4 | 效能基準、增量快照研究、減少 UI 操作 | v0.7.0 |
@@ -258,4 +267,4 @@
 2. **登入版 canary 的專用測試帳號：** 用到時通知使用者協助。
 3. **MVP 計畫：** 不改，保留原樣。
 4. **README 拆出的文件：** 中英各一份。
-5. **v0.4.2 的發版條件：** 交由 Claude 決定，結果寫在第 5 節 v0.4.2。
+5. **v0.4.2 的發版條件：** 交由 Claude 決定，結果寫在第 5 節。2026-10-07 canary 發現分組標題的問題後，原本的穩定化內容順延為 v0.4.3，條件跟著移過去。

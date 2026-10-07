@@ -8,6 +8,8 @@ export interface FakeNode {
   expanded?: boolean;
   selected?: boolean;
   hidden?: boolean;
+  /** A "Fixed" or "Scrolls" section header row among its siblings, not a layer. */
+  header?: boolean;
   children?: FakeNode[];
 }
 
@@ -27,14 +29,20 @@ export class FakeLayers implements RowSource {
   flat(): Row[] {
     const out: Row[] = [];
     const visit = (nodes: FakeNode[], level: number, insideSelected: boolean, insideHidden: boolean) => {
-      nodes.forEach((node, i) => {
-        const hasChildren = (node.children?.length ?? 0) > 0;
+      // Like Figma, sibling positions and counts leave the section headers out.
+      const layers = nodes.filter((node) => !node.header);
+      for (const node of nodes) {
+        if (node.header) {
+          out.push({ id: "", name: node.name, type: null, level, position: 0, setSize: 0, rowIndex: out.length + 1, hasChildren: false, expanded: false, selected: false, hidden: false, header: true });
+          continue;
+        }
+        const hasChildren = node.children?.some((child) => !child.header) ?? false;
         const expanded = hasChildren && node.expanded === true;
         const selected = insideSelected || node.selected === true;
         const hidden = insideHidden || node.hidden === true;
-        out.push({ id: node.id, name: node.name, type: node.type ?? "Frame", level, position: i + 1, setSize: nodes.length, rowIndex: out.length + 1, hasChildren, expanded, selected, hidden });
+        out.push({ id: node.id, name: node.name, type: node.type ?? "Frame", level, position: layers.indexOf(node) + 1, setSize: layers.length, rowIndex: out.length + 1, hasChildren, expanded, selected, hidden });
         if (expanded) visit(node.children!, level + 1, selected, hidden);
-      });
+      }
     };
     visit(this.roots, 0, false, false);
     return out;
