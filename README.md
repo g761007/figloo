@@ -175,6 +175,13 @@ Branded Google Chrome 137 and newer ignore `--load-extension`, which is why the 
 
 The Figma canary workflow runs both scripts every day, and on demand from the Actions tab. It reads the link from the repository secret `FIGLOO_CANARY_FIGMA_URL` and fails when the secret is missing. Its logs are public and show layer names, so the file must be one made for the test, never a real design.
 
+The signed-in canary checks what a guest cannot reach: the selection, the inspection panel, snapshots, exports, and putting the view back. It runs on your machine only, never in CI, with a browser profile signed in to a dedicated Figma test account that only views the test file and has "Adapt content for screen readers" on. Sign in once with the first command below, which opens the profile in a window and types nothing for you; the profile stays in `~/.figloo/canary-profile` (or `FIGLOO_CANARY_PROFILE`). Then set `FIGLOO_CANARY_FIGMA_URL` in `tests/integration/.env.local` to a link to the frame to snapshot, which must hold a layer with export settings, and run the canary. It prints refs, counts, and codes only.
+
+```sh
+node tests/canary/login.mjs
+pnpm test:canary
+```
+
 The core-scenario acceptance run needs a signed-in browser, so it is not part of `pnpm test`. With the extension paired, the Figma tab on screen, no other Figloo server running, and one layer inside a card selected, it runs the whole flow ten times and checks that every run returns the same result:
 
 ```sh
@@ -198,6 +205,7 @@ scripts/             Release packaging, the release check, and the release notes
 .github/workflows/   CI, the release workflow a version tag starts, and the daily Figma canary
 tests/fixtures/      Captured Figma markup and export files for regression tests
 tests/integration/   End-to-end tests against real Chromium and Figma
+tests/canary/        Signed-in canary for a dedicated test account, run locally
 tests/acceptance/    Core-scenario acceptance run for a signed-in browser
 release/             Output of pnpm package (not committed)
 ```

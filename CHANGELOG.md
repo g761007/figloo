@@ -4,6 +4,10 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+### Added
+
+- A signed-in canary, `pnpm test:canary`, checks on real Figma what a guest cannot reach: the selection, the inspection panel, snapshots, exports, and putting the view back. It runs on the maintainer's machine with a browser profile signed in to a dedicated test account that only views the test file, and `tests/canary/login.mjs` opens that profile for signing in by hand.
+
 ## [0.4.3] - 2026-10-07
 
 Update the extension and the MCP server together: the extension finds what it cannot read, and the server reports it. The bridge protocol is still 0.3.0 and the new fields are optional, so an older half keeps working without the new reports.

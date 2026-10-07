@@ -177,6 +177,13 @@ Google Chrome 正式版從 137 起會忽略 `--load-extension`，所以測試不
 
 Figma canary workflow 每天執行這兩個腳本，也可以從 Actions 頁面手動執行。它從 repository secret `FIGLOO_CANARY_FIGMA_URL` 讀取連結，沒有設定時會失敗。它的 log 是公開的，而且會印出圖層名稱，所以必須使用專為測試建立的檔案，絕不能用真正的設計稿。
 
+登入版 canary 檢查訪客碰不到的部分：選取、屬性面板、快照、匯出，以及還原畫面。它只在你的電腦上執行，不在 CI 執行，使用一個登入專用 Figma 測試帳號的瀏覽器 profile；這個帳號對測試檔只有檢視權限，並開啟「Adapt content for screen readers」。先用下方第一個指令登入一次：它會在視窗中開啟這個 profile，不替你輸入任何資料；profile 存在 `~/.figloo/canary-profile`（或 `FIGLOO_CANARY_PROFILE`）。接著在 `tests/integration/.env.local` 設定 `FIGLOO_CANARY_FIGMA_URL`，連結到要拍快照的 frame，這個 frame 裡要有一個帶匯出設定的圖層，然後執行 canary。輸出只有 ref、數量與錯誤碼。
+
+```sh
+node tests/canary/login.mjs
+pnpm test:canary
+```
+
 核心情境驗收需要已登入的瀏覽器，所以不包含在 `pnpm test` 中。在擴充功能已配對、Figma 分頁留在畫面上、沒有其他 Figloo 伺服器在執行，並且選取了卡片中的一個圖層時，它會把完整流程執行十次，檢查每次的結果都相同：
 
 ```sh
@@ -200,6 +207,7 @@ scripts/             release 打包、release 檢查與 release 說明
 .github/workflows/   CI、版本 tag 觸發的 release workflow，以及每天執行的 Figma canary
 tests/fixtures/      回歸測試用的 Figma markup 擷取與匯出檔案
 tests/integration/   對真實 Chromium 與 Figma 執行的端對端測試
+tests/canary/        以專用測試帳號在本機執行的登入版 canary
 tests/acceptance/    在已登入瀏覽器上執行的核心情境驗收
 release/             pnpm package 的輸出（不提交）
 ```

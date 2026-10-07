@@ -196,7 +196,7 @@ canary 第一次跑通就發現：frame 裡有捲動時固定的圖層時，Figm
 
 2026-10-07 調整順序：要拆的 `ops.ts` 正是選取圖層後的檢查、匯出與快照，訪客 canary 測不到，核心情境驗收也不含快照。所以先做登入版 canary，再重構。
 
-- 登入版 canary 的本機腳本與排程方式（第 4.1 節），不進發佈檔。需要使用者提供專用 Figma 測試帳號，對一個有匯出設定與分組標題 frame 的檔案只有檢視權限。
+- 登入版 canary 的本機腳本（第 4.1 節），不進發佈檔。2026-10-07 完成並可手動執行，細節見 [登入版 canary 的紀錄](../compatibility/2026-10-07-signed-in-canary.md)。使用者決定不排程，需要時手動執行。
 - 拆 `adapter/ops.ts`、`background.ts`，`protocol/index.ts` 視時間（第 4.5 節）。
 
 驗證：重構前後全部測試、guest canary、登入版 canary 與 `core-scenario.mjs` 結果相同。

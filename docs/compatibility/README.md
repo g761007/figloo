@@ -8,6 +8,7 @@
 |---|---|---|
 | Arc 1.166.0（Chromium 154），macOS 27.0 | 已驗證。已登入、檢視權限、英文 UI 下，全部工具、popup 與匯出的直接交付都跑通 | M1 到 M3、匯出、popup 與 M4 驗收紀錄 |
 | Chrome for Testing 153.0.8010.12（Playwright，headless），macOS 27.0 | 自動化驗證。訪客分頁下的連線、分頁狀態、工具列圖示、頁面列舉、子樹、整頁截圖、popup 與錯誤處理 | 整合測試 |
+| Chrome for Testing（Playwright，headless），macOS 27.0，以專用測試帳號登入、檢視權限 | 自動化驗證，本機手動執行的登入版 canary：選取、子層、快照、屬性、匯出、截圖、還原畫面與相鄰圖層；2026-10-07 起 | `tests/canary/signed-in.mjs` |
 | Chrome for Testing（Playwright，headless），Ubuntu，GitHub Actions | 自動化驗證，每天由 Figma canary 執行同一組訪客整合測試；2026-10-07 起 | `.github/workflows/figma-canary.yml` |
 | Google Chrome 正式版 | 未驗證。Chrome 137 起不接受以命令列載入 extension，所以整合測試改用 Chrome for Testing；手動「載入未封裝項目」預期可用 | |
 | 其他 Chromium 瀏覽器，例如 Edge 或 Brave | 未驗證 | |
@@ -83,6 +84,7 @@
 - [同格式多倍率時只交回要求的倍率](2026-10-06-export-scale-files.md)
 - [圖層面板的「Fixed」與「Scrolls」分組標題](2026-10-07-section-header-rows.md)
 - [解析守門：讀不懂時明說](2026-10-07-parse-guard.md)
+- [登入版 canary](2026-10-07-signed-in-canary.md)
 - [分段續讀的快照](2026-10-02-resumable-snapshots.md)
 - [快照的變更比對](2026-10-03-snapshot-changes.md)
 - [截圖與快照後還原畫面](2026-10-03-view-restore.md)
