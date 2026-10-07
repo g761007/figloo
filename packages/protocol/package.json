@@ -1,6 +1,6 @@
 {
   "name": "@figloo/protocol",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "license": "MIT",
   "private": true,
   "type": "module",

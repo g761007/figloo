@@ -2,7 +2,7 @@
 
 Where Figloo is going, by area and by release. Figloo is versioned 0.x: a minor version adds features, a patch fixes problems, and tools and results may still change between minor versions. [CHANGELOG.md](CHANGELOG.md) lists what each release changed. The detailed plan behind this roadmap, in Traditional Chinese, is [docs/plans/2026-10-06-productization-and-reliability.md](docs/plans/2026-10-06-productization-and-reliability.md).
 
-Current release: 0.4.3.
+Current release: 0.5.0.
 
 ## Principles
 
@@ -41,7 +41,7 @@ When Figloo cannot read part of Figma's UI, it now says so instead of returning 
 
 Refactoring alone makes no release. A fix for a problem a canary finds ships at once, as the next patch, as 0.4.2 did.
 
-## 0.5.0: reliability and developer experience
+## 0.5.0 (released): reliability and developer experience
 
 - `get_status` reports, for each tab, which capabilities Figloo found and which tools a missing one affects, such as the screen reader mirror that `get_visual_neighbors` and view restore need.
 - One list of the parts of Figma's UI that Figloo depends on, each marked by how stable it is, shared by the readiness probe, the canary, and Diagnostics.
@@ -50,7 +50,7 @@ Refactoring alone makes no release. A fix for a problem a canary finds ships at 
 - `PROTOCOL_MISMATCH` names the versions on both sides and which one to update.
 - A better agent install, troubleshooting built around these checks, and an updated compatibility table.
 
-Done when a coding agent in a fresh environment follows the README Quickstart, installs Figloo, and completes a first design-to-code task, without the user needing to know how Figloo works.
+Done when a coding agent in a fresh environment follows the README Quickstart, installs Figloo, and completes a first design-to-code task, without the user needing to know how Figloo works. That run is still to be made with the maintainer.
 
 ## 0.6.0: design intelligence
 

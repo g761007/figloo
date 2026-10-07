@@ -4,6 +4,10 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-07
+
+Figloo now says what a tab cannot do and what to do about it: `get_status` lists each tab's limitations, tool errors say whether a retry can help, and `figloo-mcp doctor` checks the setup before an agent session is involved. Update the extension and the MCP server together for all of it; the bridge protocol is still 0.3.0, so an older half keeps working without the new reports.
+
 ### Fixed
 
 - A signed-in page without the right sidebar was reported as a guest session, which has none; now Figloo says it cannot find the sidebar and that Figma may have changed its UI.
