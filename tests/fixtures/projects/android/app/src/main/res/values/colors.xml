@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_primary">#FF0055FF</color>
+    <color name="overlay">#66000000</color>
+    <color name="border_subtle">#D6D6D6</color>
+</resources>

@@ -297,6 +297,29 @@ Summarize the design values of a snapshot from snapshot_layer, to map them onto 
 | `components` | array of object with name, count, refs, variants |
 | `truncated` | boolean |
 
+## map_tokens
+
+Put a snapshot's design values next to the tokens and components the project already has, before writing code. Reads the snapshot file and the project's files, never Figma. It scans the project directory, or path inside it, for named token definitions: CSS custom properties and SCSS or Less variables, design token JSON, theme objects in JavaScript and TypeScript such as a Tailwind config, iOS asset catalog colors and Swift Color, UIColor, and Font definitions, Android colors.xml and dimens.xml and Compose Color, dp, and TextStyle values, and Flutter Color and TextStyle values. Each color, text style (by size and weight, not font family), spacing value, and corner radius of the snapshot comes with up to three matches: exact, or near with what differs, such as a color difference (ΔE, where about 2.3 is just noticeable), an alpha, a pixel, or a weight. Each instance name comes with project components whose names share its words. Use exact matches as they are; show near matches and unmatched values to the user before choosing a token or adding one. The scan reads at most 20,000 files in 15 seconds and skips dependencies, build output, and hidden folders; scanned.complete is false when it stopped early.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `snapshot` | string | yes | The snapshot id from snapshot_layer |
+| `under` | string | no | A ref in the snapshot: only that layer and the layers inside it |
+| `path` | string | no | A folder inside the project directory to scan instead of all of it |
+
+| Result field | Type |
+|---|---|
+| `snapshot` | string |
+| `expiresAt` | string |
+| `scanned` | object with root, files, complete, tokens, sources |
+| `colors` | array of object with value, opacity, uses, count, refs, matches |
+| `typography` | array of object with font, weight, size, lineHeight, count, refs, matches |
+| `spacing` | array of object with value, uses, count, refs, matches |
+| `radii` | array of object with value, count, refs, matches |
+| `components` | array of object with name, count, refs, candidates |
+| `unmatched` | object with colors, typography, spacing, radii, components |
+| `truncated` | boolean |
+
 ## release_context
 
 Forget an exploration context and the refs it returned.

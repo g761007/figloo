@@ -1046,3 +1046,51 @@ export const SummarizeSnapshotOutputSchema = z.object({
   truncated: z.boolean(),
 });
 export type SummarizeSnapshotOutput = z.infer<typeof SummarizeSnapshotOutputSchema>;
+
+/** A project token that has a design value, or comes close to it. */
+export const TokenMatchSchema = z.object({
+  token: z.string(),
+  file: z.string(),
+  line: z.number().int().positive(),
+  /** The definition as the project writes it. */
+  written: z.string(),
+  match: z.enum(["exact", "near"]),
+  /** What differs in a near match, such as "ΔE 1.4", "alpha 1 vs 0.4", "1px", or "weight 400 vs 500". */
+  difference: z.string().nullable(),
+});
+export type TokenMatch = z.infer<typeof TokenMatchSchema>;
+
+const MappedUseSchema = { count: z.number().int().positive(), refs: z.array(z.string()), matches: z.array(TokenMatchSchema) };
+
+/** What `map_tokens` returns: a snapshot's design values with the project tokens that have them, and component candidates. */
+export const MapTokensOutputSchema = z.object({
+  snapshot: z.string(),
+  expiresAt: z.string(),
+  scanned: z.object({
+    /** The folder scanned, relative to the project directory. */
+    root: z.string(),
+    files: z.number().int().nonnegative(),
+    /** False when the scan stopped at its limit of files or time; pass path to scan a smaller folder. */
+    complete: z.boolean(),
+    tokens: z.number().int().nonnegative(),
+    /** The files that define tokens, with their format and how many. */
+    sources: z.array(z.object({ file: z.string(), format: z.string(), tokens: z.number().int().positive() })),
+  }),
+  colors: z.array(z.object({ value: z.string(), opacity: z.string().nullable(), uses: z.array(SummaryColorUseSchema), ...MappedUseSchema })),
+  typography: z.array(z.object({ font: z.string().nullable(), weight: z.string().nullable(), size: z.string().nullable(), lineHeight: z.string().nullable(), ...MappedUseSchema })),
+  spacing: z.array(z.object({ value: z.string(), uses: z.array(z.enum(["gap", "padding"])), ...MappedUseSchema })),
+  radii: z.array(z.object({ value: z.string(), ...MappedUseSchema })),
+  components: z.array(
+    z.object({
+      name: z.string(),
+      count: z.number().int().positive(),
+      refs: z.array(z.string()),
+      candidates: z.array(z.object({ name: z.string(), file: z.string(), line: z.number().int().positive(), score: z.number() })),
+    }),
+  ),
+  /** How many values, and instance names, have no match or candidate. */
+  unmatched: z.object({ colors: z.number().int(), typography: z.number().int(), spacing: z.number().int(), radii: z.number().int(), components: z.number().int() }),
+  /** True when lists were cut to fit one result. */
+  truncated: z.boolean(),
+});
+export type MapTokensOutput = z.infer<typeof MapTokensOutputSchema>;

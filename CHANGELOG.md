@@ -4,6 +4,12 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+### Added
+
+- `map_tokens` puts a saved snapshot's colors, text styles, spacing, and corner radii next to the tokens the project already defines, without the Figma tab: exact matches, near ones with what differs (such as a color difference, an alpha, a pixel, or a weight), and values with none, and it lists project components whose names share an instance's words. It reads CSS custom properties, SCSS and Less variables, design token JSON, theme objects in JavaScript and TypeScript such as a Tailwind config, iOS asset catalogs and Swift, Android resources and Compose, and Flutter, from the project directory or a folder in it, skipping dependencies, build output, hidden folders, tests, and `.env` files.
+- The figloo-implement skill maps a design onto the project with `map_tokens`: it uses exact matches, shows near and unmatched values to the user before choosing, and reports the mapping as a table.
+- Workflow evals for the skill, in an unpublished harness under `tests/skill-eval/` that answers Figloo's tools from mocks, since `claude plugin eval` cannot stand in for a server declared through an MCP bundle.
+
 ## [0.5.0] - 2026-10-07
 
 Figloo now says what a tab cannot do and what to do about it: `get_status` lists each tab's limitations, tool errors say whether a retry can help, and `figloo-mcp doctor` checks the setup before an agent session is involved. Update the extension and the MCP server together for all of it; the bridge protocol is still 0.3.0, so an older half keeps working without the new reports.

@@ -54,10 +54,11 @@ Done when a coding agent in a fresh environment follows the README Quickstart, i
 
 ## 0.6.0: design intelligence
 
-- Better snapshot summaries, with layers grouped by what they are for.
-- Hints for mapping a design's values onto the project's tokens, and its instances onto the project's components.
-- Detecting the project's conventions, and a figloo-implement workflow that uses all of this.
-- Workflow evals for the skill, which check the tools an agent calls, once it is clear how `claude plugin eval` can observe them.
+- `map_tokens` puts a snapshot's colors, text styles, spacing, and radii next to the tokens the project already defines, exact or near, across web, iOS, Android, and Flutter projects, and lists project components whose names match the design's instances.
+- The figloo-implement skill uses it: exact matches as they are, near and unmatched values shown to the user before choosing, and a mapping table in its report.
+- Workflow evals check that the skill calls the tools in order and asks before taking a near token, with Figloo's tools mocked.
+
+Next in this area, once real projects have used it: grouping a design's values by what they are for, and detecting more of a project's conventions.
 
 ## 0.7.0: performance
 

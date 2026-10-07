@@ -103,6 +103,7 @@ pnpm --filter @figloo/extension icons
 | `snapshot_layer` | 讀取一個圖層與其中的所有圖層，最多 2,000 個，300 個圖層約 40 秒。每次呼叫最多讀三分鐘；還有圖層沒讀時，會回傳 `complete: false` 與進度，用同一個 root 再呼叫一次，就會從停下的地方接著讀。內容包括截圖，以及每個圖層相對這個圖層的位置與大小、是否隱藏、匯出設定，與 `inspect_nodes` 讀得到的全部內容。Instance 視為一個圖層。回傳截圖與每個圖層一行的大綱，並把快照存在 `~/.figloo/snapshots/`。24 小時內再次呼叫會直接回傳存好的快照，不再讀取 Figma，時間可用設定檔的 `snapshotTtlHours` 調整；加上 `refresh: true` 則重新讀取。讀取期間 Figma 上會顯示有進度與「Stop」按鈕的遮罩，其他視窗可以照常使用。按「Stop」或 Esc 會中止讀取並收回圖層面板；在 Figma 其他地方點一下也會中止。分頁進入背景時，讀取會暫停，回到畫面後繼續。頁面重新整理後，可以用新的 context 再次傳入已存快照的 root，快照中的每個 ref 在這個 context 都能使用。 這個 root 先前建立過快照時，結果會列出之後新增、變更與刪除的圖層數量，寫出被刪除的圖層，並在大綱中標記其他變動；過期的快照會保留 30 天供這項比對。 |
 | `query_snapshot` | 不需要 Figma 分頁，就能在存好的快照中查詢圖層，頁面重新整理後也可以。可以依 ref 取得完整內容，或依文字、類型、所在的圖層，以及是否在上一份快照之後新增或變更來篩選，結果以大綱或完整內容分頁回傳。 |
 | `summarize_snapshot` | 不需要 Figma 分頁，就能摘要存好的快照或其中一個區塊：每個顏色與它的用途、文字樣式、間距、padding、圓角、線寬與陰影，各自有多少圖層使用，以及依名稱分組的 instance 與它們的元件屬性。用來把設計對應到專案的 token 與元件。 |
+| `map_tokens` | 不需要 Figma 分頁，就能把存好的快照中的顏色、文字樣式、間距與圓角，對照專案中已定義的 token：完全相同的、相近的（附上差在哪裡），以及沒有對到的。它讀取 CSS 與 SCSS 變數、design token JSON、Tailwind 等主題物件、iOS 的 asset catalog 與 Swift、Android 的資源與 Compose，以及 Flutter，並列出名稱與 instance 字詞相同的專案元件。 |
 | `release_context` | 捨棄一個 context 與其中的圖層 ref。 |
 
 完整的契約，包括每個參數、回傳欄位與錯誤碼，見 [docs/mcp-tools.md](docs/mcp-tools.md)。
@@ -150,9 +151,10 @@ pnpm test:release      # 以 release/ 中的檔案執行狀態整合測試
 pnpm --filter @figloo/mcp docs:tools   # 修改工具後重新產生 docs/mcp-tools.md
 claude plugin validate --strict plugins/figloo   # 檢查 plugin；對 . 執行則檢查 marketplace
 claude plugin eval plugins/figloo --mocks off --ablation none   # skill 是否只在該觸發時觸發
+claude plugin eval tests/skill-eval --ablation none   # 以假的工具回應檢查 skill 的工作流程是否依序呼叫工具
 ```
 
-`pnpm package` 也會檢查擴充功能的 manifest 與三個 `package.json` 的版本是否相同、`plugins/figloo/.claude-plugin/plugin.json` 的版本與 bundle 網址是否和這個版本一致，以及 [CHANGELOG.md](CHANGELOG.md) 有沒有這個版本的段落，所以升版時要一起改。Plugin 的評估要加 `--mocks off`，因為 `claude plugin eval` 無法替以 bundle 宣告的伺服器提供替身；評估案例沒有開放任何 Figloo 工具，所以不會動到 Figma。
+`pnpm package` 也會檢查擴充功能的 manifest 與三個 `package.json` 的版本是否相同、`plugins/figloo/.claude-plugin/plugin.json` 的版本與 bundle 網址是否和這個版本一致，以及 [CHANGELOG.md](CHANGELOG.md) 有沒有這個版本的段落，所以升版時要一起改。Plugin 的評估要加 `--mocks off`，因為 `claude plugin eval` 無法替以 bundle 宣告的伺服器提供替身；評估案例沒有開放任何 Figloo 工具，所以不會動到 Figma。因此工作流程的評估改對 `tests/skill-eval/` 執行：這是不發佈的測試外殼，連結同一份 skill，並在 `.mcp.json` 中宣告伺服器，讓案例能以假回應檔取代 Figloo 的工具。它的工具清單 `tests/skill-eval/evals/mocks/figloo/_tools.json` 與 `docs/mcp-tools.md` 一樣由伺服器產生，也以同樣的方式檢查。
 
 `docs/mcp-tools.md` 與伺服器註冊的工具不一致時，`pnpm test` 會失敗。
 
@@ -208,6 +210,7 @@ scripts/             release 打包、release 檢查與 release 說明
 tests/fixtures/      回歸測試用的 Figma markup 擷取與匯出檔案
 tests/integration/   對真實 Chromium 與 Figma 執行的端對端測試
 tests/canary/        以專用測試帳號在本機執行的登入版 canary
+tests/skill-eval/    不發佈的測試外殼，以假的 Figloo 工具執行 skill 的工作流程評估
 tests/acceptance/    在已登入瀏覽器上執行的核心情境驗收
 release/             pnpm package 的輸出（不提交）
 ```

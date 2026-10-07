@@ -1,0 +1,10 @@
+:root {
+  --color-primary: #0055FF;
+  --color-border-subtle: #D6D6D6;
+  --color-black: #000000;
+  --color-overlay: rgba(0, 0, 0, 0.4);
+  --spacing-md: 16px;
+  --spacing-lg: 1.5rem;
+  --radius-card: 8px;
+  --font-size-title: 15px;
+}

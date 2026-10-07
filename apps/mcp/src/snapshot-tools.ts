@@ -1,6 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { isAbsolute, relative, resolve } from "node:path";
 import { z } from "zod";
 import {
+  MapTokensOutputSchema,
   MAX_REMOVED_LISTED,
   MAX_SNAPSHOT_DETAILS,
   MAX_SNAPSHOT_LAYERS,
@@ -9,6 +11,7 @@ import {
   SnapshotOutputSchema,
   SnapshotResultSchema,
   SummarizeSnapshotOutputSchema,
+  type MapTokensOutput,
   type PlacedLayer,
   type QuerySnapshotOutput,
   type Rect,
@@ -20,6 +23,8 @@ import { BridgeError, type Bridge } from "./bridge.js";
 import { knownParents, type ContextStore, type ExplorationContext } from "./contexts.js";
 import type { ToolErrorResult } from "./export-asset.js";
 import { changeMarks, diffSnapshots } from "./snapshot-diff.js";
+import { fitMapped, mapTokens } from "./map-tokens.js";
+import { scanProject } from "./project-tokens.js";
 import { summarizeLayers } from "./snapshot-summary.js";
 import { isPlainRef, outlineLine, snapshotId, unreadableParts, type PartialSnapshot, type SnapshotFile, type SnapshotStore } from "./snapshots.js";
 
@@ -53,6 +58,8 @@ export interface SnapshotDeps {
   log: (message: string) => void;
   /** Budget for one tool result. */
   maxOutputBytes: number;
+  /** The project directory map_tokens scans: CLAUDE_PROJECT_DIR, or else the working directory. */
+  root?: string;
 }
 
 const QueryCursorSchema = z.object({ s: z.string(), o: z.number().int().nonnegative(), q: z.string() });
@@ -435,6 +442,53 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         const summary = summarizeLayers(layers, (candidate) => Buffer.byteLength(JSON.stringify({ ...base, ...candidate })) <= maxOutputBytes);
         const output: SummarizeSnapshotOutput = { ...base, ...summary };
         log(`summarize_snapshot layers=${summary.layers} truncated=${summary.truncated} bytes=${Buffer.byteLength(JSON.stringify(output))}`);
+        return { content: [{ type: "text" as const, text: JSON.stringify(output) }], structuredContent: output as unknown as Record<string, unknown> };
+      } catch (error) {
+        return toolError(error, QUERY_HINTS);
+      }
+    },
+  );
+
+  server.registerTool(
+    "map_tokens",
+    {
+      description:
+        "Put a snapshot's design values next to the tokens and components the project already has, before writing code. Reads the snapshot file and the project's files, never Figma. " +
+        "It scans the project directory, or path inside it, for named token definitions: CSS custom properties and SCSS or Less variables, design token JSON, theme objects in JavaScript and TypeScript such as a Tailwind config, " +
+        "iOS asset catalog colors and Swift Color, UIColor, and Font definitions, Android colors.xml and dimens.xml and Compose Color, dp, and TextStyle values, and Flutter Color and TextStyle values. " +
+        "Each color, text style (by size and weight, not font family), spacing value, and corner radius of the snapshot comes with up to three matches: exact, or near with what differs, " +
+        "such as a color difference (ΔE, where about 2.3 is just noticeable), an alpha, a pixel, or a weight. Each instance name comes with project components whose names share its words. " +
+        "Use exact matches as they are; show near matches and unmatched values to the user before choosing a token or adding one. " +
+        "The scan reads at most 20,000 files in 15 seconds and skips dependencies, build output, and hidden folders; scanned.complete is false when it stopped early.",
+      inputSchema: {
+        snapshot: z.string().describe("The snapshot id from snapshot_layer"),
+        under: z.string().optional().describe("A ref in the snapshot: only that layer and the layers inside it"),
+        path: z.string().optional().describe("A folder inside the project directory to scan instead of all of it"),
+      },
+      outputSchema: MapTokensOutputSchema,
+    },
+    async ({ snapshot, under, path }) => {
+      try {
+        const found = await finishedSnapshot(snapshots, snapshot);
+        if (!("file" in found)) throw new SnapshotFailure(found.code, found.message);
+        const { file } = found;
+        let layers = file.layers;
+        if (under !== undefined) {
+          const at = layers.findIndex((layer) => layer.ref === under);
+          if (at < 0) throw new SnapshotFailure("UNKNOWN_REF", `snapshot ${snapshot} has no layer ${under}`);
+          layers = [layers[at]!, ...inside(layers, at)];
+        }
+        const project = deps.root ?? (process.env.CLAUDE_PROJECT_DIR || process.cwd());
+        const root = resolve(project, path ?? ".");
+        const rel = relative(project, root);
+        if (rel.startsWith("..") || isAbsolute(rel)) throw new SnapshotFailure("INVALID_ARGUMENT", `${path} is outside the project directory ${project}`);
+        const started = Date.now();
+        const scan = await scanProject(root);
+        const base = { snapshot, expiresAt: file.expiresAt };
+        const scanned = { root: rel || ".", files: scan.files, complete: scan.complete, tokens: scan.tokens.length, sources: scan.sources.slice(0, 20) };
+        const { mapped, truncated } = fitMapped(mapTokens(summarizeLayers(layers, () => true), scan), (candidate) => Buffer.byteLength(JSON.stringify({ ...base, scanned, ...candidate })) <= maxOutputBytes);
+        const output: MapTokensOutput = { ...base, scanned, ...mapped, truncated };
+        log(`map_tokens files=${scan.files} complete=${scan.complete} tokens=${scan.tokens.length} components=${scan.components.length} ms=${Date.now() - started} truncated=${truncated}`);
         return { content: [{ type: "text" as const, text: JSON.stringify(output) }], structuredContent: output as unknown as Record<string, unknown> };
       } catch (error) {
         return toolError(error, QUERY_HINTS);

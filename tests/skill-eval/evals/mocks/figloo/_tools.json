@@ -1,0 +1,3639 @@
+{
+  "tools": [
+    {
+      "name": "get_status",
+      "description": "Report whether the Figloo browser extension is connected, which Figma design tabs are open, and what each tab can read. Call this first. Each tab lists its limitations: what Figloo cannot do there, such as in a guest session or with Figma's screen reader mirror off, the tools that fail or do less, and what the user can do about it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "DISCONNECTED",
+              "NO_DESIGN_TAB",
+              "LOADING",
+              "READY",
+              "DEGRADED",
+              "INCOMPATIBLE"
+            ]
+          },
+          "protocolVersion": {
+            "type": "string"
+          },
+          "bridge": {
+            "type": "object",
+            "properties": {
+              "listening": {
+                "type": "boolean"
+              },
+              "port": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "holder",
+                  "standby"
+                ]
+              },
+              "holder": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "client": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "project": {
+                        "type": "string"
+                      },
+                      "pid": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "startedAt": {
+                        "type": "number"
+                      },
+                      "serverVersion": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "client",
+                      "project",
+                      "pid",
+                      "startedAt",
+                      "serverVersion"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "listening",
+              "port",
+              "error",
+              "role",
+              "holder"
+            ],
+            "additionalProperties": false
+          },
+          "extension": {
+            "type": "object",
+            "properties": {
+              "connected": {
+                "type": "boolean"
+              },
+              "extensionVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "userAgent": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "connectedAt": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "lastDisconnectAt": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "lastError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "rejected": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "reason": {
+                        "type": "string",
+                        "enum": [
+                          "protocol",
+                          "token"
+                        ]
+                      },
+                      "extensionVersion": {
+                        "type": "string"
+                      },
+                      "protocolVersion": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "reason",
+                      "extensionVersion",
+                      "protocolVersion"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "connected",
+              "extensionVersion",
+              "userAgent",
+              "connectedAt",
+              "lastDisconnectAt",
+              "lastError",
+              "rejected"
+            ],
+            "additionalProperties": false
+          },
+          "tabs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tabId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "windowId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "url": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "fileKey": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "fileName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "nodeIdFromUrl": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "readiness": {
+                  "type": "string",
+                  "enum": [
+                    "LOADING",
+                    "READY",
+                    "DEGRADED",
+                    "INCOMPATIBLE"
+                  ]
+                },
+                "access": {
+                  "type": "string",
+                  "enum": [
+                    "edit",
+                    "view",
+                    "guest",
+                    "unknown"
+                  ]
+                },
+                "uiLocale": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "capabilities": {
+                  "type": "object",
+                  "properties": {
+                    "layersPanel": {
+                      "type": "boolean"
+                    },
+                    "focusTarget": {
+                      "type": "boolean"
+                    },
+                    "propertiesPanel": {
+                      "type": "boolean"
+                    },
+                    "mirrorDom": {
+                      "type": "boolean"
+                    },
+                    "uiCollapsed": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "layersPanel",
+                    "focusTarget",
+                    "propertiesPanel",
+                    "mirrorDom",
+                    "uiCollapsed"
+                  ],
+                  "additionalProperties": false
+                },
+                "layerRowCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "visible": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "probedAt": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "detail": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "missingAnchors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "limitations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "code": {
+                        "type": "string",
+                        "enum": [
+                          "UI_MINIMIZED",
+                          "GUEST",
+                          "EDIT_ACCESS",
+                          "UI_CHANGED",
+                          "NO_KEYBOARD_TARGET",
+                          "NO_SCREEN_READER_MIRROR",
+                          "NOT_ENGLISH"
+                        ]
+                      },
+                      "tools": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "detail": {
+                        "type": "string"
+                      },
+                      "fix": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "tools",
+                      "detail",
+                      "fix"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "tabId",
+                "windowId",
+                "url",
+                "title",
+                "fileKey",
+                "fileName",
+                "nodeIdFromUrl",
+                "readiness",
+                "access",
+                "uiLocale",
+                "capabilities",
+                "layerRowCount",
+                "visible",
+                "probedAt",
+                "detail",
+                "limitations"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "tabsFresh": {
+            "type": "boolean"
+          },
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "protocolVersion",
+          "bridge",
+          "extension",
+          "tabs",
+          "tabsFresh",
+          "hint"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_anchor",
+      "description": "Start exploring from the layers the user selected in a Figma tab. Returns the selected layers (the anchors) and a contextId for get_neighbors. anchor is the first selected layer; anchors lists every selected layer found, in layers panel order, at most 20. Fewer anchors than selectionCount means the rest are hidden in collapsed groups; ask the user to reveal them if they matter. When the user pasted a Figloo prompt, use its tabId; otherwise take one from get_status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tabId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Figma tab: the tabId in the prompt the user pasted, or one from get_status"
+          }
+        },
+        "required": [
+          "tabId"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "tabId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "fileKey": {
+            "type": "string"
+          },
+          "page": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selectionCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "anchor": {
+            "type": "object",
+            "properties": {
+              "ref": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "nameTruncated": {
+                "type": "boolean"
+              },
+              "type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "depth": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "position": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "siblingCount": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "parentRef": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "hasChildren": {
+                "type": "boolean"
+              },
+              "childCount": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "insideInstance": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "link": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "ref",
+              "name",
+              "nameTruncated",
+              "type",
+              "depth",
+              "position",
+              "siblingCount",
+              "parentRef",
+              "hasChildren",
+              "childCount",
+              "insideInstance",
+              "link"
+            ],
+            "additionalProperties": false
+          },
+          "anchors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "nameTruncated": {
+                  "type": "boolean"
+                },
+                "type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "depth": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "position": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "siblingCount": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "parentRef": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "hasChildren": {
+                  "type": "boolean"
+                },
+                "childCount": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "insideInstance": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "link": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "ref",
+                "name",
+                "nameTruncated",
+                "type",
+                "depth",
+                "position",
+                "siblingCount",
+                "parentRef",
+                "hasChildren",
+                "childCount",
+                "insideInstance",
+                "link"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "contextId",
+          "tabId",
+          "fileKey",
+          "page",
+          "selectionCount",
+          "anchor",
+          "anchors"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_neighbors",
+      "description": "List layers related to a ref within a context. relation is one of: parent; ancestors (nearest first, up to the layer on the page); siblings (all children of the ref's parent in layer order, including the ref); children (direct children only). Returns at most limit summaries (default 20, max 50); pass nextCursor to continue. Only refs returned in this context are accepted, and nothing beyond the requested relation is read. For children, depth (max 3) also lists deeper levels breadth first within the same limit; such a tree has no cursor, so query deeper layers directly when hasMore is true. Listing children may expand layers in the Figma layers panel; they are collapsed again afterwards, and collapsed layers can only be expanded while the Figma tab is visible.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string",
+            "description": "A ref returned earlier in this context"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "parent",
+              "ancestors",
+              "siblings",
+              "children"
+            ]
+          },
+          "cursor": {
+            "description": "nextCursor from the previous page of the same ref and relation",
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "depth": {
+            "description": "children only: levels to include, default 1",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3
+          }
+        },
+        "required": [
+          "contextId",
+          "ref",
+          "relation"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "parent",
+              "ancestors",
+              "siblings",
+              "children"
+            ]
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "nameTruncated": {
+                  "type": "boolean"
+                },
+                "type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "depth": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "position": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "siblingCount": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "parentRef": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "hasChildren": {
+                  "type": "boolean"
+                },
+                "childCount": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "insideInstance": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "link": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "ref",
+                "name",
+                "nameTruncated",
+                "type",
+                "depth",
+                "position",
+                "siblingCount",
+                "parentRef",
+                "hasChildren",
+                "childCount",
+                "insideInstance",
+                "link"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "fromPosition": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "toPosition": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "total": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "fromPosition",
+              "toPosition",
+              "total"
+            ],
+            "additionalProperties": false
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stopReason": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "limit",
+              "time_budget",
+              "scan_budget",
+              "output_budget",
+              "ui_timeout"
+            ]
+          },
+          "uiOps": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "elapsedMs": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "contextId",
+          "ref",
+          "relation",
+          "nodes",
+          "coverage",
+          "hasMore",
+          "nextCursor",
+          "stopReason",
+          "uiOps",
+          "elapsedMs"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "list_pages",
+      "description": "List the pages of the Figma file open in a tab and which one is shown. Works while the tab is in the background. complete is false when Figma's pages list kept changing or showed signs of pages it had not drawn: call list_pages again after a moment, and treat the list as partial if it stays false.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tabId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Figma tab: the tabId in the prompt the user pasted, or one from get_status"
+          }
+        },
+        "required": [
+          "tabId"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "tabId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "fileKey": {
+            "type": "string"
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "current": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "current"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "complete": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tabId",
+          "fileKey",
+          "pages"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "explore_page",
+      "description": "Open a page of the Figma file (the shown page when page is omitted) and list the layers directly on it, usually frames and sections. Returns a contextId for get_neighbors, inspect_nodes, and capture, so exploring does not depend on what the user selected. Switching pages needs the Figma tab visible on screen and changes the page the user sees. When hasMore is true, continue with get_neighbors(ref = nodes[0].ref, relation = siblings, cursor = nextCursor).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tabId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Figma tab: the tabId in the prompt the user pasted, or one from get_status"
+          },
+          "page": {
+            "description": "Page name from list_pages",
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "required": [
+          "tabId"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "tabId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "fileKey": {
+            "type": "string"
+          },
+          "page": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "nameTruncated": {
+                  "type": "boolean"
+                },
+                "type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "depth": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "position": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "siblingCount": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "parentRef": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "hasChildren": {
+                  "type": "boolean"
+                },
+                "childCount": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "insideInstance": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "link": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "ref",
+                "name",
+                "nameTruncated",
+                "type",
+                "depth",
+                "position",
+                "siblingCount",
+                "parentRef",
+                "hasChildren",
+                "childCount",
+                "insideInstance",
+                "link"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "contextId",
+          "tabId",
+          "fileKey",
+          "page",
+          "nodes",
+          "total",
+          "hasMore",
+          "nextCursor"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_visual_neighbors",
+      "description": "List the siblings of a layer by where they are on screen: direction right, left, below, or above, or nearest (default) for all of them by distance. Each one has its side, whether it shares a row or column with the layer (inLine), the edge-to-edge gap, and its offset and size. Lengths are design pixels, measured on screen and divided by the zoom; text layers, which Figma does not place on screen, are placed from the inspection panel instead. Use inspect_nodes for exact values. Only layers in the same parent are compared; call it again on an ancestor to look further out. Needs Figma's Adapt content for screen readers setting and the Figma tab on screen. Siblings are selected in turn, and the user's selection is put back afterwards.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string",
+            "description": "A ref returned earlier in this context"
+          },
+          "direction": {
+            "description": "Default nearest",
+            "type": "string",
+            "enum": [
+              "nearest",
+              "right",
+              "left",
+              "below",
+              "above"
+            ]
+          },
+          "limit": {
+            "description": "Default 10",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          }
+        },
+        "required": [
+          "contextId",
+          "ref"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "nearest",
+              "right",
+              "left",
+              "below",
+              "above"
+            ]
+          },
+          "reference": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "width",
+              "height"
+            ],
+            "additionalProperties": false
+          },
+          "zoom": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "neighbors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "nameTruncated": {
+                  "type": "boolean"
+                },
+                "type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "depth": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "position": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "siblingCount": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "parentRef": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "hasChildren": {
+                  "type": "boolean"
+                },
+                "childCount": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "insideInstance": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "link": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "side": {
+                  "type": "string",
+                  "enum": [
+                    "right",
+                    "left",
+                    "below",
+                    "above",
+                    "overlaps"
+                  ]
+                },
+                "inLine": {
+                  "type": "boolean"
+                },
+                "gap": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "offset": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "additionalProperties": false
+                },
+                "size": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "number"
+                    },
+                    "height": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "width",
+                    "height"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "ref",
+                "name",
+                "nameTruncated",
+                "type",
+                "depth",
+                "position",
+                "siblingCount",
+                "parentRef",
+                "hasChildren",
+                "childCount",
+                "insideInstance",
+                "link",
+                "side",
+                "inLine",
+                "gap",
+                "offset",
+                "size"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "compared": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "unplaced": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "siblingsHasMore": {
+            "type": "boolean"
+          },
+          "userSelectionRestored": {
+            "type": "boolean"
+          },
+          "uiOps": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "elapsedMs": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "contextId",
+          "ref",
+          "direction",
+          "reference",
+          "zoom",
+          "neighbors",
+          "compared",
+          "unplaced",
+          "siblingsHasMore",
+          "userSelectionRestored",
+          "uiOps",
+          "elapsedMs"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "inspect_nodes",
+      "description": "Read what Figma's inspection panel shows for up to 5 layers of a context. layout: size and sizing mode, position in the parent, auto layout flow, padding, gap, corner radius. appearance: fills, borders, shadows, image file names. typography: text content and, per style run, font, weight, style, size, line height, letter spacing. component: component properties and the parent component. Values are exactly as Figma displays them; groups a layer does not have are listed in notShown, and a section Figloo saw but could not read comes with unreadable: true and no values. Each layer is selected in turn, so the Figma tab must be visible; the user's selection is put back afterwards.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "refs": {
+            "minItems": 1,
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Refs returned earlier in this context"
+          },
+          "groups": {
+            "description": "Default: all groups",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "layout",
+                "appearance",
+                "typography",
+                "component"
+              ]
+            }
+          }
+        },
+        "required": [
+          "contextId",
+          "refs"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sections": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "layout",
+                              "appearance",
+                              "typography",
+                              "component"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "const": "other"
+                          }
+                        ]
+                      },
+                      "title": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "properties": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "group": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "group",
+                            "name",
+                            "value"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "colors": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "value": {
+                              "type": "string"
+                            },
+                            "opacity": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "value",
+                            "opacity"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "text": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "unreadable": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "group",
+                      "title",
+                      "properties",
+                      "colors",
+                      "text"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "notShown": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "layout",
+                      "appearance",
+                      "typography",
+                      "component"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "ref",
+                "name",
+                "type",
+                "sections",
+                "notShown"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "userSelectionRestored": {
+            "type": "boolean"
+          },
+          "uiOps": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "elapsedMs": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "contextId",
+          "nodes",
+          "userSelectionRestored",
+          "uiOps",
+          "elapsedMs"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "capture",
+      "description": "Screenshot a layer of a context, zoomed to fit the screen, or the whole page when ref is omitted. Returns a JPEG at most 1568 px on its long edge as visual reference; read exact values with inspect_nodes. The Figma tab must be visible. The view zooms to the target for the screenshot; the user's selection is put back, and so are their zoom and place on the canvas when Figma's screen reader mirror is on (viewRestored).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "ref": {
+            "description": "A ref returned earlier in this context; omit for the whole page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "width": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "height": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "cropSource": {
+            "type": "string",
+            "enum": [
+              "layer",
+              "canvas"
+            ]
+          },
+          "zoom": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "userSelectionRestored": {
+            "type": "boolean"
+          },
+          "viewRestored": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "contextId",
+          "ref",
+          "width",
+          "height",
+          "cropSource",
+          "zoom",
+          "userSelectionRestored",
+          "viewRestored"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "export_asset",
+      "description": "Export a layer of a context with Figma's Export button and hand the files over: SVG markup inline, and PNG or JPG up to 1568 px as an image. Choose format and scale for the project, for example by checking how it already stores icons: SVG for web or Android vector drawables, PDF or PNG at 1x, 2x, and 3x for iOS, PNG at 1x to 4x for Android densities. One call exports one scale. With format, a temporary setting in that format and scale is added and removed again, unless the layer already has that exact setting, and only files in that format are returned, for PNG and JPG only the one at that scale. Without format, the designer's own export settings decide, and a layer without settings exports as SVG. With saveTo, the files are also written inside the project directory. Figma names files after the layer without a scale suffix, so give a full file name such as icons/close@2x.png for each scale, or end saveTo with a slash to keep Figma's name; several files need a folder. Figloo normally receives the file inside the page, so the browser saves nothing; if that fails it falls back to the browser's download and reports its path. The Figma tab must be visible. For many layers, such as every icon of a page, use export_assets.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string",
+            "description": "A ref returned earlier in this context"
+          },
+          "format": {
+            "description": "Pick it for the project; without it the designer's export settings decide",
+            "type": "string",
+            "enum": [
+              "svg",
+              "png",
+              "jpg",
+              "pdf"
+            ]
+          },
+          "scale": {
+            "description": "Default 1x",
+            "type": "string",
+            "enum": [
+              "0.5x",
+              "0.75x",
+              "1x",
+              "1.5x",
+              "2x",
+              "3x",
+              "4x"
+            ]
+          },
+          "saveTo": {
+            "description": "Path inside the project, for example src/assets/icons/close.svg or src/assets/icons/",
+            "type": "string"
+          },
+          "overwrite": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "contextId",
+          "ref"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "download"
+            ]
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "mimeType": {
+                  "type": "string"
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "savedTo": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "downloadPath": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "svg": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "mimeType",
+                "bytes",
+                "savedTo",
+                "downloadPath",
+                "svg"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "usedExistingSettings": {
+            "type": "boolean"
+          },
+          "userSelectionRestored": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "contextId",
+          "ref",
+          "source",
+          "files",
+          "usedExistingSettings",
+          "userSelectionRestored"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "export_assets",
+      "description": "Export several layers of a context with Figma's Export button, one after another, and save their files into one folder of the project, such as every icon and image of a page. Pass refs, or a snapshot from snapshot_layer to export each of its layers with export settings (the outline's [export …] marks), optionally only those inside one layer with under; hidden layers are skipped. format and scale work as in export_asset, for every layer; without format each layer exports as the designer set it up. Files keep Figma's names; when this call would write one path twice, the later file gets its layer's ref added, such as Vector-570-14192.svg. Existing files are only replaced with overwrite: true. A call exports at most 50 layers and starts none after about 150 seconds; the layers it did not get to come back in remaining, to pass as refs in the next call. It stops early, with stoppedBy, when the Figma tab goes to the background, the user steps in, or the browser waits for a Save dialog; other failures, such as a layer Figma hands no file over for, are listed in failed and the rest still export. Returns where each file went, not the files themselves. The Figma tab must be visible.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "refs": {
+            "description": "Refs returned earlier in this context; not combined with snapshot",
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "snapshot": {
+            "description": "A snapshot id from snapshot_layer, of the context's file and page: export its layers with export settings",
+            "type": "string"
+          },
+          "under": {
+            "description": "With snapshot: only that layer and the layers inside it",
+            "type": "string"
+          },
+          "saveTo": {
+            "type": "string",
+            "description": "Folder inside the project, for example src/assets/icons/"
+          },
+          "format": {
+            "description": "Pick it for the project; without it the designer's export settings decide",
+            "type": "string",
+            "enum": [
+              "svg",
+              "png",
+              "jpg",
+              "pdf"
+            ]
+          },
+          "scale": {
+            "description": "Default 1x",
+            "type": "string",
+            "enum": [
+              "0.5x",
+              "0.75x",
+              "1x",
+              "1.5x",
+              "2x",
+              "3x",
+              "4x"
+            ]
+          },
+          "overwrite": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "contextId",
+          "saveTo"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "saved": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "direct",
+                    "download"
+                  ]
+                },
+                "usedExistingSettings": {
+                  "type": "boolean"
+                },
+                "files": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string"
+                      },
+                      "bytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "savedTo": {
+                        "type": "string"
+                      },
+                      "downloadPath": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "mimeType",
+                      "bytes",
+                      "savedTo",
+                      "downloadPath"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "ref",
+                "source",
+                "usedExistingSettings",
+                "files"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ref",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ref",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "remaining": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stoppedBy": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "userSelectionRestored": {
+            "type": "boolean"
+          },
+          "elapsedMs": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "contextId",
+          "saved",
+          "failed",
+          "skipped",
+          "remaining",
+          "stoppedBy",
+          "userSelectionRestored",
+          "elapsedMs"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "snapshot_layer",
+      "description": "Read a layer and everything inside it, for implementing a page: a screenshot, and for each layer its place, size, and all that inspect_nodes shows, saved as a snapshot that query_snapshot reads without Figma. Use it on the page's root, such as the frame the user selected (get_anchor). Instances count as one layer; read inside them with get_neighbors. A root snapshotted before can be passed with any context of the same file, even after the page reloaded; every ref of its snapshot then works in that context. Returns the screenshot, the snapshot id, and an outline with one line per layer: ref, type, name, x,y and width×height in design pixels from the root's top-left corner (? when Figma shows no place), the start of its text, and marks for hidden layers, instances with layers of their own, export settings, and parts of the inspection panel Figloo saw but could not read ([unreadable: …], counted in unreadableLayers: their values are missing, so check them in the screenshot or ask the user). A layer at (x, y) shows at image.rootInImage + (x, y) × image.scale in the screenshot. image.alignment says whether rootInImage was checked against the screenshot: confirmed, corrected (Figma reported a stale place), or unconfirmed (it may be off by a few dozen pixels; the outline's places, relative to the root, are not affected). A saved snapshot comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. When the root was snapshotted before, changes counts the layers new, changed, and removed since that snapshot, names the removed ones, and the outline marks the others [new] or [changed: …] with what changed; query_snapshot with changed: true lists them. An expired snapshot is kept 30 days for this comparison. Reading takes about 40 s for 300 layers, for up to 2000 layers; a larger subtree fails and lists the root's children. One call reads for at most 3 minutes. When it runs out of time first, it returns complete: false with progress and no outline: call snapshot_layer again with the same contextId and ref, and it goes on where it stopped, until complete is true. The Figma tab must be on screen to start. Meanwhile Figma shows an overlay with the progress and a Stop button, and the user can use other windows; if the tab goes to the background, reading pauses and goes on when it is back, within the call's 3 minutes. To cancel, the user should press Stop or Esc on the overlay, which puts the layers panel back; a click elsewhere in Figma also stops it but keeps the user's new selection. The user's selection is put back, and so are their zoom and place on the canvas when Figma's screen reader mirror is on (viewRestored), unless the user used Figma meanwhile or the tab is in the background when reading ends.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string",
+            "description": "A ref returned earlier in this context, outside instances, or the root of an earlier snapshot"
+          },
+          "refresh": {
+            "description": "Read Figma again even when a saved snapshot has not expired",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "contextId",
+          "ref"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "snapshot": {
+            "type": "string"
+          },
+          "fileKey": {
+            "type": "string"
+          },
+          "page": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rootRef": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "fromCache": {
+            "type": "boolean"
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "changes": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "since": {
+                    "type": "string"
+                  },
+                  "added": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "changed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "removed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "removedLayers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "ref": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "ref",
+                        "name",
+                        "type"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "since",
+                  "added",
+                  "changed",
+                  "removed",
+                  "removedLayers"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "progress": {
+            "type": "object",
+            "properties": {
+              "read": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "read",
+              "total"
+            ],
+            "additionalProperties": false
+          },
+          "layerCount": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "image": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "type": "string",
+                "enum": [
+                  "confirmed",
+                  "corrected",
+                  "unconfirmed"
+                ]
+              },
+              "width": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "height": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "rootInImage": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      },
+                      "width": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "height": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "width",
+                      "height"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "scale": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "alignment",
+              "width",
+              "height",
+              "rootInImage",
+              "scale"
+            ],
+            "additionalProperties": false
+          },
+          "outline": {
+            "type": "string"
+          },
+          "outlineLayers": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unreadableLayers": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "viewRestored": {
+            "type": "boolean"
+          },
+          "elapsedMs": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "contextId",
+          "snapshot",
+          "fileKey",
+          "page",
+          "rootRef",
+          "createdAt",
+          "expiresAt",
+          "fromCache",
+          "complete",
+          "changes",
+          "progress",
+          "layerCount",
+          "image",
+          "outline",
+          "outlineLayers",
+          "nextCursor",
+          "unreadableLayers",
+          "viewRestored",
+          "elapsedMs"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "query_snapshot",
+      "description": "Look layers up in a snapshot from snapshot_layer. Reads the saved file only, so it needs no Figma tab and works after the page reloads. refs: those layers in full, up to 20: bounds with where they came from, hidden, export settings, and every inspection panel section as inspect_nodes returns them. Otherwise filter by text (in names and text content, ignoring case), type (such as Text, Instance, or Auto layout), under (only layers inside that ref), and changed (only layers new or changed since the previous snapshot of the root); filters combine, and none lists every layer. Matches come as outline lines, or in full with details: true, one page at a time; pass nextCursor for the next page. An expired snapshot fails; take a new one with snapshot_layer.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "type": "string",
+            "description": "The snapshot id from snapshot_layer"
+          },
+          "refs": {
+            "description": "Layers to return in full; not combined with the filters",
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "under": {
+            "description": "A ref in the snapshot",
+            "type": "string"
+          },
+          "changed": {
+            "description": "Only layers new or changed since the previous snapshot of this root; none when there was no previous snapshot",
+            "type": "boolean"
+          },
+          "details": {
+            "description": "Return matches in full instead of as outline lines",
+            "type": "boolean"
+          },
+          "cursor": {
+            "description": "nextCursor from the previous page of the same query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "matched": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "from": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "outline": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "layers": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "depth": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "parentRef": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "position": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "siblingCount": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "hasChildren": {
+                      "type": "boolean"
+                    },
+                    "hidden": {
+                      "type": "boolean"
+                    },
+                    "bounds": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "y": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "width": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "height": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "mirror",
+                            "panel",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y",
+                        "width",
+                        "height",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "layout",
+                                  "appearance",
+                                  "typography",
+                                  "component"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "const": "other"
+                              }
+                            ]
+                          },
+                          "title": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "properties": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "group": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "group",
+                                "name",
+                                "value"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "colors": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "value": {
+                                  "type": "string"
+                                },
+                                "opacity": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "value",
+                                "opacity"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "text": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "unreadable": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "group",
+                          "title",
+                          "properties",
+                          "colors",
+                          "text"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "exports": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "exportsUnreadable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ref",
+                    "name",
+                    "type",
+                    "depth",
+                    "parentRef",
+                    "position",
+                    "siblingCount",
+                    "hasChildren",
+                    "hidden",
+                    "bounds",
+                    "sections",
+                    "exports"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "snapshot",
+          "expiresAt",
+          "matched",
+          "from",
+          "outline",
+          "layers",
+          "missing",
+          "hasMore",
+          "nextCursor"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "summarize_snapshot",
+      "description": "Summarize the design values of a snapshot from snapshot_layer, to map them onto the project's tokens and components before writing code: colors with what they color (fill, text, border, shadow), text styles, auto layout gaps, padding sides, corner radii, border widths, shadows, and the instances it uses by name with each combination of their component properties. Figma names an instance after its component unless the designer renamed it. Reads the saved file only, like query_snapshot. Values are exactly as Figma shows them; a color is a hex code, or the name of a color style where the panel shows one. Each value says how many layers use it and gives a few of their refs to look up with query_snapshot. Hidden layers are left out, and unreadableLayers counts layers whose values Figloo could not read. Long lists are cut to fit, the values fewest layers use first, and truncated says so; pass under to summarize one section.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "type": "string",
+            "description": "The snapshot id from snapshot_layer"
+          },
+          "under": {
+            "description": "A ref in the snapshot: only that layer and the layers inside it",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "layers": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "hiddenSkipped": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "unreadableLayers": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "colors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "opacity": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "uses": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "fill",
+                      "text",
+                      "border",
+                      "shadow"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "value",
+                "count",
+                "refs",
+                "opacity",
+                "uses"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "typography": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "font": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "weight": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "style": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "size": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "lineHeight": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "letterSpacing": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "font",
+                "weight",
+                "style",
+                "size",
+                "lineHeight",
+                "letterSpacing",
+                "count",
+                "refs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "value",
+                "count",
+                "refs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "paddings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "value",
+                "count",
+                "refs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "radii": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "value",
+                "count",
+                "refs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "borders": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "value",
+                "count",
+                "refs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "shadows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "properties": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "group": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "group",
+                      "name",
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "colors": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "string"
+                      },
+                      "opacity": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "opacity"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "properties",
+                "colors",
+                "count",
+                "refs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "variants": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "properties": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "count": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "properties",
+                      "count"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "name",
+                "count",
+                "refs",
+                "variants"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "snapshot",
+          "expiresAt",
+          "layers",
+          "hiddenSkipped",
+          "unreadableLayers",
+          "colors",
+          "typography",
+          "gaps",
+          "paddings",
+          "radii",
+          "borders",
+          "shadows",
+          "components",
+          "truncated"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "map_tokens",
+      "description": "Put a snapshot's design values next to the tokens and components the project already has, before writing code. Reads the snapshot file and the project's files, never Figma. It scans the project directory, or path inside it, for named token definitions: CSS custom properties and SCSS or Less variables, design token JSON, theme objects in JavaScript and TypeScript such as a Tailwind config, iOS asset catalog colors and Swift Color, UIColor, and Font definitions, Android colors.xml and dimens.xml and Compose Color, dp, and TextStyle values, and Flutter Color and TextStyle values. Each color, text style (by size and weight, not font family), spacing value, and corner radius of the snapshot comes with up to three matches: exact, or near with what differs, such as a color difference (ΔE, where about 2.3 is just noticeable), an alpha, a pixel, or a weight. Each instance name comes with project components whose names share its words. Use exact matches as they are; show near matches and unmatched values to the user before choosing a token or adding one. The scan reads at most 20,000 files in 15 seconds and skips dependencies, build output, and hidden folders; scanned.complete is false when it stopped early.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "type": "string",
+            "description": "The snapshot id from snapshot_layer"
+          },
+          "under": {
+            "description": "A ref in the snapshot: only that layer and the layers inside it",
+            "type": "string"
+          },
+          "path": {
+            "description": "A folder inside the project directory to scan instead of all of it",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "scanned": {
+            "type": "object",
+            "properties": {
+              "root": {
+                "type": "string"
+              },
+              "files": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "complete": {
+                "type": "boolean"
+              },
+              "tokens": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "file": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "tokens": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "file",
+                    "format",
+                    "tokens"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "root",
+              "files",
+              "complete",
+              "tokens",
+              "sources"
+            ],
+            "additionalProperties": false
+          },
+          "colors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "opacity": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "uses": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "fill",
+                      "text",
+                      "border",
+                      "shadow"
+                    ]
+                  }
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "matches": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "token": {
+                        "type": "string"
+                      },
+                      "file": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "written": {
+                        "type": "string"
+                      },
+                      "match": {
+                        "type": "string",
+                        "enum": [
+                          "exact",
+                          "near"
+                        ]
+                      },
+                      "difference": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "token",
+                      "file",
+                      "line",
+                      "written",
+                      "match",
+                      "difference"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "value",
+                "opacity",
+                "uses",
+                "count",
+                "refs",
+                "matches"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "typography": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "font": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "weight": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "size": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "lineHeight": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "matches": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "token": {
+                        "type": "string"
+                      },
+                      "file": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "written": {
+                        "type": "string"
+                      },
+                      "match": {
+                        "type": "string",
+                        "enum": [
+                          "exact",
+                          "near"
+                        ]
+                      },
+                      "difference": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "token",
+                      "file",
+                      "line",
+                      "written",
+                      "match",
+                      "difference"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "font",
+                "weight",
+                "size",
+                "lineHeight",
+                "count",
+                "refs",
+                "matches"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "spacing": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "uses": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "gap",
+                      "padding"
+                    ]
+                  }
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "matches": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "token": {
+                        "type": "string"
+                      },
+                      "file": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "written": {
+                        "type": "string"
+                      },
+                      "match": {
+                        "type": "string",
+                        "enum": [
+                          "exact",
+                          "near"
+                        ]
+                      },
+                      "difference": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "token",
+                      "file",
+                      "line",
+                      "written",
+                      "match",
+                      "difference"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "value",
+                "uses",
+                "count",
+                "refs",
+                "matches"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "radii": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "matches": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "token": {
+                        "type": "string"
+                      },
+                      "file": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "written": {
+                        "type": "string"
+                      },
+                      "match": {
+                        "type": "string",
+                        "enum": [
+                          "exact",
+                          "near"
+                        ]
+                      },
+                      "difference": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "token",
+                      "file",
+                      "line",
+                      "written",
+                      "match",
+                      "difference"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "value",
+                "count",
+                "refs",
+                "matches"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "candidates": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "file": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "score": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "file",
+                      "line",
+                      "score"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "name",
+                "count",
+                "refs",
+                "candidates"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "unmatched": {
+            "type": "object",
+            "properties": {
+              "colors": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "typography": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "spacing": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "radii": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "components": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "colors",
+              "typography",
+              "spacing",
+              "radii",
+              "components"
+            ],
+            "additionalProperties": false
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "snapshot",
+          "expiresAt",
+          "scanned",
+          "colors",
+          "typography",
+          "spacing",
+          "radii",
+          "components",
+          "unmatched",
+          "truncated"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "release_context",
+      "description": "Forget an exploration context and the refs it returned.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "released": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "released"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    }
+  ]
+}

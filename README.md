@@ -101,6 +101,7 @@ pnpm --filter @figloo/extension icons
 | `snapshot_layer` | Reads a layer and everything inside it, up to 2,000 layers, about 40 seconds for 300 layers: a screenshot, and for each layer its place and size relative to the layer, whether it is hidden, its export settings, and everything `inspect_nodes` shows. Instances count as one layer. Returns the screenshot and an outline with one line per layer, and saves the snapshot under `~/.figloo/snapshots/`. A saved snapshot is returned without reading Figma again for 24 hours (`snapshotTtlHours` in the config file); `refresh: true` reads it again. One call reads for at most three minutes; when layers are left, it returns `complete: false` with its progress, and the next call with the same root reads on where it stopped. Meanwhile Figma shows an overlay with the progress and a Stop button, and other windows stay usable. Stop or Esc ends the read and puts the layers panel back; a click elsewhere in Figma also stops it. If the tab goes to the background, the read pauses and goes on when it is back. After the page reloads, the root of a saved snapshot can be passed again with a new context, and every ref of the snapshot works in it. When the root was snapshotted before, the result counts the layers new, changed, and removed since then, names the removed ones, and marks the others in the outline; an expired snapshot is kept 30 days for this comparison. |
 | `query_snapshot` | Looks layers up in a saved snapshot without the Figma tab, even after the page reloads: by ref, in full, or by text, type, the layer they are inside, and whether they are new or changed since the previous snapshot, as outline lines or in full, a page at a time. |
 | `summarize_snapshot` | Summarizes a saved snapshot, or one section of it, without the Figma tab: every color with what it colors, text style, gap, padding side, corner radius, border width, and shadow, with how many layers use each, and the instances by name with their component properties. For mapping a design onto the project's tokens and components. |
+| `map_tokens` | Puts a saved snapshot's colors, text styles, spacing, and corner radii next to the tokens the project already defines, without the Figma tab: exact matches, near ones with what differs, and values with none. It reads CSS and SCSS variables, design token JSON, Tailwind and other theme objects, iOS asset catalogs and Swift, Android resources and Compose, and Flutter, and lists project components whose names share an instance's words. |
 | `release_context` | Forgets a context and its layer refs. |
 
 The full contract, with every parameter, result field, and error code, is in [docs/mcp-tools.md](docs/mcp-tools.md).
@@ -148,9 +149,10 @@ pnpm test:release      # the status integration test, run against the files in r
 pnpm --filter @figloo/mcp docs:tools   # regenerate docs/mcp-tools.md after changing a tool
 claude plugin validate --strict plugins/figloo   # check the plugin; run it on . for the marketplace
 claude plugin eval plugins/figloo --mocks off --ablation none   # whether the skill fires when it should, and only then
+claude plugin eval tests/skill-eval --ablation none   # whether the skill's workflow calls the tools in order, with mocked tools
 ```
 
-`pnpm package` also checks that the extension's manifest and the three `package.json` files carry the same version, that `plugins/figloo/.claude-plugin/plugin.json` carries it with the URL of that version's bundle, and that [CHANGELOG.md](CHANGELOG.md) has a section for the version, so bump them together. The plugin evals need `--mocks off`, since `claude plugin eval` cannot stand in for a server declared through a bundle; the cases grant no Figloo tools, so nothing reaches Figma.
+`pnpm package` also checks that the extension's manifest and the three `package.json` files carry the same version, that `plugins/figloo/.claude-plugin/plugin.json` carries it with the URL of that version's bundle, and that [CHANGELOG.md](CHANGELOG.md) has a section for the version, so bump them together. The plugin evals need `--mocks off`, since `claude plugin eval` cannot stand in for a server declared through a bundle; the cases grant no Figloo tools, so nothing reaches Figma. The workflow evals therefore run against `tests/skill-eval/`, a harness that is never published: it links the same skill and declares the server in `.mcp.json`, so its cases answer Figloo's tools from mock files. Their tool list, `tests/skill-eval/evals/mocks/figloo/_tools.json`, comes from the server like `docs/mcp-tools.md` and is checked the same way.
 
 `pnpm test` fails when `docs/mcp-tools.md` no longer matches the tools the server registers.
 
@@ -206,6 +208,7 @@ scripts/             Release packaging, the release check, and the release notes
 tests/fixtures/      Captured Figma markup and export files for regression tests
 tests/integration/   End-to-end tests against real Chromium and Figma
 tests/canary/        Signed-in canary for a dedicated test account, run locally
+tests/skill-eval/    Unpublished harness for the skill's workflow evals, with mocked Figloo tools
 tests/acceptance/    Core-scenario acceptance run for a signed-in browser
 release/             Output of pnpm package (not committed)
 ```

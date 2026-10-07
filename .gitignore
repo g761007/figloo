@@ -21,3 +21,4 @@ coverage/
 
 # Written by `claude plugin eval` on each run.
 plugins/figloo/evals/results/
+tests/skill-eval/evals/results/

@@ -1,0 +1,5 @@
+{
+  "name": "figloo",
+  "version": "0.0.0",
+  "description": "Eval harness, not published: the figloo-implement skill with the Figloo MCP server declared in .mcp.json, which claude plugin eval can stand in for with mocks. The real plugin declares its server through an MCP bundle, which mocks cannot replace."
+}

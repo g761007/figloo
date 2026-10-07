@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterAll, describe, expect, it } from "vitest";
@@ -10,6 +10,8 @@ import { createServer } from "../src/server.js";
 import { startBridge } from "./helpers.js";
 
 const DOC = resolve(import.meta.dirname, "../../../docs/mcp-tools.md");
+/** The tools/list answer the skill evals' mocks show the model, so mocked tools carry their real schemas and descriptions. */
+const EVAL_TOOLS = resolve(import.meta.dirname, "../../../tests/skill-eval/evals/mocks/figloo/_tools.json");
 /** Codes the server raises itself, next to the protocol's. */
 
 interface JsonSchema {
@@ -49,13 +51,18 @@ function typeOf(schema: JsonSchema | undefined): string {
     .join(" or ");
 }
 
-async function renderToolDocs(bridge: Bridge): Promise<string> {
+async function listServerTools(bridge: Bridge) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await createServer({ bridge, version: "docs", log: () => {} }).connect(serverTransport);
   const client = new Client({ name: "docs", version: "0" });
   await client.connect(clientTransport);
   const { tools } = await client.listTools();
   await client.close();
+  return tools;
+}
+
+async function renderToolDocs(bridge: Bridge): Promise<string> {
+  const tools = await listServerTools(bridge);
 
   const lines = [
     "# Figloo MCP tools",
@@ -109,5 +116,17 @@ describe("docs/mcp-tools.md", () => {
     const rendered = await renderToolDocs(bridge);
     if (process.env.UPDATE_TOOL_DOCS === "1") writeFileSync(DOC, rendered);
     expect(readFileSync(DOC, "utf8"), "run `pnpm --filter @figloo/mcp docs:tools` to update the file").toBe(rendered);
+  });
+});
+
+describe("the skill evals' tool list", () => {
+  it("lists the tools the server registers, so the mocked tools look real to the model", async () => {
+    bridge ??= await startBridge();
+    const rendered = `${JSON.stringify({ tools: await listServerTools(bridge) }, null, 2)}\n`;
+    if (process.env.UPDATE_TOOL_DOCS === "1") {
+      mkdirSync(dirname(EVAL_TOOLS), { recursive: true });
+      writeFileSync(EVAL_TOOLS, rendered);
+    }
+    expect(readFileSync(EVAL_TOOLS, "utf8"), "run `pnpm --filter @figloo/mcp docs:tools` to update the file").toBe(rendered);
   });
 });

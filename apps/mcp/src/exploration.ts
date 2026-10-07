@@ -416,7 +416,7 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
 
   registerExportTool(server, deps, toolError);
   registerExportAssetsTool(server, deps, toolError);
-  registerSnapshotTools(server, { bridge, contexts, snapshots: deps.snapshots, log, maxOutputBytes: MAX_OUTPUT_BYTES }, toolError);
+  registerSnapshotTools(server, { bridge, contexts, snapshots: deps.snapshots, log, maxOutputBytes: MAX_OUTPUT_BYTES, ...(deps.root ? { root: deps.root } : {}) }, toolError);
 
   server.registerTool(
     "release_context",

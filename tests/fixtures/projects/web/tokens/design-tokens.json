@@ -1,0 +1,7 @@
+{
+  "color": {
+    "surface": { "$value": "#FFFFFF", "$type": "color" },
+    "gold": { "$value": "#E2CC71", "$type": "color" }
+  },
+  "radius": { "sm": { "$value": "15px" } }
+}

@@ -52,15 +52,16 @@ Done when every top-level layer belongs to a section of the plan.
 
 ### 5. Map to the project
 
-Call `summarize_snapshot` with the snapshot id. It lists every color with what it colors, every text style, gap, padding side, corner radius, border width, and shadow, each with how many layers use it, and the instances by name with their component properties.
+Call `map_tokens` with the snapshot id. It reads the project's token definitions and puts every color, text style, spacing value, and corner radius of the snapshot next to them: exact matches, near ones with what differs, and values with none. It also lists the project components whose names share each instance's words. In a monorepo, pass `path` to the app the design is for. `scanned.sources` shows where it found tokens; when that is empty or misses where the project really keeps them, or `scanned.complete` is false, search the project yourself as well. `summarize_snapshot` has the rest of the design's values, such as borders and shadows.
 
-Search the project for what it already has: components, color and typography tokens, the spacing scale, radii, icons and images, and how it adds new ones (its README, contributing notes, or existing code). Then map the summary and the plan onto them:
+Also search the project for what `map_tokens` does not cover: icons and images, and how the project adds new tokens and components (its README, contributing notes, or existing code). Then map the summary and the plan onto the project:
 
-- Every color, text style, spacing value, and radius goes through a token: the existing one with that value or meaning (a color given as a style name maps to the token of that name), or a new token added the way the project adds them.
-- Every repeated pattern uses an existing component, extended the way the project extends them, or a new component in the project's style.
-- Ask the user only where the project shows no way of adding tokens or components.
+- An exact match: use that token.
+- A near match or no match: show the user a short table of the design value, the closest token, and what differs, and ask whether to reuse the token or add a new one the way the project adds them. Do not pick a near token on your own; a difference in the design may be deliberate.
+- A color given as a style name maps to the token of that name.
+- Every repeated pattern uses an existing component, extended the way the project extends them, or a new component in the project's style. Read a candidate before reusing it.
 
-Done when the plan names a token for every color, text style, spacing value, and radius, and a component for every repeated pattern.
+Done when the plan names a token for every color, text style, spacing value, and radius, and a component for every repeated pattern, with the user's answers for the near and unmatched ones.
 
 ### 6. Fetch details by section
 
@@ -86,7 +87,7 @@ When you can render the result (a dev server, a simulator, a preview), capture i
 
 ### 9. Report
 
-Tell the user what you implemented, how the design mapped onto their components and tokens, the assumptions you made, and what remains.
+Tell the user what you implemented, how the design mapped onto their components and tokens (a table of each design value with the token it uses, and whether it matched exactly, nearly, or became a new token), the assumptions you made, and what remains.
 
 ## Looking
 
@@ -95,7 +96,7 @@ Use steps 1 and 2 to reach the layer, then:
 - `capture` for a picture of a layer or the page.
 - `get_neighbors` for structure, a page at a time; `get_visual_neighbors` for what sits beside a layer on screen.
 - `inspect_nodes` for the exact values of up to 5 layers. For more than that, or a whole page, take a snapshot and use `query_snapshot`.
-- `summarize_snapshot` on a snapshot for what a page uses overall: its colors, text styles, spacing, radii, shadows, and components.
+- `summarize_snapshot` on a snapshot for what a page uses overall: its colors, text styles, spacing, radii, shadows, and components; `map_tokens` for which of them the project already has.
 
 Quote values as Figma shows them.
 

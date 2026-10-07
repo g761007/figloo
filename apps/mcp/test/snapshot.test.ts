@@ -1,10 +1,10 @@
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, describe, expect, it } from "vitest";
-import { GetAnchorOutputSchema, QuerySnapshotOutputSchema, SnapshotOutputSchema, SummarizeSnapshotOutputSchema, type LayerNode, type RequestMessage, type SnapshotLayer } from "@figloo/protocol";
+import { GetAnchorOutputSchema, MapTokensOutputSchema, QuerySnapshotOutputSchema, SnapshotOutputSchema, SummarizeSnapshotOutputSchema, type LayerNode, type RequestMessage, type SnapshotLayer } from "@figloo/protocol";
 import type { Bridge } from "../src/bridge.js";
 import { MAX_OUTPUT_BYTES } from "../src/exploration.js";
 import { createServer } from "../src/server.js";
@@ -85,7 +85,7 @@ afterEach(async () => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-async function setup({ layers = screen, snapshot }: { layers?: SnapshotLayer[]; snapshot?: (request: RequestMessage) => Reply } = {}) {
+async function setup({ layers = screen, snapshot, projectRoot }: { layers?: SnapshotLayer[]; snapshot?: (request: RequestMessage) => Reply; projectRoot?: string } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "figloo-snapshots-"));
   dirs.push(dir);
   const clock = { now: Date.parse("2026-10-01T09:00:00Z") };
@@ -110,7 +110,7 @@ async function setup({ layers = screen, snapshot }: { layers?: SnapshotLayer[]; 
     ext.send({ type: "response", id: request.id, ...reply } as never);
   });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await createServer({ bridge, version: "test", log: () => {}, snapshots: store }).connect(serverTransport);
+  await createServer({ bridge, version: "test", log: () => {}, snapshots: store, ...(projectRoot ? { root: projectRoot } : {}) }).connect(serverTransport);
   const client = new Client({ name: "test", version: "0" });
   await client.connect(clientTransport);
   clients.push(client);
@@ -613,5 +613,34 @@ describe("snapshot changes", () => {
     // Saving another root of the file sweeps the old snapshot first.
     await tools.snap({ contextId: await tools.anchor("570:2"), ref: "570:2" });
     expect(await tools.snap({ contextId: await tools.anchor(), ref: "570:1" })).toMatchObject({ changes: null });
+  });
+});
+
+describe("map_tokens", () => {
+  const web = resolve(import.meta.dirname, "../../../tests/fixtures/projects/web");
+  const fill = (value: string) => ({ kind: "colors", group: "appearance" as const, title: "Fill", properties: [], colors: [{ value, opacity: null }], text: null });
+
+  it("maps a snapshot's colors onto the project's tokens without Figma", async () => {
+    const layers = screen.map((one) => (one.ref === "570:2" ? { ...one, sections: [fill("#0055FF")] } : one.ref === "570:7" ? { ...one, sections: [fill("#D5D5D5")] } : one));
+    const { anchor, snap, call, requests } = await setup({ layers, projectRoot: web });
+    await snap({ contextId: await anchor(), ref: "570:1" });
+    const sent = requests.length;
+
+    const output = MapTokensOutputSchema.parse((await call("map_tokens", { snapshot: "abc/570-1" })).structuredContent);
+    expect(requests).toHaveLength(sent);
+    expect(output.scanned).toMatchObject({ root: ".", complete: true });
+    expect(output.scanned.sources.map((source) => source.file)).toContain("src/styles/tokens.css");
+    expect(output.colors.find((c) => c.value === "#0055FF")!.matches[0]).toMatchObject({ token: "--color-primary", match: "exact", file: "src/styles/tokens.css", line: 2 });
+    expect(output.colors.find((c) => c.value === "#D5D5D5")!.matches[0]).toMatchObject({ token: "--color-border-subtle", match: "near" });
+
+    const styles = MapTokensOutputSchema.parse((await call("map_tokens", { snapshot: "abc/570-1", path: "src/styles" })).structuredContent);
+    expect(styles.scanned.root).toBe(join("src", "styles"));
+    expect(styles.scanned.sources.every((source) => !source.file.startsWith("tailwind"))).toBe(true);
+  });
+
+  it("refuses to scan outside the project directory", async () => {
+    const { anchor, snap, call, errorOf } = await setup({ projectRoot: web });
+    await snap({ contextId: await anchor(), ref: "570:1" });
+    expect(errorOf(await call("map_tokens", { snapshot: "abc/570-1", path: "../.." }))).toMatchObject({ code: "INVALID_ARGUMENT", message: expect.stringMatching(/outside the project directory/) });
   });
 });
