@@ -37,7 +37,7 @@ When Figloo cannot read part of Figma's UI, it now says so instead of returning 
 ## After 0.4.3: a signed-in canary, then refactoring
 
 - **A signed-in canary**, run locally with a dedicated test account, for what only appears once a layer is selected, such as the inspection panel and the export section. A guest cannot select layers, so the daily canary does not reach them. Done as `pnpm test:canary`, run by hand when it matters, such as before a release.
-- **Internal refactoring** with no change in behavior, once that canary can check it: split `apps/extension/src/adapter/ops.ts` and `apps/extension/src/background.ts`, and possibly `packages/protocol/src/index.ts`.
+- **Internal refactoring** with no change in behavior, once that canary can check it: `apps/extension/src/adapter/ops.ts` and `apps/extension/src/background.ts` are split into modules by concern. `packages/protocol/src/index.ts` stays one file for now, since its schemas refer to each other.
 
 Refactoring alone makes no release. A fix for a problem a canary finds ships at once, as the next patch, as 0.4.2 did.
 

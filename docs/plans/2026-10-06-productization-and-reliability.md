@@ -197,7 +197,11 @@ canary 第一次跑通就發現：frame 裡有捲動時固定的圖層時，Figm
 2026-10-07 調整順序：要拆的 `ops.ts` 正是選取圖層後的檢查、匯出與快照，訪客 canary 測不到，核心情境驗收也不含快照。所以先做登入版 canary，再重構。
 
 - 登入版 canary 的本機腳本（第 4.1 節），不進發佈檔。2026-10-07 完成並可手動執行，細節見 [登入版 canary 的紀錄](../compatibility/2026-10-07-signed-in-canary.md)。使用者決定不排程，需要時手動執行。
-- 拆 `adapter/ops.ts`、`background.ts`，`protocol/index.ts` 視時間（第 4.5 節）。
+- 拆 `adapter/ops.ts`、`background.ts`，`protocol/index.ts` 視時間（第 4.5 節）。2026-10-07 完成前兩項：
+  - `ops.ts` 1,138 行拆成 `operation.ts`（錯誤、預算與共用工具）、`explorer-core.ts`（context、index、執行生命週期與還原）、`navigation-ops.ts`、`inspect-ops.ts`、`capture-ops.ts`、`export-ops.ts`、`snapshot-ops.ts`，面板尺寸的讀取移到 `inspect.ts`；`ops.ts` 只留下轉呼叫的 `Explorer`。
+  - `background.ts` 747 行拆成 `background/connection.ts`、`tabs.ts`、`operations.ts`、`delivery.ts`，`background.ts` 只留下事件監聽、診斷與 popup。
+  - 兩者都由腳本依行號原樣搬移，逐行比對後只有函式簽名、`this` 改為 `core` 與 import 不同。
+  - `protocol/index.ts` 暫不拆：schema 彼此引用，拆開容易形成循環，效益低。
 
 驗證：重構前後全部測試、guest canary、登入版 canary 與 `core-scenario.mjs` 結果相同。
 

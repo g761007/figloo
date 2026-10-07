@@ -1,4 +1,5 @@
 import type { InspectGroup, InspectedSection } from "@figloo/protocol";
+import type { LayerBox } from "./geometry.js";
 
 const SECTION_SUFFIX = "-inspection-panel";
 
@@ -107,4 +108,34 @@ function readText(kind: string, section: Element): string | null {
     return button?.textContent?.trim() || null;
   }
   return null;
+}
+
+/** Width and height from the inspection panel, for example "393px", "Hug (317px)", or "1,064px". */
+export function layerBox(doc: Document): LayerBox | null {
+  const root = inspectionRoot(doc);
+  const box = root ? boxOf(readInspection(root)) : null;
+  return box && box.width > 0 && box.height > 0 ? box : null;
+}
+
+/** The size and the place in its nearest frame that the panel's layout section shows; a line has a zero height. */
+export function boxOf(sections: InspectedSection[]): LayerBox | null {
+  const layout = sections.find((section) => section.kind === "properties");
+  const px = (name: string) => {
+    const value = layout?.properties.find((p) => p.group === null && p.name === name)?.value;
+    const match = value ? /(-?[\d,.]+)px\)?$/.exec(value) : null;
+    return match ? Number(match[1]!.replace(/,/g, "")) : Number.NaN;
+  };
+  const width = px("Width");
+  const height = px("Height");
+  if (!(width >= 0 && height >= 0)) return null;
+  // A missing Top or Left next to a shown one is zero; with neither shown the position is unknown.
+  const left = px("Left");
+  const top = px("Top");
+  const shown = Number.isFinite(left) || Number.isFinite(top);
+  return { width, height, position: shown ? { left: Number.isFinite(left) ? left : 0, top: Number.isFinite(top) ? top : 0 } : null };
+}
+
+export function layerSize(doc: Document): { width: number; height: number } | null {
+  const box = layerBox(doc);
+  return box ? { width: box.width, height: box.height } : null;
 }
