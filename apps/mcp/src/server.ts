@@ -6,7 +6,7 @@ import { configDir } from "./config.js";
 import { ContextStore } from "./contexts.js";
 import { registerExplorationTools } from "./exploration.js";
 import { SnapshotStore } from "./snapshots.js";
-import { overallStatus, statusHint } from "./status.js";
+import { overallStatus, statusHint, tabLimitations } from "./status.js";
 
 export interface ServerDeps {
   bridge: Bridge;
@@ -28,7 +28,8 @@ export function createServer(deps: ServerDeps): McpServer {
     "get_status",
     {
       description:
-        "Report whether the Figloo browser extension is connected, which Figma design tabs are open, and what each tab can read. Call this first.",
+        "Report whether the Figloo browser extension is connected, which Figma design tabs are open, and what each tab can read. Call this first. " +
+        "Each tab lists its limitations: what Figloo cannot do there, such as in a guest session or with Figma's screen reader mirror off, the tools that fail or do less, and what the user can do about it.",
       outputSchema: StatusReportSchema,
     },
     async () => {
@@ -73,8 +74,9 @@ export async function buildStatusReport(bridge: Bridge, refreshTimeoutMs = 3_000
       connectedAt: bridge.extension?.connectedAt ?? null,
       lastDisconnectAt: bridge.lastDisconnectAt,
       lastError: bridge.lastError,
+      rejected: bridge.connected ? null : bridge.rejected,
     },
-    tabs,
+    tabs: tabs.map((tab) => ({ ...tab, limitations: tabLimitations(tab) })),
     tabsFresh,
     hint: null,
   };

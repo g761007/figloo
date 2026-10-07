@@ -6,7 +6,7 @@ Every tool returns its result as JSON text and as `structuredContent`. A failed 
 
 ## get_status
 
-Report whether the Figloo browser extension is connected, which Figma design tabs are open, and what each tab can read. Call this first.
+Report whether the Figloo browser extension is connected, which Figma design tabs are open, and what each tab can read. Call this first. Each tab lists its limitations: what Figloo cannot do there, such as in a guest session or with Figma's screen reader mirror off, the tools that fail or do less, and what the user can do about it.
 
 No parameters.
 
@@ -15,8 +15,8 @@ No parameters.
 | `status` | "DISCONNECTED" or "NO_DESIGN_TAB" or "LOADING" or "READY" or "DEGRADED" or "INCOMPATIBLE" |
 | `protocolVersion` | string |
 | `bridge` | object with listening, port, error, role, holder |
-| `extension` | object with connected, extensionVersion, userAgent, connectedAt, lastDisconnectAt, lastError |
-| `tabs` | array of object with tabId, windowId, url, title, fileKey, fileName, nodeIdFromUrl, readiness, access, uiLocale, capabilities, layerRowCount, visible, probedAt, detail |
+| `extension` | object with connected, extensionVersion, userAgent, connectedAt, lastDisconnectAt, lastError, rejected |
+| `tabs` | array of object with tabId, windowId, url, title, fileKey, fileName, nodeIdFromUrl, readiness, access, uiLocale, capabilities, layerRowCount, visible, probedAt, detail, missingAnchors, limitations |
 | `tabsFresh` | boolean |
 | `hint` | string or null |
 
@@ -311,34 +311,36 @@ Forget an exploration context and the refs it returned.
 
 ## Error codes
 
-| Code | Hint |
-|---|---|
-| `BAD_MESSAGE` | No hint; the message says what went wrong. |
-| `BUDGET_EXCEEDED` | The operation ran out of its time or UI budget; narrow the request or retry. |
-| `BUSY` | Another operation is running in this tab, or Figloo is working for another agent session (the message names it); retry after a few seconds. |
-| `CONTEXT_EXPIRED` | The Figma tab reloaded or switched files; call get_anchor again. |
-| `CONTEXT_NOT_FOUND` | The context was released or expired; call get_anchor again. |
-| `EXPORT_BLOCKED` | Figma handed over no file and the browser started no download. If the browser blocked repeated downloads from figma.com, ask the user to allow them in the site settings, then retry. |
-| `EXPORT_PENDING` | The browser is waiting to save the export, probably behind a Save dialog. Ask the user to confirm it, or to turn off asking where to save each file. |
-| `INSIDE_INSTANCE` | Layers inside an instance get new IDs when the page reloads, so a snapshot needs a root outside instances: use the instance itself or a layer above it. |
-| `INTERNAL` | No hint; the message says what went wrong. |
-| `INVALID_ARGUMENT` | Check the tool's parameters against its description. |
-| `INVALID_CURSOR` | Pass nextCursor exactly as returned, with the same contextId, ref, and relation. |
-| `LAYER_HIDDEN` | Figma exports nothing for a hidden layer or one inside a hidden layer. Leave it out, or ask the user whether it should be shown in Figma. |
-| `NODE_NOT_FOUND` | The layer is no longer in the layers panel; call get_anchor again. |
-| `NOT_CONNECTED` | Call get_status for setup steps. |
-| `NO_SELECTION` | Ask the user to select the layers to work on in Figma, then call get_anchor again. |
-| `PAGE_CHANGED` | The user switched to another Figma page; call get_anchor again. |
-| `PROTOCOL_MISMATCH` | No hint; the message says what went wrong. |
-| `SAVE_REFUSED` | saveTo must be a path inside the project directory, and existing files are only replaced with overwrite: true. |
-| `SNAPSHOT_EXPIRED` | Take a new snapshot with snapshot_layer, which needs a contextId from get_anchor or explore_page. |
-| `SNAPSHOT_INCOMPLETE` | Call snapshot_layer again with the same root until it returns complete: true; each call reads on where the last one stopped. |
-| `SNAPSHOT_NOT_FOUND` | Pass the snapshot id exactly as snapshot_layer returned it; without one, take a snapshot with snapshot_layer. |
-| `SUBTREE_TOO_LARGE` | Snapshot a smaller root: call snapshot_layer on one of the children listed in the message, or on a layer further down. |
-| `TAB_IN_BACKGROUND` | Ask the user to bring the Figma tab to the front (visible on screen, it may sit beside other windows), then retry. Reading pages, the selection, and already expanded layers still works from the background. |
-| `TAB_NOT_FOUND` | Call get_status to list the open Figma tabs and their tabId. |
-| `TIMEOUT` | The Figma tab did not answer in time; call get_status. |
-| `UI_NOT_READY` | Call get_status to see what the Figma tab can do right now. |
-| `UNAUTHORIZED` | No hint; the message says what went wrong. |
-| `UNKNOWN_REF` | Pass a ref returned earlier in this context. |
-| `USER_INTERRUPTED` | The user interacted with Figma during the operation. Check with the user before retrying. |
+An error result is `{ error: { code, message, hint, category, retry } }`. `retry` says whether calling the same tool again can help: `yes` as it is, perhaps after a short wait; `after_user` once the user did what the hint asks; `no` without a different call first.
+
+| Code | Category | Retry | Hint |
+|---|---|---|---|
+| `BAD_MESSAGE` | request | no | Figloo could not read a message between its parts; ask the user to report it with the Diagnostics from the Figloo popup. |
+| `BUDGET_EXCEEDED` | figma_ui | yes | The operation ran out of its time or UI budget; narrow the request or retry. |
+| `BUSY` | connection | yes | Another operation is running in this tab, or Figloo is working for another agent session (the message names it); retry after a few seconds. |
+| `CONTEXT_EXPIRED` | context | no | The Figma tab reloaded or switched files; call get_anchor again. |
+| `CONTEXT_NOT_FOUND` | context | no | The context was released or expired; call get_anchor again. |
+| `EXPORT_BLOCKED` | export | after_user | Figma handed over no file and the browser started no download. If the browser blocked repeated downloads from figma.com, ask the user to allow them in the site settings, then retry. |
+| `EXPORT_PENDING` | export | after_user | The browser is waiting to save the export, probably behind a Save dialog. Ask the user to confirm it, or to turn off asking where to save each file. |
+| `INSIDE_INSTANCE` | snapshot | no | Layers inside an instance get new IDs when the page reloads, so a snapshot needs a root outside instances: use the instance itself or a layer above it. |
+| `INTERNAL` | internal | no | Something failed inside Figloo; the message says what. Ask the user to report it with the Diagnostics from the Figloo popup if it happens again. |
+| `INVALID_ARGUMENT` | request | no | Check the tool's parameters against its description. |
+| `INVALID_CURSOR` | context | no | Pass nextCursor exactly as returned, with the same contextId, ref, and relation. |
+| `LAYER_HIDDEN` | export | no | Figma exports nothing for a hidden layer or one inside a hidden layer. Leave it out, or ask the user whether it should be shown in Figma. |
+| `NODE_NOT_FOUND` | context | no | The layer is no longer in the layers panel; call get_anchor again. |
+| `NOT_CONNECTED` | connection | after_user | Call get_status for setup steps. |
+| `NO_SELECTION` | user_action | after_user | Ask the user to select the layers to work on in Figma, then call get_anchor again. |
+| `PAGE_CHANGED` | context | no | The user switched to another Figma page; call get_anchor again. |
+| `PROTOCOL_MISMATCH` | compatibility | after_user | The extension and this server speak different bridge protocol versions. Call get_status, which says which one the user should update. |
+| `SAVE_REFUSED` | filesystem | no | saveTo must be a path inside the project directory, and existing files are only replaced with overwrite: true. |
+| `SNAPSHOT_EXPIRED` | snapshot | no | Take a new snapshot with snapshot_layer, which needs a contextId from get_anchor or explore_page. |
+| `SNAPSHOT_INCOMPLETE` | snapshot | no | Call snapshot_layer again with the same root until it returns complete: true; each call reads on where the last one stopped. |
+| `SNAPSHOT_NOT_FOUND` | snapshot | no | Pass the snapshot id exactly as snapshot_layer returned it; without one, take a snapshot with snapshot_layer. |
+| `SUBTREE_TOO_LARGE` | snapshot | no | Snapshot a smaller root: call snapshot_layer on one of the children listed in the message, or on a layer further down. |
+| `TAB_IN_BACKGROUND` | user_action | after_user | Ask the user to bring the Figma tab to the front (visible on screen, it may sit beside other windows), then retry. Reading pages, the selection, and already expanded layers still works from the background. |
+| `TAB_NOT_FOUND` | context | no | Call get_status to list the open Figma tabs and their tabId. |
+| `TIMEOUT` | connection | yes | The Figma tab did not answer in time; call get_status. |
+| `UI_NOT_READY` | figma_ui | no | Call get_status to see what the Figma tab can do right now. |
+| `UNAUTHORIZED` | connection | after_user | The extension's pairing token does not match this server's. Ask the user to run figloo-mcp pair and paste the token and port into the extension's options page. |
+| `UNKNOWN_REF` | context | no | Pass a ref returned earlier in this context. |
+| `USER_INTERRUPTED` | user_action | after_user | The user interacted with Figma during the operation. Check with the user before retrying. |

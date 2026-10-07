@@ -19,6 +19,7 @@ import {
   type SessionIdentity,
   type TabStatus,
 } from "@figloo/protocol";
+import { compareVersions } from "./versions.js";
 
 export interface BridgeOptions {
   port: number;
@@ -93,6 +94,8 @@ export class Bridge {
   listenError: string | null = null;
   lastDisconnectAt: number | null = null;
   lastError: string | null = null;
+  /** The last extension this bridge turned away, and why, until an extension connects. */
+  rejected: { reason: "protocol" | "token"; extensionVersion: string; protocolVersion: string } | null = null;
   /** This server's session; index.ts fills in `client` once the MCP client initialized. */
   readonly session: SessionIdentity;
 
@@ -461,11 +464,16 @@ export class Bridge {
           this.fail(ws, "UNAUTHORIZED", "first message must be hello", 4003);
           return;
         }
+        const versions = { extensionVersion: message.extensionVersion, protocolVersion: message.protocolVersion };
         if (!protocolCompatible(message.protocolVersion, PROTOCOL_VERSION)) {
-          this.fail(ws, "PROTOCOL_MISMATCH", `extension speaks ${message.protocolVersion}, server speaks ${PROTOCOL_VERSION}`, 4001);
+          this.rejected = { reason: "protocol", ...versions };
+          const older = compareVersions(message.protocolVersion, PROTOCOL_VERSION) < 0 ? "the extension" : "the MCP server";
+          const detail = `extension ${message.extensionVersion} speaks protocol ${message.protocolVersion}, server ${this.options.serverVersion} speaks ${PROTOCOL_VERSION}; update ${older}`;
+          this.fail(ws, "PROTOCOL_MISMATCH", detail, 4001);
           return;
         }
         if (!tokenMatches(message.token, this.options.token)) {
+          this.rejected = { reason: "token", ...versions };
           this.fail(ws, "UNAUTHORIZED", "pairing token rejected", 4003);
           return;
         }
@@ -518,6 +526,7 @@ export class Bridge {
     this.info = info;
     this.lastSeen = Date.now();
     this.lastError = null;
+    this.rejected = null;
     this.send({
       type: "welcome",
       protocolVersion: PROTOCOL_VERSION,

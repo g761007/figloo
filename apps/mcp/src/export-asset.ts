@@ -19,7 +19,7 @@ import {
 } from "@figloo/protocol";
 import { BridgeError, type Bridge } from "./bridge.js";
 import { knownParents, type ContextStore, type ExplorationContext } from "./contexts.js";
-import { SNAPSHOT_HINTS, adoptSnapshot, finishedSnapshot, inside } from "./snapshot-tools.js";
+import { adoptSnapshot, finishedSnapshot, inside } from "./snapshot-tools.js";
 import type { SnapshotStore } from "./snapshots.js";
 
 const EXPORT_TIMEOUT_MS = 70_000;
@@ -34,14 +34,6 @@ const FORMAT_MIME: Record<ExportFormat, string> = { svg: "image/svg+xml", png: "
 const ZIP_LOCAL_HEADER = 0x04034b50;
 const ZIP_CENTRAL_HEADER = 0x02014b50;
 const ZIP_END = 0x06054b50;
-
-export const EXPORT_HINTS: Record<string, string> = {
-  EXPORT_BLOCKED:
-    "Figma handed over no file and the browser started no download. If the browser blocked repeated downloads from figma.com, ask the user to allow them in the site settings, then retry.",
-  EXPORT_PENDING: "The browser is waiting to save the export, probably behind a Save dialog. Ask the user to confirm it, or to turn off asking where to save each file.",
-  SAVE_REFUSED: "saveTo must be a path inside the project directory, and existing files are only replaced with overwrite: true.",
-  LAYER_HIDDEN: "Figma exports nothing for a hidden layer or one inside a hidden layer. Leave it out, or ask the user whether it should be shown in Figma.",
-};
 
 class SaveRefused extends Error {
   readonly code = "SAVE_REFUSED";
@@ -259,7 +251,7 @@ export function registerExportTool(server: McpServer, deps: ExportDeps, toolErro
         log(`export_asset source=${result.source} files=${files.length} bytes=${files.reduce((sum, f) => sum + f.bytes, 0)} saved=${saveTo !== undefined} ms=${Math.round(result.elapsedMs)}`);
         return { content: [{ type: "text" as const, text: JSON.stringify(output) }, ...images], structuredContent: output as unknown as Record<string, unknown> };
       } catch (error) {
-        return toolError(error, EXPORT_HINTS);
+        return toolError(error);
       }
     },
   );
@@ -392,7 +384,7 @@ export function registerExportAssetsTool(server: McpServer, deps: ExportDeps, to
         log(`export_assets layers=${queue.length} saved=${saved.length} failed=${failed.length} skipped=${skipped.length} remaining=${remaining.length} stoppedBy=${stoppedBy?.code ?? "-"} ms=${output.elapsedMs}`);
         return { content: [{ type: "text" as const, text: JSON.stringify(output) }], structuredContent: output as unknown as Record<string, unknown> };
       } catch (error) {
-        return toolError(error, { ...EXPORT_HINTS, ...SNAPSHOT_HINTS });
+        return toolError(error);
       }
     },
   );

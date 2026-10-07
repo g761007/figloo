@@ -156,8 +156,15 @@ describe("Explorer on captured Figma markup", () => {
   it("explains that a guest cannot read properties instead of waiting for a panel that never comes", async () => {
     const explorer = new Explorer("page-1", document, window);
     const { identity } = await explorer.getAnchor();
-    // The captured page has no right sidebar, just like a guest session.
+    // The captured page has no right sidebar; with the sign-in button it is a guest session.
+    document.body.insertAdjacentHTML("beforeend", '<button data-testid="google-btn">Continue with Google</button>');
     await expect(explorer.inspectNodes({ expect: identity, refs: ["1335:5269"] })).rejects.toMatchObject({ code: "UI_NOT_READY", message: expect.stringMatching(/guest/) });
+  });
+
+  it("says Figma may have changed when a signed-in page has no right sidebar, rather than blaming a guest session", async () => {
+    const explorer = new Explorer("page-1", document, window);
+    const { identity } = await explorer.getAnchor();
+    await expect(explorer.inspectNodes({ expect: identity, refs: ["1335:5269"] })).rejects.toMatchObject({ code: "UI_NOT_READY", message: expect.stringMatching(/cannot find Figma's right sidebar/) });
   });
 
   it("explains at once that it cannot read the Design panel Figma shows with edit access", async () => {

@@ -37,6 +37,7 @@ import {
 import { BridgeError, type Bridge } from "./bridge.js";
 import { knownParents, type ContextStore } from "./contexts.js";
 import { decodeCursor, encodeCursor } from "./cursor.js";
+import { describeError } from "./errors.js";
 import { registerExportAssetsTool, registerExportTool } from "./export-asset.js";
 import { registerSnapshotTools } from "./snapshot-tools.js";
 import type { SnapshotStore } from "./snapshots.js";
@@ -45,27 +46,6 @@ import type { SnapshotStore } from "./snapshots.js";
 const OP_TIMEOUT_MS = 20_000;
 /** Plan budget for one tool result. */
 export const MAX_OUTPUT_BYTES = 32 * 1024;
-
-export const HINTS: Record<string, string> = {
-  NO_SELECTION: "Ask the user to select the layers to work on in Figma, then call get_anchor again.",
-  NOT_CONNECTED: "Call get_status for setup steps.",
-  TAB_NOT_FOUND: "Call get_status to list the open Figma tabs and their tabId.",
-  CONTEXT_NOT_FOUND: "The context was released or expired; call get_anchor again.",
-  CONTEXT_EXPIRED: "The Figma tab reloaded or switched files; call get_anchor again.",
-  PAGE_CHANGED: "The user switched to another Figma page; call get_anchor again.",
-  UNKNOWN_REF: "Pass a ref returned earlier in this context.",
-  INVALID_CURSOR: "Pass nextCursor exactly as returned, with the same contextId, ref, and relation.",
-  NODE_NOT_FOUND: "The layer is no longer in the layers panel; call get_anchor again.",
-  USER_INTERRUPTED: "The user interacted with Figma during the operation. Check with the user before retrying.",
-  UI_NOT_READY: "Call get_status to see what the Figma tab can do right now.",
-  BUSY: "Another operation is running in this tab, or Figloo is working for another agent session (the message names it); retry after a few seconds.",
-  BUDGET_EXCEEDED: "The operation ran out of its time or UI budget; narrow the request or retry.",
-  TIMEOUT: "The Figma tab did not answer in time; call get_status.",
-  TAB_IN_BACKGROUND:
-    "Ask the user to bring the Figma tab to the front (visible on screen, it may sit beside other windows), then retry. Reading pages, the selection, and already expanded layers still works from the background.",
-  INVALID_ARGUMENT: "Check the tool's parameters against its description.",
-  INSIDE_INSTANCE: "Layers inside an instance get new IDs when the page reloads, so a snapshot needs a root outside instances: use the instance itself or a layer above it.",
-};
 
 class ToolFailure extends Error {
   constructor(
@@ -79,7 +59,8 @@ class ToolFailure extends Error {
 function toolError(error: unknown, extraHints: Record<string, string> = {}) {
   const code = error instanceof BridgeError || error instanceof ToolFailure ? error.code : typeof (error as { code?: unknown })?.code === "string" ? (error as { code: string }).code : "INTERNAL";
   const message = error instanceof Error ? error.message : String(error);
-  const body = { error: { code, message, hint: extraHints[code] ?? HINTS[code] ?? null } };
+  const { category, retry, hint } = describeError(code, extraHints);
+  const body = { error: { code, message, hint, category, retry } };
   return { isError: true as const, content: [{ type: "text" as const, text: JSON.stringify(body) }] };
 }
 

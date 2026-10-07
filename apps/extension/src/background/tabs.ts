@@ -45,6 +45,7 @@ export async function probeTab(tab: chrome.tabs.Tab): Promise<TabStatus> {
     visible: probe?.visible ?? null,
     probedAt: probe ? Date.now() : null,
     detail,
+    missingAnchors: probe?.missingAnchors ?? [],
   };
 }
 

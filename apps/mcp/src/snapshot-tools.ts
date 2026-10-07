@@ -31,16 +31,8 @@ const testTimeBudgetMs = (() => {
   return Number.isInteger(ms) && ms > 0 && ms < SNAPSHOT_TIME_BUDGET_MS ? ms : null;
 })();
 
-export const SNAPSHOT_HINTS: Record<string, string> = {
-  SUBTREE_TOO_LARGE: "Snapshot a smaller root: call snapshot_layer on one of the children listed in the message, or on a layer further down.",
-  SNAPSHOT_NOT_FOUND: "Pass the snapshot id exactly as snapshot_layer returned it; without one, take a snapshot with snapshot_layer.",
-  SNAPSHOT_EXPIRED: "Take a new snapshot with snapshot_layer, which needs a contextId from get_anchor or explore_page.",
-  SNAPSHOT_INCOMPLETE: "Call snapshot_layer again with the same root until it returns complete: true; each call reads on where the last one stopped.",
-};
-
 /** Hints that differ for query_snapshot, which knows snapshots rather than contexts. */
 const QUERY_HINTS: Record<string, string> = {
-  ...SNAPSHOT_HINTS,
   UNKNOWN_REF: "Pass a ref from this snapshot's outline.",
   INVALID_CURSOR: "Pass nextCursor exactly as returned, with the same snapshot and filters.",
 };
@@ -333,7 +325,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
           structuredContent: output as unknown as Record<string, unknown>,
         };
       } catch (error) {
-        return toolError(error, SNAPSHOT_HINTS);
+        return toolError(error);
       }
     },
   );

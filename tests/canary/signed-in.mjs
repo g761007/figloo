@@ -103,6 +103,8 @@ try {
   assert(tab.access === "view", `the test account views the file (access is ${tab.access}; guest means the profile is signed out, so sign in again with node tests/canary/login.mjs)`);
   assert(tab.readiness === "READY", `the tab is READY (got ${tab.readiness}: ${tab.detail})`);
   assert(tab.capabilities.mirrorDom, 'the test account has "Adapt content for screen readers" on');
+  assert((tab.missingAnchors ?? []).length === 0, `every part of Figma's page Figloo expects is there (missing: ${(tab.missingAnchors ?? []).join(", ")})`);
+  assert(tab.limitations.length === 0, `the tab has no limitations (got ${tab.limitations.map((limit) => limit.code).join(", ")})`);
 
   // The link names the frame, which Figma selects on opening.
   const anchored = await call("get_anchor", { tabId: tab.tabId });

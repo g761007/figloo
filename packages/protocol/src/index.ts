@@ -87,6 +87,8 @@ export const ProbeResultSchema = z.object({
   selectedCount: z.number().int().nonnegative().nullable(),
   /** Figma applies expand and select only while the tab is visible; reading works either way. */
   visible: z.boolean(),
+  /** Parts of Figma's page Figloo expects but did not find, by name, such as "rightSidebar". */
+  missingAnchors: z.array(z.string()).optional(),
 });
 export type ProbeResult = z.infer<typeof ProbeResultSchema>;
 
@@ -108,6 +110,8 @@ export const TabStatusSchema = z.object({
   visible: z.boolean().nullable(),
   probedAt: z.number().nullable(),
   detail: z.string().nullable(),
+  /** Parts of Figma's page Figloo expects but did not find; absent from extensions before 0.5.0. */
+  missingAnchors: z.array(z.string()).optional(),
 });
 export type TabStatus = z.infer<typeof TabStatusSchema>;
 
@@ -222,6 +226,21 @@ export type WelcomeMessage = z.infer<typeof WelcomeMessageSchema>;
 /** Result of the `refresh_tabs` request. */
 export const RefreshTabsResultSchema = z.object({ tabs: z.array(TabStatusSchema) });
 
+/** Something Figloo cannot do in a tab, the tools that fail or do less there, and what the user can do. */
+export const TabLimitationSchema = z.object({
+  code: z.enum(["UI_MINIMIZED", "GUEST", "EDIT_ACCESS", "UI_CHANGED", "NO_KEYBOARD_TARGET", "NO_SCREEN_READER_MIRROR", "NOT_ENGLISH"]),
+  tools: z.array(z.string()),
+  /** What does not work, and why. */
+  detail: z.string(),
+  /** What the user can do about it; null when nothing helps in this file. */
+  fix: z.string().nullable(),
+});
+export type TabLimitation = z.infer<typeof TabLimitationSchema>;
+
+/** A tab as `get_status` reports it: what the extension found, and what that means for the tools. */
+export const ReportedTabSchema = TabStatusSchema.extend({ limitations: z.array(TabLimitationSchema) });
+export type ReportedTab = z.infer<typeof ReportedTabSchema>;
+
 /** What `get_status` returns to the coding agent. */
 export const StatusReportSchema = z.object({
   status: ConnectionStatusSchema,
@@ -242,8 +261,10 @@ export const StatusReportSchema = z.object({
     connectedAt: z.number().nullable(),
     lastDisconnectAt: z.number().nullable(),
     lastError: z.string().nullable(),
+    /** The last extension the bridge turned away since one was connected, and why. */
+    rejected: z.object({ reason: z.enum(["protocol", "token"]), extensionVersion: z.string(), protocolVersion: z.string() }).nullable(),
   }),
-  tabs: z.array(TabStatusSchema),
+  tabs: z.array(ReportedTabSchema),
   tabsFresh: z.boolean(),
   hint: z.string().nullable(),
 });

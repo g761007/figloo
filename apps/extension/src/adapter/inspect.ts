@@ -1,4 +1,5 @@
 import type { InspectGroup, InspectedSection } from "@figloo/protocol";
+import { UI_ANCHORS } from "./anchors.js";
 import type { LayerBox } from "./geometry.js";
 
 const SECTION_SUFFIX = "-inspection-panel";
@@ -25,7 +26,7 @@ export function groupOf(kind: string): InspectGroup | "other" {
 
 /** The right sidebar, which in a view-only session holds the inspection panel. */
 export function inspectionRoot(doc: Document): Element | null {
-  return doc.querySelector('[role="region"][aria-label="Right sidebar"]');
+  return doc.querySelector(UI_ANCHORS.rightSidebar.selector);
 }
 
 /** Whether the right sidebar holds the Design panel editors get instead of the inspection panel (seen on 2026-10-07). */

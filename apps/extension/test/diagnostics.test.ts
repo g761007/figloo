@@ -22,6 +22,7 @@ const tab: TabStatus = {
   layerRowCount: 120,
   visible: true,
   probedAt: NOW,
+  missingAnchors: ["pagesList"],
   detail: null,
 };
 
@@ -77,6 +78,7 @@ describe("diagnostics", () => {
       "Figma design tabs: 2; snapshot running in this tab: no",
       "This tab: READY, view access, UI language en, on screen: yes",
       "Figma UI found: layers panel yes, keyboard target yes, properties panel yes, screen reader mirror yes, UI minimized no, layer rows 120",
+      "Figma UI not found: pagesList",
       "Recent errors: export_asset LAYER_HIDDEN 2 min ago; snapshot_layer TAB_IN_BACKGROUND 10 min ago",
       "",
     ]);

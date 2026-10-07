@@ -34,3 +34,22 @@ describe("access from the page", () => {
   });
 });
 
+describe("parts of Figma's page Figloo expects", () => {
+  const signedIn = `
+    <input class="focus-target" aria-label="Figma Design">
+    <span data-testid="filename">File</span>
+    <div data-testid="PagesRowWrapper"><button aria-current="page">Page 1</button></div>
+    <div data-testid="objects-panel"><div role="row" aria-rowindex="1"><div data-testid="1:2-layers-panel-row"></div></div></div>
+    <div role="region" aria-label="Right sidebar"><div data-testid="properties-panel"></div></div>`;
+
+  it("finds every part on a signed-in page, the screen reader mirror being a setting", () => {
+    document.body.innerHTML = signedIn;
+    expect(probeFigmaPage(document, window).missingAnchors).toEqual([]);
+  });
+
+  it("names the parts it cannot find, as after Figma renamed the right sidebar", () => {
+    document.body.innerHTML = signedIn.replace('aria-label="Right sidebar"', 'aria-label="Inspector"');
+    expect(probeFigmaPage(document, window).missingAnchors).toEqual(["rightSidebar"]);
+  });
+});
+

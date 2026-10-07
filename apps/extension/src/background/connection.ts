@@ -86,7 +86,8 @@ export async function connect(): Promise<void> {
       scheduleReconnect(HANDOVER_RETRY_MS);
       return;
     }
-    if (event.code >= 4000 && event.reason) state.lastError = `${event.code} ${event.reason}`;
+    // The bridge's error message, such as which side to update, says more than the close reason.
+    if (event.code >= 4000 && event.reason && !state.lastError?.startsWith(`${event.reason}:`)) state.lastError = `${event.code} ${event.reason}`;
     // Unauthorized or incompatible: retry slowly so a bad token does not hammer the bridge.
     if (event.code === 4001 || event.code === 4003) {
       scheduleReconnect(REJECTED_RETRY_MS);

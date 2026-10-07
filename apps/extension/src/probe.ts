@@ -1,30 +1,33 @@
 import type { FileAccess, ProbeResult } from "@figloo/protocol";
+import { UI_ANCHORS, missingAnchors } from "./adapter/anchors.js";
 import { showsDesignPanel } from "./adapter/inspect.js";
 
 /** Toolbar labels Figma shows when the signed-in user cannot edit the file (English UI). */
 const VIEW_ONLY_LABELS = new Set(["View only", "Ask to edit", "Request sent"]);
 
-/** Small read probe run inside a Figma tab; selectors come from docs/compatibility. */
+/** Small read probe run inside a Figma tab; the selectors are the anchors in adapter/anchors.ts. */
 export function probeFigmaPage(doc: Document, win: Window): ProbeResult {
-  const layersPanel = doc.querySelector('[data-testid="objects-panel"]') !== null;
-  const focusTarget = doc.querySelector("input.focus-target");
+  const found = (anchor: { selector: string }) => doc.querySelector(anchor.selector) !== null;
+  const layersPanel = found(UI_ANCHORS.layersPanel);
+  const focusTarget = doc.querySelector(UI_ANCHORS.focusTarget.selector);
   return {
     href: win.location.href,
     readyState: doc.readyState,
     msSinceLoad: Math.max(0, Math.round(win.performance.now())),
     uiLocale: doc.documentElement.lang || null,
-    fileName: doc.querySelector('[data-testid="filename"]')?.textContent?.trim() || null,
+    fileName: doc.querySelector(UI_ANCHORS.fileName.selector)?.textContent?.trim() || null,
     access: detectAccess(doc, layersPanel),
     capabilities: {
       layersPanel,
       focusTarget: focusTarget !== null,
-      propertiesPanel: doc.querySelector('[data-testid="properties-panel"]') !== null,
-      mirrorDom: doc.querySelector('#hidden-input-activedescendant[role="main"]') !== null,
-      uiCollapsed: doc.querySelector('button[aria-label^="Expand UI"]') !== null,
+      propertiesPanel: found(UI_ANCHORS.propertiesPanel),
+      mirrorDom: found(UI_ANCHORS.mirror),
+      uiCollapsed: found(UI_ANCHORS.expandUi),
     },
-    layerRowCount: doc.querySelectorAll('[data-testid$="-layers-panel-row"]').length,
+    layerRowCount: doc.querySelectorAll(UI_ANCHORS.layerRow.selector).length,
     selectedCount: parseSelectedCount(focusTarget?.getAttribute("aria-label") ?? null),
     visible: !doc.hidden,
+    missingAnchors: missingAnchors(doc),
   };
 }
 
@@ -34,7 +37,7 @@ export function probeFigmaPage(doc: Document, win: Window): ProbeResult {
  * Properties (seen on 2026-10-07).
  */
 function detectAccess(doc: Document, layersPanel: boolean): FileAccess {
-  if (doc.querySelector('[data-testid="google-btn"]')) return "guest";
+  if (doc.querySelector(UI_ANCHORS.guestSignIn.selector)) return "guest";
   if (!layersPanel) return "unknown";
   for (const button of doc.querySelectorAll("button")) {
     if (VIEW_ONLY_LABELS.has(button.textContent?.trim() ?? "")) return "view";

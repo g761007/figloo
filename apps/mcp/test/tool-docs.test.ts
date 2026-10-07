@@ -5,15 +5,12 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterAll, describe, expect, it } from "vitest";
 import { BridgeErrorCodeSchema, ErrorCodeSchema } from "@figloo/protocol";
 import type { Bridge } from "../src/bridge.js";
-import { EXPORT_HINTS } from "../src/export-asset.js";
-import { HINTS } from "../src/exploration.js";
-import { SNAPSHOT_HINTS } from "../src/snapshot-tools.js";
+import { ERRORS, SERVER_ERROR_CODES } from "../src/errors.js";
 import { createServer } from "../src/server.js";
 import { startBridge } from "./helpers.js";
 
 const DOC = resolve(import.meta.dirname, "../../../docs/mcp-tools.md");
 /** Codes the server raises itself, next to the protocol's. */
-const SERVER_CODES = ["INVALID_ARGUMENT", "SAVE_REFUSED", "SNAPSHOT_EXPIRED", "SNAPSHOT_INCOMPLETE", "SNAPSHOT_NOT_FOUND", "SUBTREE_TOO_LARGE"];
 
 interface JsonSchema {
   type?: string | string[];
@@ -88,10 +85,16 @@ async function renderToolDocs(bridge: Bridge): Promise<string> {
       lines.push("");
     }
   }
-  const hints: Record<string, string> = { ...HINTS, ...EXPORT_HINTS, ...SNAPSHOT_HINTS };
-  const codes = [...new Set([...ErrorCodeSchema.options, ...BridgeErrorCodeSchema.options, ...SERVER_CODES])].sort();
-  lines.push("## Error codes", "", "| Code | Hint |", "|---|---|");
-  for (const code of codes) lines.push(`| \`${code}\` | ${cell(hints[code] ?? "No hint; the message says what went wrong.")} |`);
+  const codes = [...new Set([...ErrorCodeSchema.options, ...BridgeErrorCodeSchema.options, ...SERVER_ERROR_CODES])].sort();
+  lines.push(
+    "## Error codes",
+    "",
+    "An error result is `{ error: { code, message, hint, category, retry } }`. `retry` says whether calling the same tool again can help: `yes` as it is, perhaps after a short wait; `after_user` once the user did what the hint asks; `no` without a different call first.",
+    "",
+    "| Code | Category | Retry | Hint |",
+    "|---|---|---|---|",
+  );
+  for (const code of codes) lines.push(`| \`${code}\` | ${ERRORS[code]!.category} | ${ERRORS[code]!.retry} | ${cell(ERRORS[code]!.hint)} |`);
   return `${lines.join("\n")}\n`;
 }
 

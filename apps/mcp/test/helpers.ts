@@ -122,7 +122,7 @@ export function sampleTab(overrides: Partial<TabStatus> = {}): TabStatus {
     readiness: "READY",
     access: "view",
     uiLocale: "en",
-    capabilities: { layersPanel: true, focusTarget: true, propertiesPanel: true, mirrorDom: false, uiCollapsed: false },
+    capabilities: { layersPanel: true, focusTarget: true, propertiesPanel: true, mirrorDom: true, uiCollapsed: false },
     layerRowCount: 42,
     visible: true,
     probedAt: 1,

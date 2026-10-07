@@ -40,6 +40,8 @@ export interface Diagnostics {
     visible: boolean | null;
     capabilities: TabCapabilities;
     layerRowCount: number;
+    /** Names of the parts of Figma's page Figloo expects but did not find. */
+    missingAnchors: string[];
   } | null;
 }
 
@@ -103,6 +105,7 @@ export function buildDiagnostics(input: DiagnosticsInput): Diagnostics {
           visible: tab.visible,
           capabilities: { ...tab.capabilities },
           layerRowCount: tab.layerRowCount,
+          missingAnchors: [...(tab.missingAnchors ?? [])],
         }
       : null,
   };
@@ -144,6 +147,7 @@ export function formatDiagnostics(d: Diagnostics, now: number): string {
     lines.push(
       `Figma UI found: layers panel ${yesNo(c.layersPanel)}, keyboard target ${yesNo(c.focusTarget)}, properties panel ${yesNo(c.propertiesPanel)}, screen reader mirror ${yesNo(c.mirrorDom)}, UI minimized ${yesNo(c.uiCollapsed)}, layer rows ${t.layerRowCount}`,
     );
+    lines.push(`Figma UI not found: ${t.missingAnchors.length > 0 ? t.missingAnchors.join(", ") : "none"}`);
   }
   if (w) {
     const recent = [...w.recentErrors].reverse().map((e) => `${e.op} ${e.code} ${ago(e.at, now)}`);

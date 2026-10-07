@@ -34,11 +34,14 @@ describe("Bridge handshake", () => {
     expect(bridge.connected).toBe(false);
   });
 
-  it("rejects an incompatible protocol version", async () => {
-    const bridge = track(await startBridge());
+  it("rejects an incompatible protocol version and names both versions and the side to update", async () => {
+    const bridge = track(await startBridge({ serverVersion: "0.5.0" }));
     const ext = await openFakeExtension(bridge.port);
-    ext.send(hello({ protocolVersion: "0.9.0" }));
-    expect(await ext.next((m) => m.type === "error")).toMatchObject({ code: "PROTOCOL_MISMATCH" });
+    ext.send(hello({ protocolVersion: "0.9.0", extensionVersion: "0.9.1" }));
+    expect(await ext.next((m) => m.type === "error")).toMatchObject({
+      code: "PROTOCOL_MISMATCH",
+      message: expect.stringMatching(/^extension 0\.9\.1 speaks protocol 0\.9\.0, server 0\.5\.0 speaks \S+; update the MCP server$/),
+    });
     expect((await ext.closed).code).toBe(4001);
   });
 

@@ -205,6 +205,7 @@ try {
   assert(status.tabsFresh === true, "tabs were refreshed for this call");
   assert(tab.layerRowCount > 0, "layer rows are counted");
   assert(tab.readiness === "DEGRADED", `guest session stays DEGRADED (got ${tab.readiness})`);
+  assert(tab.limitations.some((limit) => limit.code === "GUEST" && limit.tools.includes("inspect_nodes")), `a guest tab lists the tools it cannot use (got ${JSON.stringify(tab.limitations)})`);
   assert(status.status === "DEGRADED", `overall status follows the tab (got ${status.status})`);
   action = await actionState(worker, figmaTabId);
   assert(action.badge === "!" && action.title.includes("guest session"), `tooltip follows the new limitation (got ${JSON.stringify(action.title)})`);

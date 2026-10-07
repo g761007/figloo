@@ -2,6 +2,7 @@ import type { CanvasView, LayerNode, NeighborsResult, PageIdentity } from "@figl
 import { MAX_ANCHORS } from "@figloo/protocol";
 import { parseFigmaUrl } from "../figma-url.js";
 import { parseSelectedCount } from "../probe.js";
+import { UI_ANCHORS } from "./anchors.js";
 import { DomRowSource, synthesizeClick } from "./dom-source.js";
 import { inspectionHeader, inspectionRoot, inspectionSignature, showsDesignPanel } from "./inspect.js";
 import { DEFAULT_LIMITS, MAX_NAME_LENGTH, OpError, normalized, sleep, translate, watchForUser, type RunLimits, type UserSelection, type UserWatch } from "./operation.js";
@@ -89,7 +90,13 @@ export class ExplorerCore {
   /** The inspection panel lives in the Properties tab of the right sidebar, which guests do not have. */
   async showPropertiesTab(): Promise<void> {
     const sidebar = inspectionRoot(this.doc);
-    if (!sidebar) throw new OpError("UI_NOT_READY", "Figma is not showing the inspection panel; guest sessions have none, so sign in to Figma");
+    if (!sidebar) {
+      const guest = this.doc.querySelector(UI_ANCHORS.guestSignIn.selector) !== null;
+      throw new OpError(
+        "UI_NOT_READY",
+        guest ? "Figma is not showing the inspection panel; guest sessions have none, so sign in to Figma" : "Figloo cannot find Figma's right sidebar, which holds the inspection panel; Figma may have changed its UI",
+      );
+    }
     const tab = [...sidebar.querySelectorAll('[role="tab"]')].find((el) => /Properties/.test(el.textContent ?? ""));
     if (!tab || tab.getAttribute("aria-selected") === "true") return;
     synthesizeClick(tab);

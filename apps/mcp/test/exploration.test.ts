@@ -74,7 +74,7 @@ async function setup(handler: Handler) {
   const call = async (name: string, args: Record<string, unknown>) => client.callTool({ name, arguments: args });
   const errorOf = (result: Awaited<ReturnType<typeof call>>) => {
     expect(result.isError).toBe(true);
-    return JSON.parse((result.content as { text: string }[])[0]!.text).error as { code: string; hint: string | null };
+    return JSON.parse((result.content as { text: string }[])[0]!.text).error as { code: string; hint: string | null; category: string; retry: string };
   };
   return { requests, call, errorOf };
 }
@@ -88,11 +88,12 @@ describe("get_anchor", () => {
     expect(requests[0]).toMatchObject({ op: "get_anchor", tabId: 7 });
   });
 
-  it("passes on why there is no anchor, with a next step for the agent", async () => {
+  it("passes on why there is no anchor, with a next step for the agent and whether a retry can help", async () => {
     const { call, errorOf } = await setup(() => ({ ok: false, error: { code: "NO_SELECTION", message: "no layer is selected in Figma" } }));
     const error = errorOf(await call("get_anchor", { tabId: 7 }));
     expect(error.code).toBe("NO_SELECTION");
     expect(error.hint).toMatch(/select the layers to work on/);
+    expect(error).toMatchObject({ category: "user_action", retry: "after_user" });
   });
 });
 
