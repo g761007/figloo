@@ -4,6 +4,10 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-07
+
+The fix is in the extension, so load the new one after updating. The bridge protocol is still 0.3.0, so the extension also works with the 0.4.1 MCP server.
+
 ### Added
 
 - A GitHub Actions workflow runs the integration tests every day against a public Figma file as a guest, to notice changes in Figma's web UI before users run into them.

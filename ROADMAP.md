@@ -2,7 +2,7 @@
 
 Where Figloo is going, by area and by release. Figloo is versioned 0.x: a minor version adds features, a patch fixes problems, and tools and results may still change between minor versions. [CHANGELOG.md](CHANGELOG.md) lists what each release changed. The detailed plan behind this roadmap, in Traditional Chinese, is [docs/plans/2026-10-06-productization-and-reliability.md](docs/plans/2026-10-06-productization-and-reliability.md).
 
-Current release: 0.4.1.
+Current release: 0.4.2.
 
 ## Principles
 
@@ -26,7 +26,7 @@ These changed no released files, so they shipped without a release.
 - This roadmap and [SECURITY.md](SECURITY.md).
 - A daily canary on GitHub Actions that runs the integration tests against a public Figma file as a guest, to notice changes in Figma's web UI before users do.
 
-## 0.4.2: what the canary found first
+## 0.4.2 (released): what the canary found first
 
 On its first green run, the canary showed that Figloo stopped at the "Fixed" and "Scrolls" header rows Figma puts among the children of a frame with layers that stay put while it scrolls, and that the integration tests passed anyway with no layers read. 0.4.2 fixes the reading and makes the tests fail on reads that stop early.
 
