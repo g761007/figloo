@@ -2,7 +2,7 @@
 
 Where Figloo is going, by area and by release. Figloo is versioned 0.x: a minor version adds features, a patch fixes problems, and tools and results may still change between minor versions. [CHANGELOG.md](CHANGELOG.md) lists what each release changed. The detailed plan behind this roadmap, in Traditional Chinese, is [docs/plans/2026-10-06-productization-and-reliability.md](docs/plans/2026-10-06-productization-and-reliability.md).
 
-Current release: 0.5.0.
+Current release: 0.6.0.
 
 ## Principles
 
@@ -52,7 +52,7 @@ Refactoring alone makes no release. A fix for a problem a canary finds ships at 
 
 Done when a coding agent in a fresh environment follows the README Quickstart, installs Figloo, and completes a first design-to-code task, without the user needing to know how Figloo works. That run is still to be made with the maintainer.
 
-## 0.6.0: design intelligence
+## 0.6.0 (released): design intelligence
 
 - `map_tokens` puts a snapshot's colors, text styles, spacing, and radii next to the tokens the project already defines, exact or near, across web, iOS, Android, and Flutter projects, and lists project components whose names match the design's instances.
 - The figloo-implement skill uses it: exact matches as they are, near and unmatched values shown to the user before choosing, and a mapping table in its report.

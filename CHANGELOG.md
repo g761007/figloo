@@ -4,6 +4,10 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-07
+
+`map_tokens` maps a design onto the project's own tokens and components. Only the MCP server changed: the extension's code is the same as in 0.5.0, and the bridge protocol is still 0.3.0.
+
 ### Added
 
 - `map_tokens` puts a saved snapshot's colors, text styles, spacing, and corner radii next to the tokens the project already defines, without the Figma tab: exact matches, near ones with what differs (such as a color difference, an alpha, a pixel, or a weight), and values with none, and it lists project components whose names share an instance's words. It reads CSS custom properties, SCSS and Less variables, design token JSON, theme objects in JavaScript and TypeScript such as a Tailwind config, iOS asset catalogs and Swift, Android resources and Compose, and Flutter, from the project directory or a folder in it, skipping dependencies, build output, hidden folders, tests, and `.env` files.
