@@ -36,6 +36,10 @@ describe("deriveReadiness", () => {
     expect(result).toEqual({ readiness: "DEGRADED", detail: expect.stringMatching(/minimized/) });
   });
 
+  it("degrades an edit session because Figma shows the Design panel there instead of the inspection panel", () => {
+    expect(deriveReadiness(probe({ access: "edit" }), 0)).toEqual({ readiness: "DEGRADED", detail: expect.stringMatching(/edit access/) });
+  });
+
   it("degrades a guest session because guests cannot select layers", () => {
     expect(deriveReadiness(probe({ access: "guest" }), 0).readiness).toBe("DEGRADED");
   });

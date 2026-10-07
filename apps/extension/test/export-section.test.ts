@@ -2,7 +2,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { addTemporarySetting, exportButton, exportRows, exportSection, exportSettings, exportsLayer, removeTemporarySetting } from "../src/adapter/export.js";
+import { addTemporarySetting, exportButton, exportRows, exportSection, exportSettings, exportsLayer, removeTemporarySetting, unreadableExportRows } from "../src/adapter/export.js";
 
 function repoRoot(): string {
   let dir = process.cwd();
@@ -193,3 +193,29 @@ describe("temporary export settings (select file type control)", () => {
     expect(await addTemporarySetting(section, original, "svg", "1x")).toMatch(/cannot read/);
   });
 });
+
+describe.each(MARKUPS)("export settings Figloo cannot read (%s file type control)", (markup) => {
+  const load = () => {
+    document.body.innerHTML = fixture(markup);
+    return exportSection(document)!;
+  };
+
+  it("finds none in the captured markup", () => {
+    expect(unreadableExportRows(load())).toBe(0);
+  });
+
+  it("counts a setting row whose scale field it no longer recognizes, which it would otherwise skip", () => {
+    const section = load();
+    section.querySelector('input[aria-label^="Export constraints"]')!.setAttribute("aria-label", "Scale");
+    expect(exportSettings(section)).toEqual([]);
+    expect(unreadableExportRows(section)).toBe(1);
+  });
+
+  it("counts a setting row whose file type it cannot read", () => {
+    const section = load();
+    section.querySelector('button[role="combobox"], [data-testid="legacy-export-file-type-input"]')!.remove();
+    expect(exportSettings(section)).toEqual(["? 2x"]);
+    expect(unreadableExportRows(section)).toBe(1);
+  });
+});
+

@@ -70,6 +70,16 @@ export function exportSettings(section: Element): string[] {
 }
 
 /**
+ * Setting rows Figloo cannot fully read: rows with a field or a file type control in which it does
+ * not find the scale or the file type, such as after Figma changed the controls in October 2026.
+ */
+export function unreadableExportRows(section: Element): number {
+  return [...section.querySelectorAll('[role="row"]')].filter(
+    (row) => row.querySelector(`input, ${FORMAT_SELECT}, ${LEGACY_FORMAT}`) && (!row.querySelector<HTMLInputElement>(SCALE_INPUT)?.value || rowFormat(row) === null),
+  ).length;
+}
+
+/**
  * Where the row that is not among `original` is. Figma puts a new setting first and renders every
  * row again after each change, so the new row is found by what the rows export, not by element.
  */

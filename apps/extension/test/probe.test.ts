@@ -1,5 +1,6 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { parseSelectedCount } from "../src/probe.js";
+import { parseSelectedCount, probeFigmaPage } from "../src/probe.js";
 
 describe("parseSelectedCount", () => {
   it("reads the count Figma puts on the canvas keyboard target", () => {
@@ -13,3 +14,23 @@ describe("parseSelectedCount", () => {
     expect(parseSelectedCount(null)).toBeNull();
   });
 });
+
+describe("access from the page", () => {
+  const page = (sidebarTabs: string[], toolbar = "") => {
+    document.body.innerHTML = `
+      <div data-testid="objects-panel"></div>
+      <div role="region" aria-label="Right sidebar"><div role="tablist">${sidebarTabs.map((tab, i) => `<button role="tab" aria-selected="${i === 0}">${tab}</button>`).join("")}</div></div>
+      ${toolbar}`;
+    return probeFigmaPage(document, window).access;
+  };
+
+  it("reads edit access from the Design tab of the right sidebar, which view-only sessions do not have", () => {
+    expect(page(["Design", "Prototype"])).toBe("edit");
+  });
+
+  it("keeps view access and unknown sessions as before", () => {
+    expect(page(["Properties"], "<button>View only</button>")).toBe("view");
+    expect(page(["Properties"])).toBe("unknown");
+  });
+});
+

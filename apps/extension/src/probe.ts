@@ -1,4 +1,5 @@
 import type { FileAccess, ProbeResult } from "@figloo/protocol";
+import { showsDesignPanel } from "./adapter/inspect.js";
 
 /** Toolbar labels Figma shows when the signed-in user cannot edit the file (English UI). */
 const VIEW_ONLY_LABELS = new Set(["View only", "Ask to edit", "Request sent"]);
@@ -28,8 +29,9 @@ export function probeFigmaPage(doc: Document, win: Window): ProbeResult {
 }
 
 /**
- * Guest and view-only sessions are detected from positive markers. Nothing positive has been
- * verified for edit mode yet, so the absence of markers is reported as "unknown", never guessed.
+ * Access is detected from positive markers only; without one it is reported as "unknown", never
+ * guessed. Editors get Design and Prototype tabs in the right sidebar where view-only sessions get
+ * Properties (seen on 2026-10-07).
  */
 function detectAccess(doc: Document, layersPanel: boolean): FileAccess {
   if (doc.querySelector('[data-testid="google-btn"]')) return "guest";
@@ -37,6 +39,7 @@ function detectAccess(doc: Document, layersPanel: boolean): FileAccess {
   for (const button of doc.querySelectorAll("button")) {
     if (VIEW_ONLY_LABELS.has(button.textContent?.trim() ?? "")) return "view";
   }
+  if (showsDesignPanel(doc)) return "edit";
   return "unknown";
 }
 

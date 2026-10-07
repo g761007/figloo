@@ -30,13 +30,16 @@ These changed no released files, so they shipped without a release.
 
 On its first green run, the canary showed that Figloo stopped at the "Fixed" and "Scrolls" header rows Figma puts among the children of a frame with layers that stay put while it scrolls, and that the integration tests passed anyway with no layers read. 0.4.2 fixes the reading and makes the tests fail on reads that stop early.
 
-## 0.4.3: stabilization
+## 0.4.3: fail loudly
 
-- **Fail loudly in the inspection panel.** When a section is present but Figloo cannot read it, report that instead of an empty value. Export settings come first: Figma changed them between 0.4.0 and 0.4.1, and snapshots taken meanwhile reported every layer as having none. A file opened with edit access, where Figloo cannot read the inspection panel at all and snapshots come back with no properties, must say so too.
+When Figloo cannot read part of Figma's UI, it now says so instead of returning an empty value that looks normal. A file opened with edit access, where Figma shows the Design panel instead of the inspection panel, is reported by `get_status` and refused at once by the tools that read properties and exports. Export settings and inspection panel sections Figloo cannot read are marked as unreadable, and snapshots count the layers that have them.
+
+## After 0.4.3: a signed-in canary, then refactoring
+
 - **A signed-in canary**, run locally with a dedicated test account, for what only appears once a layer is selected, such as the inspection panel and the export section. A guest cannot select layers, so the daily canary does not reach them.
-- **Internal refactoring** with no change in behavior: split `apps/extension/src/adapter/ops.ts` and `apps/extension/src/background.ts`, and possibly `packages/protocol/src/index.ts`.
+- **Internal refactoring** with no change in behavior, once that canary can check it: split `apps/extension/src/adapter/ops.ts` and `apps/extension/src/background.ts`, and possibly `packages/protocol/src/index.ts`.
 
-Refactoring alone makes no release; 0.4.3 ships with the first item. A fix for a problem the canary finds ships at once, as the next patch, as 0.4.2 did.
+Refactoring alone makes no release. A fix for a problem a canary finds ships at once, as the next patch, as 0.4.2 did.
 
 ## 0.5.0: reliability and developer experience
 

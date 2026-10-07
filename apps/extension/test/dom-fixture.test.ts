@@ -160,6 +160,19 @@ describe("Explorer on captured Figma markup", () => {
     await expect(explorer.inspectNodes({ expect: identity, refs: ["1335:5269"] })).rejects.toMatchObject({ code: "UI_NOT_READY", message: expect.stringMatching(/guest/) });
   });
 
+  it("explains at once that it cannot read the Design panel Figma shows with edit access", async () => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<div role="region" aria-label="Right sidebar"><div role="tablist"><button role="tab" aria-selected="true">Design</button><button role="tab" aria-selected="false">Prototype</button></div></div>',
+    );
+    const explorer = new Explorer("page-1", document, window);
+    const { identity } = await explorer.getAnchor();
+    const started = Date.now();
+    await expect(explorer.inspectNodes({ expect: identity, refs: ["1335:5269"] })).rejects.toMatchObject({ code: "UI_NOT_READY", message: expect.stringMatching(/edit access/) });
+    await expect(explorer.prepareExport({ expect: identity, ref: "1335:5269", token: "t" })).rejects.toMatchObject({ code: "UI_NOT_READY", message: expect.stringMatching(/edit access/) });
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
   it("lists the siblings of the anchor from the rendered rows", async () => {
     const explorer = new Explorer("page-1", document, window);
     const { identity } = await explorer.getAnchor();

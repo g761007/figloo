@@ -21,7 +21,7 @@ import { knownParents, type ContextStore, type ExplorationContext } from "./cont
 import type { ToolErrorResult } from "./export-asset.js";
 import { changeMarks, diffSnapshots } from "./snapshot-diff.js";
 import { summarizeLayers } from "./snapshot-summary.js";
-import { isPlainRef, outlineLine, snapshotId, type PartialSnapshot, type SnapshotFile, type SnapshotStore } from "./snapshots.js";
+import { isPlainRef, outlineLine, snapshotId, unreadableParts, type PartialSnapshot, type SnapshotFile, type SnapshotStore } from "./snapshots.js";
 
 /** The tab gets 180 s, the rest covers messaging; one long request, no polling. */
 const SNAPSHOT_TIMEOUT_MS = SNAPSHOT_TIME_BUDGET_MS + 20_000;
@@ -164,7 +164,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         "Read a layer and everything inside it, for implementing a page: a screenshot, and for each layer its place, size, and all that inspect_nodes shows, saved as a snapshot that query_snapshot reads without Figma. " +
         "Use it on the page's root, such as the frame the user selected (get_anchor). Instances count as one layer; read inside them with get_neighbors. " +
         "A root snapshotted before can be passed with any context of the same file, even after the page reloaded; every ref of its snapshot then works in that context. " +
-        "Returns the screenshot, the snapshot id, and an outline with one line per layer: ref, type, name, x,y and width×height in design pixels from the root's top-left corner (? when Figma shows no place), the start of its text, and marks for hidden layers, instances with layers of their own, and export settings. " +
+        "Returns the screenshot, the snapshot id, and an outline with one line per layer: ref, type, name, x,y and width×height in design pixels from the root's top-left corner (? when Figma shows no place), the start of its text, and marks for hidden layers, instances with layers of their own, export settings, and parts of the inspection panel Figloo saw but could not read ([unreadable: …], counted in unreadableLayers: their values are missing, so check them in the screenshot or ask the user). " +
         "A layer at (x, y) shows at image.rootInImage + (x, y) × image.scale in the screenshot. image.alignment says whether rootInImage was checked against the screenshot: confirmed, corrected (Figma reported a stale place), or unconfirmed (it may be off by a few dozen pixels; the outline's places, relative to the root, are not affected). " +
         "A saved snapshot comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. " +
         "When the root was snapshotted before, changes counts the layers new, changed, and removed since that snapshot, names the removed ones, and the outline marks the others [new] or [changed: …] with what changed; query_snapshot with changed: true lists them. " +
@@ -278,6 +278,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
               outline: "",
               outlineLayers: 0,
               nextCursor: null,
+              unreadableLayers: countUnreadable(partial.layers),
               viewRestored,
               elapsedMs: Date.now() - started,
             };
@@ -319,6 +320,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
           outline: page.map((layer) => outlineLine(layer, marks.get(layer.ref))).join("\n"),
           outlineLayers: page.length,
           nextCursor: next === null ? null : encodeQueryCursor(id, next, outlineQuery),
+          unreadableLayers: countUnreadable(snapshotFile.layers),
           viewRestored,
           elapsedMs: Date.now() - started,
         }));
@@ -418,7 +420,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         "colors with what they color (fill, text, border, shadow), text styles, auto layout gaps, padding sides, corner radii, border widths, shadows, " +
         "and the instances it uses by name with each combination of their component properties. Figma names an instance after its component unless the designer renamed it. " +
         "Reads the saved file only, like query_snapshot. Values are exactly as Figma shows them; a color is a hex code, or the name of a color style where the panel shows one. " +
-        "Each value says how many layers use it and gives a few of their refs to look up with query_snapshot. Hidden layers are left out. " +
+        "Each value says how many layers use it and gives a few of their refs to look up with query_snapshot. Hidden layers are left out, and unreadableLayers counts layers whose values Figloo could not read. " +
         "Long lists are cut to fit, the values fewest layers use first, and truncated says so; pass under to summarize one section.",
       inputSchema: {
         snapshot: z.string().describe("The snapshot id from snapshot_layer"),
@@ -448,3 +450,5 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
     },
   );
 }
+
+const countUnreadable = (layers: SnapshotLayer[]) => layers.filter((layer) => unreadableParts(layer).length > 0).length;

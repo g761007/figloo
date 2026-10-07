@@ -449,6 +449,8 @@ export const InspectedSectionSchema = z.object({
   colors: z.array(InspectedColorSchema),
   /** Text content for "content", the parent component name for "selection_hierarchy". */
   text: z.string().nullable(),
+  /** The panel showed this section, but Figloo found nothing it could read in it, as after Figma changed its markup. */
+  unreadable: z.boolean().optional(),
 });
 export type InspectedSection = z.infer<typeof InspectedSectionSchema>;
 
@@ -809,8 +811,10 @@ export const SnapshotLayerSchema = z.object({
   hidden: z.boolean(),
   bounds: SnapshotBoundsSchema,
   sections: z.array(InspectedSectionSchema),
-  /** What the designer set the layer up to export, such as "PNG 2x"; null when Figloo could not confirm the export section showed this layer. */
+  /** What the designer set the layer up to export, such as "PNG 2x"; null when Figloo could not confirm the export section showed this layer, or could not read it. */
   exports: z.array(z.string()).nullable(),
+  /** The export section showed settings Figloo could not read, so exports is null. */
+  exportsUnreadable: z.boolean().optional(),
 });
 export type SnapshotLayer = z.infer<typeof SnapshotLayerSchema>;
 
@@ -949,6 +953,8 @@ export const SnapshotOutputSchema = z.object({
   outlineLayers: z.number().int().nonnegative(),
   /** Continues the outline with query_snapshot when it was cut. */
   nextCursor: z.string().nullable(),
+  /** Layers with a part of the inspection panel Figloo could not read; the outline marks them [unreadable: …]. */
+  unreadableLayers: z.number().int().nonnegative(),
   /** False when this call moved the user's view in Figma and could not put it back; true from the cache, which does not move it. */
   viewRestored: z.boolean(),
   elapsedMs: z.number().nonnegative(),
@@ -990,6 +996,8 @@ export const SummarizeSnapshotOutputSchema = z.object({
   /** Layers summarized: the snapshot's, or the `under` layer and those inside it, hidden ones left out. */
   layers: z.number().int().nonnegative(),
   hiddenSkipped: z.number().int().nonnegative(),
+  /** Summarized layers with a part of the inspection panel Figloo could not read, whose values are missing here. */
+  unreadableLayers: z.number().int().nonnegative(),
   /** A hex code, or the name of a color style where the panel shows one, and what the layers use it for. */
   colors: z.array(SummaryValueSchema.extend({ opacity: z.string().nullable(), uses: z.array(SummaryColorUseSchema) })),
   /** Text styles, one per combination the panel shows for a text layer or one of its style runs. */

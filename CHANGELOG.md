@@ -4,6 +4,16 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+### Added
+
+- `get_status` reports `access: "edit"` for a file opened with edit access, which Figloo tells by the Design and Prototype tabs Figma shows in the right sidebar in place of Properties. Such a tab is `DEGRADED`, and its detail says that properties, snapshots, and exports do not work there while layers and screenshots do.
+- A section of the inspection panel that shows values Figloo cannot read, as after Figma changes its markup, comes with `unreadable: true` in `inspect_nodes`, `snapshot_layer`, and `query_snapshot`. Snapshot outlines mark such layers `[unreadable: …]`, and `snapshot_layer` and `summarize_snapshot` count them in `unreadableLayers`.
+
+### Fixed
+
+- With edit access, `inspect_nodes`, `snapshot_layer`, `export_asset`, and `export_assets` waited for an inspection panel Figma does not show there: a snapshot took about 1.5 seconds per layer and saved every layer without properties or export settings. They now fail at once with `UI_NOT_READY` and say why.
+- When the export section shows settings Figloo cannot read, as after Figma's change between 0.4.0 and 0.4.1, `export_asset` stops before it changes anything, instead of adding a setting it could not take out again, and `snapshot_layer` saves the layer's export settings as unreadable instead of as none. A snapshot whose root shows no section Figloo can read fails instead of saving layers without properties.
+
 ## [0.4.2] - 2026-10-07
 
 The fix is in the extension, so load the new one after updating. The bridge protocol is still 0.3.0, so the extension also works with the 0.4.1 MCP server.

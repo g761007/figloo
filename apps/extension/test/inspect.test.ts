@@ -69,3 +69,21 @@ describe("readInspection on captured view-only panels", () => {
     expect(props(sections.find((s) => s.kind === "properties"))).toEqual(["Width=16px", "Height=16px"]);
   });
 });
+
+describe("sections Figloo cannot read", () => {
+  it("finds every section of the captured panels readable", () => {
+    for (const name of ["auto-layout-frame", "auto-layout-component", "instance-with-properties", "mixed-text"]) {
+      expect(readInspection(fixture(name)).filter((section) => section.unreadable)).toEqual([]);
+    }
+  });
+
+  it("marks a section that shows values Figloo cannot read, as after Figma changed its markup", () => {
+    const doc = fixture("auto-layout-frame");
+    // The rows lose the "Copy <name>: <value>" labels Figloo reads them by, but still show their values.
+    for (const el of doc.querySelectorAll('[data-testid="properties-inspection-panel"] [aria-label^="Copy "]')) el.setAttribute("aria-label", "Duplicate");
+    const sections = readInspection(doc);
+    expect(sections.find((section) => section.kind === "properties")).toMatchObject({ unreadable: true, properties: [] });
+    expect(sections.find((section) => section.kind === "colors")?.unreadable).toBeUndefined();
+  });
+});
+

@@ -32,9 +32,9 @@ import { CAPTURE_MARGIN_PX, inflate, intersect } from "../capture.js";
 import { parseFigmaUrl } from "../figma-url.js";
 import { parseSelectedCount } from "../probe.js";
 import { DomRowSource, TabInBackground, nextTask, synthesizeClick } from "./dom-source.js";
-import { addTemporarySetting, exportButton, exportRows, exportSection, exportSettings, exportsLayer, removeTemporarySetting } from "./export.js";
+import { addTemporarySetting, exportButton, exportRows, exportSection, exportSettings, exportsLayer, removeTemporarySetting, unreadableExportRows } from "./export.js";
 import { boundsInRoot, chooseZoom, placeSiblings, type LayerBox, type Measured } from "./geometry.js";
-import { inspectionHeader, inspectionRoot, inspectionSignature, readInspection } from "./inspect.js";
+import { inspectionHeader, inspectionRoot, inspectionSignature, readInspection, showsDesignPanel } from "./inspect.js";
 import { ReadingOverlay, estimateRemainingMs } from "./overlay.js";
 import { readPagesList } from "./pages.js";
 import { layersPanel, readRenderedRows, type Row } from "./row.js";
@@ -63,6 +63,8 @@ const TOAST_TIMEOUT_MS = 4_000;
 /** The mirror shows a new view about 0.5 s after it stops changing (Arc, 2026-10-03). */
 const VIEW_UPDATE_TIMEOUT_MS = 1_500;
 const BACKGROUND_MESSAGE = "the Figma tab is in the background, where Figma does not apply selection, zoom, or page changes";
+const EDIT_ACCESS_MESSAGE =
+  "this session has edit access, where Figma shows the Design panel instead of the inspection panel Figloo reads, so Figloo cannot read properties or export settings in this file; layers and screenshots still work";
 /** A snapshot's UI budget per allowed layer: the walk opens a layer at most once, and reading reveals few rows. */
 const SNAPSHOT_UI_OPS_PER_LAYER = 3;
 /** How long a snapshot waits for the mirror to place a selected layer; it never places hidden ones. */
@@ -264,7 +266,7 @@ export class Explorer {
     const identity = this.checkExpected(params.expect);
     learnParents(this.index, params.known ?? []);
     if (this.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
-    await this.showPropertiesTab();
+    await this.showInspectionPanel();
     const groups = params.groups ?? ALL_GROUPS;
     let before: UserSelection = { kind: "none" };
     let restored = false;
@@ -511,7 +513,7 @@ export class Explorer {
     // Stop on the overlay changes nothing in Figma, so the view goes back then too; other input means the user took over.
     const user = watchForUser(this.win, overlay);
     const viewBack = () => this.putViewBack(params.view, user).finally(() => user.dispose());
-    await this.showPropertiesTab().catch(async (error: unknown) => {
+    await this.showInspectionPanel().catch(async (error: unknown) => {
       await viewBack();
       throw error;
     });
@@ -573,6 +575,12 @@ export class Explorer {
               () => false,
             );
             const sections = readInspection(inspectionRoot(this.doc) ?? this.doc);
+            // Every layer shows at least its size, so a root without sections means a panel Figloo does not know.
+            if (index === 0 && sections.length === 0) {
+              throw new OpError("UI_NOT_READY", `the inspection panel showed nothing Figloo can read for layer ${row.id}; Figma may have changed it`);
+            }
+            const shownExports = switched ? exportSection(this.doc) : null;
+            const exportsUnreadable = shownExports !== null && unreadableExportRows(shownExports) > 0;
             collect();
             // The mirror does not place text layers.
             if (row.type !== "Text" && !rects.has(row.id) && (await source.settle(() => source.mirrorRects().has(row.id), SNAPSHOT_MIRROR_WAIT_MS))) collect();
@@ -580,7 +588,7 @@ export class Explorer {
               durations.push(Date.now() - layerStarted);
               // The root read again by a later call is not a new layer.
               if (index > 0 || start === 0) fresh += 1;
-              return { layer, sections, exports: switched ? designerExports(this.doc, row.name) : null };
+              return { layer, sections, exports: switched && !exportsUnreadable ? designerExports(this.doc, row.name) : null, exportsUnreadable };
             }
             await pause.untilVisible();
           }
@@ -644,7 +652,7 @@ export class Explorer {
     // Layers read now may sit in frames earlier calls placed.
     const bounds = boundsInRoot(measures, zoom, value.start > 0 ? (params.resume?.placed ?? []) : []);
     const own = value.start > 0 ? value.read.slice(1) : value.read;
-    const layers: SnapshotLayer[] = own.map(({ layer: { row, parentRef, depth }, sections, exports }) => ({
+    const layers: SnapshotLayer[] = own.map(({ layer: { row, parentRef, depth }, sections, exports, exportsUnreadable }) => ({
       ref: row.id,
       name: row.name.slice(0, MAX_NAME_LENGTH),
       type: row.type,
@@ -657,6 +665,7 @@ export class Explorer {
       bounds: bounds.get(row.id)!,
       sections,
       exports,
+      ...(exportsUnreadable ? { exportsUnreadable } : {}),
     }));
     return {
       status: value.status,
@@ -686,6 +695,12 @@ export class Explorer {
     for (let i = 0; i < 30 && tab.getAttribute("aria-selected") !== "true"; i += 1) await sleep(50);
   }
 
+  /** The Properties tab for operations that read the inspection panel, which editors do not get. */
+  private async showInspectionPanel(): Promise<void> {
+    await this.showPropertiesTab();
+    if (showsDesignPanel(this.doc)) throw new OpError("UI_NOT_READY", EDIT_ACCESS_MESSAGE);
+  }
+
   /**
    * Exports a layer through the inspection panel's Export button. Without an explicit format and with
    * settings of its own, the layer exports as the designer set it up; otherwise a temporary setting is
@@ -695,7 +710,7 @@ export class Explorer {
     const identity = this.checkExpected(params.expect);
     learnParents(this.index, params.known ?? []);
     if (this.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
-    await this.showPropertiesTab();
+    await this.showInspectionPanel();
     if (this.pendingExport) await this.finishExport(this.pendingExport.token, 0, 0);
     const files: CapturedFile[] = [];
     const notes: string[] = [];
@@ -729,6 +744,10 @@ export class Explorer {
           });
           const section = exportSection(this.doc);
           if (!section) throw new OpError("UI_NOT_READY", "the inspection panel does not show an export section for this layer");
+          // Exporting would add a setting beside ones Figloo cannot see, and could not take it out again.
+          if (unreadableExportRows(section) > 0) {
+            throw new OpError("UI_NOT_READY", `Figloo cannot read the export settings Figma shows for layer ${params.ref}, so it changed and exported nothing; Figma may have changed its export section`);
+          }
           original = exportSettings(section);
           if (original.length > 0 && !exportsLayer(section, row.name)) throw new OpError("UI_NOT_READY", `the export section did not switch to layer ${params.ref}`);
           // The requested format, or SVG for a layer without settings; a matching setting is reused.

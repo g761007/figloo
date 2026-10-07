@@ -30,6 +30,9 @@ export function deriveReadiness(probe: ProbeResult | null, unreachableProbes: nu
   if (probe.access === "guest") {
     return { readiness: "DEGRADED", detail: "guest session cannot select layers; sign in to Figma" };
   }
+  if (probe.access === "edit") {
+    return { readiness: "DEGRADED", detail: "edit access: Figma shows the Design panel instead of the inspection panel Figloo reads, so properties, snapshots, and exports do not work; layers and screenshots do" };
+  }
   if (!focusTarget) {
     return { readiness: "DEGRADED", detail: "canvas keyboard target not found; keyboard navigation unavailable" };
   }

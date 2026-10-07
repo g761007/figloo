@@ -349,7 +349,7 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
         `Read what Figma's inspection panel shows for up to ${MAX_INSPECT_REFS} layers of a context. ` +
         "layout: size and sizing mode, position in the parent, auto layout flow, padding, gap, corner radius. " +
         "appearance: fills, borders, shadows, image file names. typography: text content and, per style run, font, weight, style, size, line height, letter spacing. " +
-        "component: component properties and the parent component. Values are exactly as Figma displays them; groups a layer does not have are listed in notShown. " +
+        "component: component properties and the parent component. Values are exactly as Figma displays them; groups a layer does not have are listed in notShown, and a section Figloo saw but could not read comes with unreadable: true and no values. " +
         "Each layer is selected in turn, so the Figma tab must be visible; the user's selection is put back afterwards.",
       inputSchema: {
         contextId: z.string(),

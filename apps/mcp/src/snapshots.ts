@@ -197,6 +197,11 @@ const MAX_OUTLINE_TEXT = 40;
 
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
+/** Parts of a layer's inspection panel Figloo saw but could not read: section kinds, and "export". */
+export function unreadableParts(layer: SnapshotLayer): string[] {
+  return [...layer.sections.filter((section) => section.unreadable).map((section) => section.kind), ...(layer.exportsUnreadable ? ["export"] : [])];
+}
+
 /**
  * One outline line: indent by depth, ref, type, name, place and size in design pixels from the
  * root's corner, then the start of a text layer's content when it differs from its name, and marks,
@@ -212,6 +217,8 @@ export function outlineLine(layer: SnapshotLayer, change?: string): string {
   if (layer.hidden) parts.push("[hidden]");
   if (layer.type === "Instance" && layer.hasChildren) parts.push("[has layers]");
   if (layer.exports?.length) parts.push(`[export ${layer.exports.join(", ")}]`);
+  const unreadable = unreadableParts(layer);
+  if (unreadable.length > 0) parts.push(`[unreadable: ${unreadable.join(", ")}]`);
   if (change) parts.push(change);
   return parts.join(" ");
 }

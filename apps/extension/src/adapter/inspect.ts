@@ -14,6 +14,9 @@ const GROUP_OF_SECTION: Record<string, InspectGroup> = {
   selection_hierarchy: "component",
 };
 
+/** Sections Figloo reads values from; when one shows something but yields nothing, Figloo did not understand it. */
+const VALUE_SECTIONS = new Set(["properties", "colors", "borders", "shadows", "content", "componentProps", "selection_hierarchy"]);
+
 export function groupOf(kind: string): InspectGroup | "other" {
   if (kind.startsWith("typography")) return "typography";
   return GROUP_OF_SECTION[kind] ?? "other";
@@ -22,6 +25,12 @@ export function groupOf(kind: string): InspectGroup | "other" {
 /** The right sidebar, which in a view-only session holds the inspection panel. */
 export function inspectionRoot(doc: Document): Element | null {
   return doc.querySelector('[role="region"][aria-label="Right sidebar"]');
+}
+
+/** Whether the right sidebar holds the Design panel editors get instead of the inspection panel (seen on 2026-10-07). */
+export function showsDesignPanel(doc: Document): boolean {
+  const tabs = [...(inspectionRoot(doc)?.querySelectorAll('[role="tab"]') ?? [])].map((tab) => tab.textContent?.trim() ?? "");
+  return tabs.some((tab) => tab.startsWith("Design")) && !tabs.some((tab) => tab.includes("Properties"));
 }
 
 /** The block above the first section that names the selected layer. */
@@ -44,14 +53,18 @@ export function readInspection(root: ParentNode): InspectedSection[] {
   for (const el of root.querySelectorAll(`[data-testid$="${SECTION_SUFFIX}"]`)) {
     const kind = el.getAttribute("data-testid")!.slice(0, -SECTION_SUFFIX.length);
     if (kind === "export") continue;
-    sections.push({
+    const section: InspectedSection = {
       kind,
       group: groupOf(kind),
       title: el.querySelector('[data-testid="inspectPanelTitle"]')?.textContent?.trim() || null,
       properties: readProperties(el),
       colors: readColors(el),
       text: readText(kind, el),
-    });
+    };
+    const readsValues = VALUE_SECTIONS.has(kind) || kind.startsWith("typography");
+    const showsMore = (el.textContent ?? "").replace(section.title ?? "", "").trim().length > 0;
+    if (readsValues && showsMore && section.properties.length === 0 && section.colors.length === 0 && section.text === null) section.unreadable = true;
+    sections.push(section);
   }
   return sections;
 }

@@ -1,4 +1,5 @@
 import type { InspectedSection, SnapshotLayer, SummarizeSnapshotOutput, SummaryColorUse } from "@figloo/protocol";
+import { unreadableParts } from "./snapshots.js";
 
 /** Example refs per value; fewer when the result would not fit otherwise. */
 const MAX_REFS = 5;
@@ -54,6 +55,7 @@ export function summarizeLayers(layers: SnapshotLayer[], fits: (summary: Snapsho
   const components = new Tally<{ name: string; variants: Map<string, { properties: Record<string, string>; count: number }> }>();
   let summarized = 0;
   let hiddenSkipped = 0;
+  let unreadableLayers = 0;
 
   for (const layer of layers) {
     if (layer.hidden) {
@@ -61,6 +63,7 @@ export function summarizeLayers(layers: SnapshotLayer[], fits: (summary: Snapsho
       continue;
     }
     summarized += 1;
+    if (unreadableParts(layer).length > 0) unreadableLayers += 1;
     for (const section of layer.sections) {
       // A text layer's fill is its text color.
       const use: SummaryColorUse | null =
@@ -115,6 +118,7 @@ export function summarizeLayers(layers: SnapshotLayer[], fits: (summary: Snapsho
   const summary: SnapshotSummary = {
     layers: summarized,
     hiddenSkipped,
+    unreadableLayers,
     colors: colors.list().sort((a, b) => byCount(a, b) || a.value.localeCompare(b.value)),
     typography: typography.list().sort(byCount),
     gaps: scales.gaps.list().sort(byNumber),

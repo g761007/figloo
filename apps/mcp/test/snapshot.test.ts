@@ -147,6 +147,12 @@ describe("snapshot ids and files", () => {
     expect(lines[5]).toBe('    570:6 Text "Note" 10,110 50×20 [hidden]');
     expect(lines[6]).toBe('  570:7 Image "Photo" 0,300 393×300 [export PNG 2x, SVG 1x]');
   });
+
+  it("marks the parts of a layer's inspection panel Figloo could not read", () => {
+    const fill = { kind: "colors", group: "appearance" as const, title: "Fill", properties: [], colors: [], text: null, unreadable: true };
+    const line = outlineLine(layer("570:8", { name: "Card", sections: [fill], exports: null, exportsUnreadable: true }));
+    expect(line).toBe('  570:8 Frame "Card" 0,0 10×10 [unreadable: colors, export]');
+  });
 });
 
 describe("snapshot_layer", () => {
@@ -178,6 +184,18 @@ describe("snapshot_layer", () => {
     const { anchor, snap } = await setup({ snapshot: () => ({ ok: true, result: { ...complete(screen), viewRestored: false } }) });
     expect(await snap({ contextId: await anchor(), ref: "570:1" })).toMatchObject({ fromCache: false, viewRestored: false });
     expect(await snap({ contextId: await anchor(), ref: "570:1" })).toMatchObject({ fromCache: true, viewRestored: true });
+  });
+
+  it("counts the layers with parts of the inspection panel it could not read, which the outline marks", async () => {
+    const fill = { kind: "colors", group: "appearance" as const, title: "Fill", properties: [], colors: [], text: null, unreadable: true };
+    const layers = screen.map((one) => (one.ref === "570:2" ? { ...one, sections: [fill] } : one.ref === "570:7" ? { ...one, exports: null, exportsUnreadable: true } : one));
+    const { anchor, snap } = await setup({ layers });
+    const result = await snap({ contextId: await anchor(), ref: "570:1" });
+    expect(result.unreadableLayers).toBe(2);
+    expect(result.outline.split("\n").filter((line) => line.includes("[unreadable:"))).toHaveLength(2);
+
+    const readable = await setup();
+    expect((await readable.snap({ contextId: await readable.anchor(), ref: "570:1" })).unreadableLayers).toBe(0);
   });
 
   it("returns the screenshot along with the outline", async () => {

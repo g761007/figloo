@@ -71,6 +71,15 @@ describe("summarizeLayers", () => {
     ]);
   });
 
+  it("counts the layers whose values it could not read, so the agent knows the summary is short of them", () => {
+    const unreadable = { ...fill(["#FFFFFF"]), colors: [], unreadable: true };
+    const summary = summarizeLayers(
+      [layer("1:2", "Frame", [unreadable]), layer("1:3", "Frame", [fill(["#000000"])]), layer("1:4", "Frame", [unreadable], { hidden: true })],
+      always,
+    );
+    expect(summary).toMatchObject({ layers: 2, hiddenSkipped: 1, unreadableLayers: 1 });
+  });
+
   it("leaves hidden layers out, since they do not show, and counts them", () => {
     const summary = summarizeLayers([layer("1:1", "Frame", [fill(["#FFFFFF"])]), layer("1:2", "Frame", [fill(["#FF0000"])], { hidden: true })], always);
     expect(summary.colors.map((c) => c.value)).toEqual(["#FFFFFF"]);
