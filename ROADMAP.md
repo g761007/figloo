@@ -62,7 +62,7 @@ Next in this area, once real projects have used it: grouping a design's values b
 
 ## 0.7.0: performance
 
-- Snapshot benchmarks first. Today `snapshot_layer` reads about 300 layers in 35 to 40 seconds.
+- Snapshot benchmarks first. On 2026-10-12, `pnpm bench:snapshot` measured 39 layers in 7.8 seconds and 605 layers in 75 seconds. A small frame spends most of its time on fixed costs, such as about 2.3 seconds waiting for Figma's zoom message to go away; a large one on selecting each layer and waiting for the inspection panel, about 80 ms per layer, and on expanding and collapsing layers, about 21 seconds for 605.
 - Research into incremental snapshots. The layers panel shows structure, not properties, so a changed color or spacing cannot be seen without selecting each layer. Unless another signal turns up, incremental snapshots can only cover structural changes.
 - Fewer UI operations per read, caching, and large screens.
 

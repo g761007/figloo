@@ -87,6 +87,7 @@
 - [登入版 canary](2026-10-07-signed-in-canary.md)
 - [分頁限制、錯誤分類、介面依賴清單與 doctor](2026-10-07-status-and-doctor.md)
 - [`map_tokens` 與 skill 的工作流程評估](2026-10-07-map-tokens.md)
+- [快照的效能基準](2026-10-12-snapshot-benchmark.md)
 - [分段續讀的快照](2026-10-02-resumable-snapshots.md)
 - [快照的變更比對](2026-10-03-snapshot-changes.md)
 - [截圖與快照後還原畫面](2026-10-03-view-restore.md)
