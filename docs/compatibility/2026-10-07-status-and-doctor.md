@@ -27,4 +27,4 @@
 
 - `UI_CHANGED` 只以單元測試與 fixture 驗證，真實的 Figma 改版還沒遇過。
 - `NOT_ENGLISH` 只以單元測試驗證，沒有在非英文介面實測。
-- 在全新的環境照 README 的 Quickstart 安裝，並用 doctor 與 `get_status` 引導，是 M7，還沒做。
+- 在全新的環境照 README 的 Quickstart 安裝，並用 doctor 與 `get_status` 引導，是 M7。2026-10-12 通過，結果記在 [v0.5.0 計畫](../plans/2026-10-07-v0.5.0-reliability-dx.md)的 M7。

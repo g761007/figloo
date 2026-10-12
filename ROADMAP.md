@@ -50,7 +50,7 @@ Refactoring alone makes no release. A fix for a problem a canary finds ships at 
 - `PROTOCOL_MISMATCH` names the versions on both sides and which one to update.
 - A better agent install, troubleshooting built around these checks, and an updated compatibility table.
 
-Done when a coding agent in a fresh environment follows the README Quickstart, installs Figloo, and completes a first design-to-code task, without the user needing to know how Figloo works. That run is still to be made with the maintainer.
+Done when a coding agent in a fresh environment follows the README Quickstart, installs Figloo, and completes a first design-to-code task, without the user needing to know how Figloo works. It passed on 2026-10-12 with Claude Code and Chrome on macOS; the agent install now says how to show the hidden `~/.figloo` folder in the file picker.
 
 ## 0.6.0 (released): design intelligence
 
