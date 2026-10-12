@@ -66,7 +66,8 @@ export class DomRowSource implements RowSource {
     return this.rows();
   }
 
-  async toggle(row: Row): Promise<Row[]> {
+  /** With `all`, an Alt-click: Figma then expands or collapses every layer inside too (2026-10-12). */
+  async toggle(row: Row, all = false): Promise<Row[]> {
     const toggled = () => {
       const now = this.rows().find((r) => r.id === row.id);
       return now !== undefined && now.expanded !== row.expanded;
@@ -78,7 +79,7 @@ export class DomRowSource implements RowSource {
       const mark = this.pause?.mark();
       const caret = rowElement(this.doc, row.id)?.querySelector('[data-testid="layers-panel-expand-caret"]');
       if (!caret) return this.rows();
-      synthesizeClick(caret);
+      synthesizeClick(caret, all ? { altKey: true } : {});
       if ((await this.waitFor(toggled)) || mark === undefined || !this.pause!.hidSince(mark)) return this.rows();
     }
   }
@@ -272,6 +273,7 @@ export interface ClickModifiers {
   metaKey?: boolean;
   ctrlKey?: boolean;
   shiftKey?: boolean;
+  altKey?: boolean;
 }
 
 export function synthesizeClick(target: Element, modifiers: ClickModifiers = {}): void {

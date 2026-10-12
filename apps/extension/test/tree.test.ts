@@ -333,6 +333,39 @@ describe("LayerTree whole subtree walk", () => {
     expect(source.expandedIds()).toEqual(before);
   });
 
+  it("opens a collapsed subtree with one Alt-click and closes it with another, however deep it is", async () => {
+    const nodes = cardScreen(0);
+    nodes[1]!.children![1]!.expanded = false;
+    const source = new FakeLayers(nodes);
+    const before = source.expandedIds();
+    const tree = makeTree(source);
+    const list = source.flat().find((row) => row.id === "list")!;
+
+    const walk = await tree.walkSubtree(list, 400);
+    // The Alt-click also opened the button instances, whose label rows the walk skips.
+    expect(walk.layers.map((layer) => layer.row.id)).toEqual(["list", ...[1, 2, 3, 4, 5].flatMap(cardIds)]);
+    expect(source.toggles).toBe(1);
+
+    await tree.restore();
+    expect(source.toggles).toBe(2);
+    expect(source.expandedIds()).toEqual(before);
+  });
+
+  it("leaves a layer that was expanded inside a collapsed one collapsed after restore, while the panel shows what it did", async () => {
+    const nodes = cardScreen(0);
+    const list = nodes[1]!.children![1]!;
+    list.expanded = false;
+    list.children![1]!.expanded = true;
+    const source = new FakeLayers(nodes);
+    const shownBefore = source.flat().map((row) => row.id);
+    const tree = makeTree(source);
+
+    await tree.walkSubtree(source.flat().find((row) => row.id === "list")!, 400);
+    await tree.restore();
+    expect(source.flat().map((row) => row.id)).toEqual(shownBefore);
+    expect(source.node("c2").expanded).toBe(false);
+  });
+
   it("keeps instances closed and skips the layers of an instance the user opened", async () => {
     const source = new FakeLayers(cardScreen(3, { buttonExpanded: true }));
     const card = source.flat().find((row) => row.id === "c3")!;

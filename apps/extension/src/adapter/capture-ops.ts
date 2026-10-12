@@ -13,6 +13,8 @@ const PENDING_CAPTURE_TIMEOUT_MS = 10_000;
 const CAPTURE_FALLBACK_MARGIN_PX = 48;
 const ZOOM_ANIMATION_MS = 500;
 const TOAST_TIMEOUT_MS = 4_000;
+/** Figma's toasts, such as "Zoom to selection" after Shift+2, which stay about three seconds (2026-10-12). */
+const HIDE_TOASTS_CSS = '[data-testid="visual-bell-root"] { visibility: hidden !important; }';
 
 export interface PendingCapture {
   token: string;
@@ -21,6 +23,24 @@ export interface PendingCapture {
   view: CanvasView | null;
   user: UserWatch;
   timer: ReturnType<typeof setTimeout>;
+  /** Shows Figma's toasts again. */
+  showToasts: () => void;
+}
+
+/** Hides Figma's toasts until the returned function runs, so a capture need not wait for them to go. */
+export function hideToasts(doc: Document): () => void {
+  const style = doc.createElement("style");
+  style.textContent = HIDE_TOASTS_CSS;
+  (doc.head ?? doc.documentElement).append(style);
+  return () => style.remove();
+}
+
+/** Whether a toast with text is on screen; a hidden one does not show in the screenshot. */
+export function toastShowing(doc: Document): boolean {
+  const message = doc.querySelector('[data-testid="visual-bell-message"]');
+  if (!message?.textContent?.trim()) return false;
+  const root = message.closest('[data-testid="visual-bell-root"]');
+  return !root || doc.defaultView?.getComputedStyle(root).visibility !== "hidden";
 }
 
 /**
@@ -34,6 +54,7 @@ export async function prepareCapture(core: ExplorerCore, params: CaptureParams):
   if (core.pendingCapture) await finishCapture(core, core.pendingCapture.token);
   let before: UserSelection = { kind: "none" };
   const timings = new Timings();
+  const showToasts = hideToasts(core.doc);
   const { value } = await core.run(async (tree, source) => {
     const selecting = performance.now();
     before = await core.userSelection(tree);
@@ -76,10 +97,13 @@ export async function prepareCapture(core: ExplorerCore, params: CaptureParams):
     const toast = performance.now();
     source.pressKey("Escape", "Escape", 27);
     await sleep(200);
-    // Zooming shows a toast such as "Zoom to selection" for about three seconds; keep it out of the image.
-    await source.settle(() => !(core.doc.querySelector('[data-testid="visual-bell-message"]')?.textContent?.trim()), TOAST_TIMEOUT_MS);
+    // Toasts are hidden until the capture is finished; should Figma show one some other way, keep it out of the image.
+    await source.settle(() => !toastShowing(core.doc), TOAST_TIMEOUT_MS);
     timings.add("capture.toast", performance.now() - toast);
     return { crop, cropSource, canvas, zoom: source.zoomLabel(), view };
+  }).catch((error: unknown) => {
+    showToasts();
+    throw error;
   });
   const token = crypto.randomUUID();
   const pending: PendingCapture = {
@@ -88,6 +112,7 @@ export async function prepareCapture(core: ExplorerCore, params: CaptureParams):
     view: value.view,
     user: watchForUser(core.win),
     timer: setTimeout(() => void finishCapture(core, token), PENDING_CAPTURE_TIMEOUT_MS),
+    showToasts,
   };
   core.pendingCapture = pending;
   return { identity, token, ...value, viewport: { width: core.win.innerWidth, height: core.win.innerHeight }, timings: timings.toJSON() };
@@ -102,6 +127,8 @@ export async function finishCapture(core: ExplorerCore, token: string, keepView 
   if (!pending || pending.token !== token) return { userSelectionRestored: false, viewRestored: false, interrupted: false };
   core.pendingCapture = null;
   clearTimeout(pending.timer);
+  // The screenshot is taken by now.
+  pending.showToasts();
   try {
     // If the user clicked or typed while the capture ran, their new selection and view win.
     if (pending.user.interrupted()) return { userSelectionRestored: false, viewRestored: false, interrupted: true };

@@ -64,12 +64,19 @@ export class FakeLayers implements RowSource {
     return this.rows();
   }
 
-  async toggle(row: Row): Promise<Row[]> {
+  /** With `all`, like Figma's Alt-click: the layer and every layer inside it take the new state. */
+  async toggle(row: Row, all = false): Promise<Row[]> {
     this.toggles += 1;
     this.onOperation?.();
     if (!this.rows().some((r) => r.id === row.id)) throw new Error(`clicked the caret of a row that is not rendered: ${row.id}`);
     const node = this.node(row.id);
-    node.expanded = !node.expanded;
+    const expanded = !node.expanded;
+    const set = (target: FakeNode) => {
+      if (!target.children?.some((child) => !child.header)) return;
+      target.expanded = expanded;
+      if (all) target.children.forEach(set);
+    };
+    set(node);
     return this.rows();
   }
 

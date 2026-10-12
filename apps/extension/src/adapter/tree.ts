@@ -11,8 +11,11 @@ export interface RowSource {
   rowCount(): number;
   /** Scrolls so `rowIndex` is rendered, placed per `align`, and returns the rendered rows. */
   reveal(rowIndex: number, align: Align): Promise<Row[]>;
-  /** Clicks the expand caret of a rendered row and returns the rendered rows. */
-  toggle(row: Row): Promise<Row[]>;
+  /**
+   * Clicks the expand caret of a rendered row and returns the rendered rows. With `all` the click
+   * holds Alt, which expands or collapses the layer together with every layer inside it.
+   */
+  toggle(row: Row, all?: boolean): Promise<Row[]>;
 }
 
 export type StopCause = "time_budget" | "scan_budget" | "ui_timeout" | "user_interrupted";
@@ -102,6 +105,8 @@ export class LayerTree {
   uiOps = 0;
   private snapshot: Row[];
   private readonly expandedByUs: string[] = [];
+  /** Layers of expandedByUs opened with everything inside them, which close the same way. */
+  private readonly expandedWithAll = new Set<string>();
   private restoring = false;
 
   constructor(
@@ -231,16 +236,18 @@ export class LayerTree {
     return roots;
   }
 
-  async expand(row: Row): Promise<Row> {
+  /** Expands a layer; with `all`, also every layer inside it, which restore closes the same way. */
+  async expand(row: Row, all = false): Promise<Row> {
     // The caret can only be clicked while its row is rendered; earlier reads may have scrolled away.
     const shown = this.rendered(row.id) ?? (await this.find(row.id));
     if (!shown) throw new StopExploration("ui_timeout");
     if (shown.expanded) return shown;
     this.spend();
-    this.snapshot = await this.source.toggle(shown);
+    this.snapshot = await this.source.toggle(shown, all);
     const updated = this.rendered(row.id);
     if (!updated?.expanded) throw new StopExploration("ui_timeout");
     this.expandedByUs.push(row.id);
+    if (all) this.expandedWithAll.add(row.id);
     return updated;
   }
 
@@ -331,16 +338,19 @@ export class LayerTree {
 
   /**
    * Reads the whole subtree of a layer outside instances in one pass down the list: each collapsed
-   * layer is expanded where the walk meets it, so its children follow right below and no row is
-   * read twice. Instances count as one layer and stay as they are; the rows of an instance the user
-   * expanded are skipped. Stops once the subtree turns out to hold more than `maxLayers` layers.
-   * `onLayer` hears how many layers were found so far.
+   * layer is expanded where the walk meets it, together with everything inside it (one Alt-click
+   * instead of one click per layer), so its children follow right below and no row is read twice.
+   * Instances count as one layer, and the rows inside them are skipped. Stops once the subtree turns
+   * out to hold more than `maxLayers` layers. `onLayer` hears how many layers were found so far.
+   *
+   * Restore closes each of those layers again with everything inside it, so a layer that was
+   * expanded inside a collapsed one comes back collapsed; what the panel showed is as before.
    */
   async walkSubtree(root: Row, maxLayers: number, onLayer?: (found: number) => void): Promise<Walk> {
     const layers: WalkedLayer[] = [{ row: root, parentRef: null, depth: 0 }];
     this.remember(root, { insideInstance: false });
     if (!root.hasChildren || root.type === "Instance") return { layers, complete: true };
-    const opened = await this.opened(root);
+    const opened = await this.opened(root, true);
     layers[0]!.row = opened;
     // Open layers from the root down to the current row; in a pre-order list the parent is the last one above its level.
     const open: Row[] = [opened];
@@ -363,7 +373,7 @@ export class LayerTree {
         if (row.expanded) skipBelow = row.level;
         continue;
       }
-      open.push(await this.opened(row));
+      open.push(await this.opened(row, true));
     }
   }
 
@@ -413,9 +423,10 @@ export class LayerTree {
         const row = await this.find(id);
         if (row?.expanded) {
           this.spend();
-          this.snapshot = await this.source.toggle(row);
+          this.snapshot = await this.source.toggle(row, this.expandedWithAll.has(id));
         }
       }
+      this.expandedWithAll.clear();
     });
   }
 
@@ -434,9 +445,9 @@ export class LayerTree {
     return parent.rowIndex + 1;
   }
 
-  private async opened<T extends Parent | Row>(parent: T): Promise<T | Row> {
+  private async opened<T extends Parent | Row>(parent: T, all = false): Promise<T | Row> {
     if (!("expanded" in parent) || parent.expanded || !parent.hasChildren) return parent;
-    return this.expand(parent);
+    return this.expand(parent, all);
   }
 
   /** Visits the direct children of `parent` from `start` on; stops early when `visit` returns false. */

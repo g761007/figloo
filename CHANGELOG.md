@@ -8,6 +8,11 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 - `pnpm bench:snapshot` shows where a snapshot's time goes: the extension times each phase, such as the screenshot, the walk, and selecting and reading each layer, and the MCP server writes the numbers to its log, never layer names. The timings are an optional field of the bridge protocol, which stays 0.3.0.
 
+### Changed
+
+- Snapshots and screenshots no longer wait about two seconds for Figma's "Zoom to selection" message to go away: Figloo hides Figma's messages while it takes the screenshot and shows them again right after.
+- A snapshot opens each collapsed layer it meets together with everything inside it, with one Alt-click, and closes it the same way at the end, instead of one click per layer each way. The layers panel shows what it showed before; a layer that was expanded inside a collapsed one comes back collapsed.
+
 ### Fixed
 
 - The signed-in canary ran the extension's background script from an earlier build, because its browser profile kept the old service worker; it now clears it before each run.
