@@ -255,7 +255,9 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
           };
           log(
             `snapshot_layer ${result.status} read=${result.layers.length} from=${result.readFrom} total=${result.walked.length} restarted=${result.restarted} ` +
-              `walkMs=${Math.round(result.walkMs)} uiOps=${result.uiOps} alignment=${result.alignment} ms=${Math.round(result.elapsedMs)}`,
+              `walkMs=${Math.round(result.walkMs)} uiOps=${result.uiOps} alignment=${result.alignment} ms=${Math.round(result.elapsedMs)}` +
+              // Last on the line, for pnpm bench:snapshot to read.
+              (result.timings ? ` timings=${JSON.stringify(result.timings)}` : ""),
           );
           if (result.status === "partial") {
             const partial = await snapshots.writePartial({ ...snapshot, walked: result.walked }, shot, going?.file.createdAt);

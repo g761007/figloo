@@ -1,6 +1,7 @@
 import { CapturePlanSchema, ExportFinishSchema, ExportPlanSchema, MAX_SNAPSHOT_LAYERS, SNAPSHOT_TIME_BUDGET_MS, SnapshotParamsSchema, SnapshotReadResultSchema, TabOpResponseSchema, type CapturePlan, type CaptureResult, type ImageAlignment, type Rect, type TabOpResponse } from "@figloo/protocol";
 import { CAPTURE_MARGIN_PX, alignCapture, cropCapture, insideImage, intersect, inflate, placeInImage } from "../capture.js";
 import { installExportCapture, removeExportCapture } from "../export-capture.js";
+import { Timings } from "../timings.js";
 import { server } from "./connection.js";
 
 /** How long the page hook waits for Figma to hand over the exported files. */
@@ -103,21 +104,23 @@ async function takeCapture(
   tabId: number,
   params: unknown,
   keepView = false,
-): Promise<{ response: TabOpResponse; interrupted: boolean; dataUrl?: string; plan?: CapturePlan }> {
+): Promise<{ response: TabOpResponse; interrupted: boolean; dataUrl?: string; plan?: CapturePlan; timings?: Timings }> {
   const started = Date.now();
+  const timings = new Timings();
   // Read the tab again: it may have changed while this request waited in the queue.
   const tab = await chrome.tabs.get(tabId).catch(() => null);
   const window = tab ? await chrome.windows.get(tab.windowId).catch(() => null) : null;
   if (!tab || !tab.active || !window || window.state === "minimized") {
     return { response: { ok: false, error: { code: "TAB_IN_BACKGROUND", message: "the Figma tab must be the visible tab of its window to capture it" } }, interrupted: false };
   }
-  const prepared = await sendToTab(tabId, "prepare_capture", params);
+  const prepared = await timings.time("capture.prepare", () => sendToTab(tabId, "prepare_capture", params));
   if (!prepared.ok) return { response: prepared, interrupted: false };
   const plan = CapturePlanSchema.parse(prepared.result);
+  timings.merge(plan.timings);
   try {
-    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-    const { crop, ...image } = await cropCapture(dataUrl, plan.crop, plan.viewport);
-    const finished = await sendToTab(tabId, "finish_capture", { token: plan.token, keepView });
+    const dataUrl = await timings.time("capture.screen", () => chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" }));
+    const { crop, ...image } = await timings.time("capture.crop", () => cropCapture(dataUrl, plan.crop, plan.viewport));
+    const finished = await timings.time("capture.finish", () => sendToTab(tabId, "finish_capture", { token: plan.token, keepView }));
     const done = finished.ok ? (finished.result as { userSelectionRestored?: boolean; viewRestored?: boolean; interrupted?: boolean } | undefined) : undefined;
     const result: CaptureResult = {
       identity: plan.identity,
@@ -129,7 +132,7 @@ async function takeCapture(
       viewRestored: done?.viewRestored === true,
       elapsedMs: Date.now() - started,
     };
-    return { response: { ok: true, result }, interrupted: done?.interrupted === true, dataUrl, plan };
+    return { response: { ok: true, result }, interrupted: done?.interrupted === true, dataUrl, plan, timings };
   } catch (error) {
     await sendToTab(tabId, "finish_capture", { token: plan.token, keepView: false });
     return { response: { ok: false, error: { code: "INTERNAL", message: `capture failed: ${error instanceof Error ? error.message : String(error)}` } }, interrupted: false };
@@ -157,11 +160,17 @@ export async function snapshotTab(tabId: number, params: unknown): Promise<TabOp
   const timeBudgetMs = Math.round((shorter ?? SNAPSHOT_TIME_BUDGET_MS) - SNAPSHOT_CLEANUP_MS - (Date.now() - started));
   if (timeBudgetMs <= 0) return { ok: false, error: { code: "BUDGET_EXCEEDED", message: "the screenshot used up the snapshot's time budget" } };
   const view = shot.plan?.view ?? null;
+  const reading = performance.now();
   const read = await sendToTab(tabId, "read_subtree", { expect, ref, known, ...(resume ? { resume } : {}), maxLayers: MAX_SNAPSHOT_LAYERS, timeBudgetMs, view });
+  const readMs = performance.now() - reading;
   if (!read.ok) return read;
   const result = SnapshotReadResultSchema.parse(read.result);
   const elapsedMs = Date.now() - started;
   if (result.status === "too_large") return { ok: true, result: { ...result, elapsedMs } };
+  const timings = shot.timings ?? new Timings();
+  timings.add("read", readMs);
+  timings.merge(result.timings);
+  const aligning = performance.now();
   // The mirror can keep a stale place for the root, so the screenshot itself says where the root is.
   let root: Rect | null = result.rootOnScreen;
   let alignment: ImageAlignment = "unconfirmed";
@@ -175,6 +184,7 @@ export async function snapshotTab(tabId: number, params: unknown): Promise<TabOp
       crop = shown;
     }
   }
+  timings.add("align", performance.now() - aligning);
   const rootInImage = root ? placeInImage(root, crop, image) : null;
   // The read measures the root where the screenshot was taken; a root outside the image means the view moved in between.
   // A call that goes on with a snapshot keeps the first call's screenshot, so its own does not matter.
@@ -192,6 +202,7 @@ export async function snapshotTab(tabId: number, params: unknown): Promise<TabOp
       imageScale: result.zoom ? (image.width / crop.width) * result.zoom : null,
       alignment,
       elapsedMs,
+      timings: timings.toJSON(),
     },
   };
 }

@@ -72,6 +72,9 @@ try {
     return { ...result.structuredContent, images: result.content.filter((c) => c.type === "image") };
   };
 
+  // The profile keeps the extension's service worker from an earlier run even after a rebuild, until the
+  // extension reloads, which an extension loaded this way cannot; without the registration, the one on disk runs.
+  rmSync(join(PROFILE, "Default", "Service Worker"), { recursive: true, force: true });
   // Figma's CDN rejects the default "HeadlessChrome" user agent, as in the integration tests.
   context = await chromium.launchPersistentContext(PROFILE, {
     channel: "chromium",

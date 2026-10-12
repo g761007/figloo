@@ -184,6 +184,13 @@ node tests/canary/login.mjs
 pnpm test:canary
 ```
 
+The snapshot benchmark shows where `snapshot_layer`'s time goes: it snapshots a frame several times, reading Figma again each time, and prints the median of every phase, such as the screenshot, the walk, and selecting each layer, with layer counts and milliseconds only. By default it uses the canary profile and link; with `--attach` it uses your own browser and config instead, so keep the Figma tab in front.
+
+```sh
+pnpm bench:snapshot --runs 3 --refs 0:2,0:78
+pnpm bench:snapshot --attach
+```
+
 The core-scenario acceptance run needs a signed-in browser, so it is not part of `pnpm test`. With the extension paired, the Figma tab on screen, no other Figloo server running, and one layer inside a card selected, it runs the whole flow ten times and checks that every run returns the same result:
 
 ```sh
@@ -207,6 +214,7 @@ scripts/             Release packaging, the release check, and the release notes
 .github/workflows/   CI, the release workflow a version tag starts, and the daily Figma canary
 tests/fixtures/      Captured Figma markup and export files for regression tests
 tests/integration/   End-to-end tests against real Chromium and Figma
+tests/bench/         Snapshot benchmark, run locally
 tests/canary/        Signed-in canary for a dedicated test account, run locally
 tests/skill-eval/    Unpublished harness for the skill's workflow evals, with mocked Figloo tools
 tests/acceptance/    Core-scenario acceptance run for a signed-in browser

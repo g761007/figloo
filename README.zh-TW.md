@@ -186,6 +186,13 @@ node tests/canary/login.mjs
 pnpm test:canary
 ```
 
+快照的效能基準會列出 `snapshot_layer` 的時間花在哪裡：對一個 frame 拍好幾次快照，每次都重新讀取 Figma，再印出每個階段的中位數，例如截圖、走訪與逐層點選，只有層數與毫秒數。預設使用 canary 的 profile 與連結；加上 `--attach` 會改用你自己的瀏覽器與設定，這時要讓 Figma 分頁留在畫面上。
+
+```sh
+pnpm bench:snapshot --runs 3 --refs 0:2,0:78
+pnpm bench:snapshot --attach
+```
+
 核心情境驗收需要已登入的瀏覽器，所以不包含在 `pnpm test` 中。在擴充功能已配對、Figma 分頁留在畫面上、沒有其他 Figloo 伺服器在執行，並且選取了卡片中的一個圖層時，它會把完整流程執行十次，檢查每次的結果都相同：
 
 ```sh
@@ -209,6 +216,7 @@ scripts/             release 打包、release 檢查與 release 說明
 .github/workflows/   CI、版本 tag 觸發的 release workflow，以及每天執行的 Figma canary
 tests/fixtures/      回歸測試用的 Figma markup 擷取與匯出檔案
 tests/integration/   對真實 Chromium 與 Figma 執行的端對端測試
+tests/bench/         在本機執行的快照效能基準
 tests/canary/        以專用測試帳號在本機執行的登入版 canary
 tests/skill-eval/    不發佈的測試外殼，以假的 Figloo 工具執行 skill 的工作流程評估
 tests/acceptance/    在已登入瀏覽器上執行的核心情境驗收

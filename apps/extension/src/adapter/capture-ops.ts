@@ -1,5 +1,6 @@
 import type { CanvasView, CaptureParams, CapturePlan, Rect } from "@figloo/protocol";
 import { CAPTURE_MARGIN_PX, inflate, intersect } from "../capture.js";
+import { Timings } from "../timings.js";
 import { DomRowSource } from "./dom-source.js";
 import { VIEW_UPDATE_TIMEOUT_MS, type ExplorerCore } from "./explorer-core.js";
 import { inspectionRoot, inspectionSignature, layerSize } from "./inspect.js";
@@ -32,7 +33,9 @@ export async function prepareCapture(core: ExplorerCore, params: CaptureParams):
   if (core.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
   if (core.pendingCapture) await finishCapture(core, core.pendingCapture.token);
   let before: UserSelection = { kind: "none" };
+  const timings = new Timings();
   const { value } = await core.run(async (tree, source) => {
+    const selecting = performance.now();
     before = await core.userSelection(tree);
     const canvas = source.canvasRect();
     if (!canvas) throw new OpError("UI_NOT_READY", "the Figma canvas is not visible");
@@ -47,6 +50,8 @@ export async function prepareCapture(core: ExplorerCore, params: CaptureParams):
       if (!(await source.select(row))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${params.ref}; guest sessions cannot select layers`);
       // The panel's size tells how large the layer should look once zoomed, which checks the bounds below.
       const size = inspectionRoot(core.doc) ? await core.waitForPanel(row, previous, source).then(() => layerSize(core.doc)).catch(() => null) : null;
+      timings.add("capture.select", performance.now() - selecting);
+      const zooming = performance.now();
       // The mirror keeps the layer's old place until the zoom ends, about 0.5 s later, and then moves it in one
       // step (Arc on 2026-10-01). A zoom close to the old one, or a pan alone, keeps about the expected size,
       // so only a move shows that the place is new. When the layer is in place already, nothing moves.
@@ -62,15 +67,18 @@ export async function prepareCapture(core: ExplorerCore, params: CaptureParams):
         crop = fitted;
         cropSource = "layer";
       }
+      timings.add("capture.zoom", performance.now() - zooming);
     } else {
       source.pressKey("!", "Digit1", 49, true); // Shift+1: zoom to fit
       await source.settle(() => source.zoomLabel() !== zoomBefore);
       await sleep(ZOOM_ANIMATION_MS);
     }
+    const toast = performance.now();
     source.pressKey("Escape", "Escape", 27);
     await sleep(200);
     // Zooming shows a toast such as "Zoom to selection" for about three seconds; keep it out of the image.
     await source.settle(() => !(core.doc.querySelector('[data-testid="visual-bell-message"]')?.textContent?.trim()), TOAST_TIMEOUT_MS);
+    timings.add("capture.toast", performance.now() - toast);
     return { crop, cropSource, canvas, zoom: source.zoomLabel(), view };
   });
   const token = crypto.randomUUID();
@@ -82,7 +90,7 @@ export async function prepareCapture(core: ExplorerCore, params: CaptureParams):
     timer: setTimeout(() => void finishCapture(core, token), PENDING_CAPTURE_TIMEOUT_MS),
   };
   core.pendingCapture = pending;
-  return { identity, token, ...value, viewport: { width: core.win.innerWidth, height: core.win.innerHeight } };
+  return { identity, token, ...value, viewport: { width: core.win.innerWidth, height: core.win.innerHeight }, timings: timings.toJSON() };
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { ReadSubtreeParams, Rect, SnapshotLayer, SnapshotReadResult } from "@figloo/protocol";
 import { MAX_NEIGHBOR_LIMIT } from "@figloo/protocol";
+import { Timings } from "../timings.js";
 import type { ExplorerCore } from "./explorer-core.js";
 import { exportSection, exportSettings, exportsLayer, unreadableExportRows } from "./export.js";
 import { boundsInRoot, chooseZoom } from "./geometry.js";
@@ -36,7 +37,8 @@ export async function readSubtree(core: ExplorerCore, params: ReadSubtreeParams)
   // Stop on the overlay changes nothing in Figma, so the view goes back then too; other input means the user took over.
   const user = watchForUser(core.win, overlay);
   const viewBack = () => core.putViewBack(params.view, user).finally(() => user.dispose());
-  await core.showInspectionPanel().catch(async (error: unknown) => {
+  const timings = new Timings();
+  await timings.time("read.inspectionPanel", () => core.showInspectionPanel()).catch(async (error: unknown) => {
     await viewBack();
     throw error;
   });
@@ -45,6 +47,7 @@ export async function readSubtree(core: ExplorerCore, params: ReadSubtreeParams)
   let rootPath: string[] = [];
   const deadline = Date.now() + params.timeBudgetMs;
   const pause = new BackgroundPause(core.doc, deadline, (paused) => overlay.setPaused(paused));
+  let workEnded = 0;
   const ran = await core.run(
     async (tree, source) => {
       overlay.show();
@@ -65,6 +68,9 @@ export async function readSubtree(core: ExplorerCore, params: ReadSubtreeParams)
         return { status: "too_large" as const, children: page.rows, childrenHasMore: page.hasMore };
       }
       const walkMs = Date.now() - started;
+      timings.add("walk", walkMs);
+      // A row's color alone can miss a layer inside a hidden one, so hidden parents count too, read in this call or not.
+      const hidden = hiddenLayers(walk.layers);
       const walked = walk.layers.map(({ row, parentRef }) => ({ ref: row.id, parentRef }));
       const { start, restarted } = resumePoint(
         walked.map(({ ref, parentRef }) => `${ref}|${parentRef}`),
@@ -88,15 +94,22 @@ export async function readSubtree(core: ExplorerCore, params: ReadSubtreeParams)
           const layerStarted = Date.now();
           const mark = pause.mark();
           tree.check();
-          const row = await tree.find(layer.row.id);
+          const row = await timings.time("layer.find", () => tree.find(layer.row.id));
           if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${layer.row.id} is no longer in the layers panel`);
           const previous = inspectionSignature(core.doc);
-          if (!(await source.select(row))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${row.id}`);
+          if (!(await timings.time("layer.select", () => source.select(row)))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${row.id}`);
           // Two layers that look alike leave the panel unchanged; the selection itself did change.
-          const switched = await core.waitForPanel(row, previous, source).then(
-            () => true,
-            () => false,
+          const switched = await timings.time("layer.panel", () => core.waitForPanel(row, previous, source)).then(
+            (how) => {
+              if (how !== "named") timings.count(`panel.${how}`);
+              return true;
+            },
+            () => {
+              timings.count("panel.timeout");
+              return false;
+            },
           );
+          const parseStarted = performance.now();
           const sections = readInspection(inspectionRoot(core.doc) ?? core.doc);
           // Every layer shows at least its size, so a root without sections means a panel Figloo does not know.
           if (index === 0 && sections.length === 0) {
@@ -104,15 +117,25 @@ export async function readSubtree(core: ExplorerCore, params: ReadSubtreeParams)
           }
           const shownExports = switched ? exportSection(core.doc) : null;
           const exportsUnreadable = shownExports !== null && unreadableExportRows(shownExports) > 0;
+          timings.add("layer.parse", performance.now() - parseStarted);
+          const mirrorStarted = performance.now();
           collect();
           // The mirror does not place text layers.
-          if (row.type !== "Text" && !rects.has(row.id) && (await source.settle(() => source.mirrorRects().has(row.id), SNAPSHOT_MIRROR_WAIT_MS))) collect();
+          if (row.type !== "Text" && !rects.has(row.id)) {
+            if (await source.settle(() => source.mirrorRects().has(row.id), SNAPSHOT_MIRROR_WAIT_MS)) collect();
+            else timings.count(hidden.has(row.id) ? "mirror.hiddenTimeout" : "mirror.timeout");
+          }
+          timings.add("layer.mirror", performance.now() - mirrorStarted);
           if (!pause.hidSince(mark)) {
             durations.push(Date.now() - layerStarted);
             // The root read again by a later call is not a new layer.
             if (index > 0 || start === 0) fresh += 1;
-            return { layer, sections, exports: switched && !exportsUnreadable ? designerExports(core.doc, row.name) : null, exportsUnreadable };
+            const exportsStarted = performance.now();
+            const exports = switched && !exportsUnreadable ? designerExports(core.doc, row.name) : null;
+            timings.add("layer.parse", performance.now() - exportsStarted);
+            return { layer, sections, exports, exportsUnreadable };
           }
+          timings.count("pausedRetry");
           await pause.untilVisible();
         }
       };
@@ -121,6 +144,7 @@ export async function readSubtree(core: ExplorerCore, params: ReadSubtreeParams)
       const { read, stoppedAt } = await readInTurn(indexes, readOne, { canStop: params.resume !== undefined, timeIsUp });
       if (stoppedAt !== null && fresh === 0) throw new OpError("BUDGET_EXCEEDED", "the snapshot ran out of time before it could read a layer");
       overlay.update({ phase: "finishing" });
+      workEnded = performance.now();
       return {
         status: stoppedAt === null ? ("complete" as const) : ("partial" as const),
         read,
@@ -130,12 +154,11 @@ export async function readSubtree(core: ExplorerCore, params: ReadSubtreeParams)
         start,
         walked,
         restarted,
-        // A row's color alone can miss a layer inside a hidden one, so hidden parents count too, read in this call or not.
-        hidden: hiddenLayers(walk.layers),
+        hidden,
       };
     },
     async (tree, source) => {
-      restored = await core.restoreSelection(tree, source, before);
+      restored = await timings.time("finish.selection", () => core.restoreSelection(tree, source, before));
     },
     { timeBudgetMs: params.timeBudgetMs, maxUiOps: SNAPSHOT_UI_OPS_PER_LAYER * params.maxLayers, collapseAfterInterrupt: true, overlay, pause },
   )
@@ -147,7 +170,8 @@ export async function readSubtree(core: ExplorerCore, params: ReadSubtreeParams)
       await viewBack();
       throw error;
     });
-  const viewRestored = await viewBack();
+  if (workEnded > 0) timings.add("finish", performance.now() - workEnded);
+  const viewRestored = await timings.time("finish.view", viewBack);
   const { value, uiOps, elapsedMs } = ran;
   if (value.status === "too_large") {
     return {
@@ -205,6 +229,7 @@ export async function readSubtree(core: ExplorerCore, params: ReadSubtreeParams)
     viewRestored,
     uiOps,
     elapsedMs,
+    timings: timings.toJSON(),
   };
 }
 

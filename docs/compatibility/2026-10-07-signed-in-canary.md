@@ -40,6 +40,10 @@ Figma 的服務條款引用的可接受使用政策（2026-08-19 版），禁止
 
 使用者決定不設定每天的排程，改為需要時手動執行，例如發版前、改動選取後才用得到的功能之後，或有人回報 Figma 改版時。
 
+## 2026-10-12：profile 快取舊的 background
+
+Chrome 會把擴充功能的 service worker 留在 profile 裡，擴充功能的版本號沒變就不重新讀取磁碟上的檔案。這個 profile 的快取停在 10-07 11:07，所以之後的執行跑的都是當時的 background，content script 則每次都是新的：background 拆分（4790e37）與 `missingAnchors` 的轉送（9797836）沒有在這裡驗到，「沒有缺少的 UI 錨點」那一項落空通過。訪客版的整合測試與 CI 每次用新的 profile，有測到這些改動。現在腳本每次啟動前刪掉 profile 裡的 `Default/Service Worker`，登入狀態不受影響；修正後通過，21 秒。
+
 ## 未知
 
 - 登入狀態過期時，canary 會回報 `access` 是 `guest`，這時要用 `login.mjs` 重新登入。過期的週期未知。

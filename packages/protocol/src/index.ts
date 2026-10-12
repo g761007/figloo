@@ -510,6 +510,16 @@ export type Rect = z.infer<typeof RectSchema>;
 export const CanvasViewSchema = z.object({ x: z.number(), y: z.number(), zoom: z.number().positive() });
 export type CanvasView = z.infer<typeof CanvasViewSchema>;
 
+/**
+ * Where a snapshot's time went, for the benchmark and the server's log: milliseconds per phase and
+ * how often each slow path ran. Numbers only; the extension's Timings lists the names.
+ */
+export const SnapshotTimingsSchema = z.object({
+  ms: z.record(z.string(), z.number().nonnegative()),
+  counts: z.record(z.string(), z.number().int().nonnegative()),
+});
+export type SnapshotTimings = z.infer<typeof SnapshotTimingsSchema>;
+
 /** Returned by the tab after it moved the view for a capture; the worker then captures and crops. */
 export const CapturePlanSchema = z.object({
   identity: PageIdentitySchema,
@@ -523,6 +533,8 @@ export const CapturePlanSchema = z.object({
   zoom: z.string().nullable(),
   /** The user's view before the capture moved it, to put back; null without Figma's screen reader mirror. */
   view: CanvasViewSchema.nullable(),
+  /** Absent from extensions before 0.7.0. */
+  timings: SnapshotTimingsSchema.optional(),
 });
 export type CapturePlan = z.infer<typeof CapturePlanSchema>;
 
@@ -862,6 +874,8 @@ const SnapshotReadSchema = z.object({
   viewRestored: z.boolean(),
   uiOps: z.number().int().nonnegative(),
   elapsedMs: z.number().nonnegative(),
+  /** Absent from extensions before 0.7.0. */
+  timings: SnapshotTimingsSchema.optional(),
 });
 
 /** Every layer from readFrom to the end was read. */

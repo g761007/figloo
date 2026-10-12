@@ -4,6 +4,14 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+### Added
+
+- `pnpm bench:snapshot` shows where a snapshot's time goes: the extension times each phase, such as the screenshot, the walk, and selecting and reading each layer, and the MCP server writes the numbers to its log, never layer names. The timings are an optional field of the bridge protocol, which stays 0.3.0.
+
+### Fixed
+
+- The signed-in canary ran the extension's background script from an earlier build, because its browser profile kept the old service worker; it now clears it before each run.
+
 ## [0.6.0] - 2026-10-07
 
 `map_tokens` maps a design onto the project's own tokens and components. Only the MCP server changed: the extension's code is the same as in 0.5.0, and the bridge protocol is still 0.3.0.

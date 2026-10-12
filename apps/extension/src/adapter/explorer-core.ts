@@ -24,6 +24,12 @@ const BACKGROUND_TIMEOUT_MESSAGE =
   "the read ran out of time while the Figma tab was in the background; Figloo puts the layers panel and the selection back once the tab is on screen again, unless the user uses Figma first";
 
 /**
+ * How waitForPanel knew the panel shows a layer: its header names the layer and its content changed,
+ * or, once a wait ran out, only its content changed ("unnamed") or only its header names it ("unchanged").
+ */
+export type PanelSwitch = "named" | "unnamed" | "unchanged";
+
+/**
  * What every operation shares: the page it runs in, what it learned about layers, one operation at a
  * time within its budgets, and putting the layers panel, the selection, and the view back. The
  * operations live in the *-ops modules, and Explorer in ops.ts offers them.
@@ -147,18 +153,21 @@ export class ExplorerCore {
     return parseSelectedCount(this.doc.querySelector("input.focus-target")?.getAttribute("aria-label") ?? null);
   }
 
-  /** Waits until the inspection panel shows `row` rather than the previous selection. */
-  async waitForPanel(row: Row, previous: string, source: DomRowSource): Promise<void> {
+  /** Waits until the inspection panel shows `row` rather than the previous selection, and says how it knew. */
+  async waitForPanel(row: Row, previous: string, source: DomRowSource): Promise<PanelSwitch> {
     const name = normalized(row.name).slice(0, 16);
     const started = Date.now();
+    let how: PanelSwitch = "named";
     const ready = await source.settle(() => {
       const named = name.length === 0 || normalized(inspectionHeader(this.doc) ?? "").includes(name);
       const changed = inspectionSignature(this.doc) !== previous;
       const elapsed = Date.now() - started;
+      how = changed && named ? "named" : changed ? "unnamed" : "unchanged";
       // Some headers show something else, such as an image's file name; identical neighbours do not change the panel.
       return (changed && (named || elapsed > 500)) || (named && elapsed > 400);
     });
     if (!ready) throw new OpError("UI_NOT_READY", `the inspection panel did not show layer ${row.id}`);
+    return how;
   }
 
   pageResult(value: Page): Omit<NeighborsResult, "identity" | "uiOps" | "elapsedMs"> {

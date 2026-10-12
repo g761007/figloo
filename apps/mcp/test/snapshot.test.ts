@@ -85,7 +85,12 @@ afterEach(async () => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-async function setup({ layers = screen, snapshot, projectRoot }: { layers?: SnapshotLayer[]; snapshot?: (request: RequestMessage) => Reply; projectRoot?: string } = {}) {
+async function setup({
+  layers = screen,
+  snapshot,
+  projectRoot,
+  log = () => {},
+}: { layers?: SnapshotLayer[]; snapshot?: (request: RequestMessage) => Reply; projectRoot?: string; log?: (message: string) => void } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "figloo-snapshots-"));
   dirs.push(dir);
   const clock = { now: Date.parse("2026-10-01T09:00:00Z") };
@@ -110,7 +115,7 @@ async function setup({ layers = screen, snapshot, projectRoot }: { layers?: Snap
     ext.send({ type: "response", id: request.id, ...reply } as never);
   });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await createServer({ bridge, version: "test", log: () => {}, snapshots: store, ...(projectRoot ? { root: projectRoot } : {}) }).connect(serverTransport);
+  await createServer({ bridge, version: "test", log, snapshots: store, ...(projectRoot ? { root: projectRoot } : {}) }).connect(serverTransport);
   const client = new Client({ name: "test", version: "0" });
   await client.connect(clientTransport);
   clients.push(client);
@@ -184,6 +189,16 @@ describe("snapshot_layer", () => {
     const { anchor, snap } = await setup({ snapshot: () => ({ ok: true, result: { ...complete(screen), viewRestored: false } }) });
     expect(await snap({ contextId: await anchor(), ref: "570:1" })).toMatchObject({ fromCache: false, viewRestored: false });
     expect(await snap({ contextId: await anchor(), ref: "570:1" })).toMatchObject({ fromCache: true, viewRestored: true });
+  });
+
+  it("logs where the read's time went for pnpm bench:snapshot, with numbers and no layer names", async () => {
+    const lines: string[] = [];
+    const timings = { ms: { "capture.toast": 2_900, "layer.select": 4_100 }, counts: { "mirror.hiddenTimeout": 2 } };
+    const { anchor, snap } = await setup({ log: (line) => lines.push(line), snapshot: () => ({ ok: true, result: { ...complete(screen), timings } }) });
+    await snap({ contextId: await anchor(), ref: "570:1" });
+    const line = lines.find((one) => one.startsWith("snapshot_layer complete"))!;
+    expect(JSON.parse(line.split(" timings=")[1]!)).toEqual(timings);
+    for (const { name } of screen) expect(line).not.toContain(name);
   });
 
   it("counts the layers with parts of the inspection panel it could not read, which the outline marks", async () => {
