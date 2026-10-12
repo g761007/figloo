@@ -69,7 +69,7 @@ The Figloo plugin installs the MCP server together with the figloo-implement ski
 
 Give the user these steps with the real folder path, token, and port filled in:
 
-1. Open `chrome://extensions` (in Arc, `arc://extensions`), turn on Developer mode, click "Load unpacked", and choose `~/.figloo/extension`. The file picker hides folders whose names start with a dot: tell the user to press Cmd+Shift+. to show them, or Cmd+Shift+G and paste the path (on Linux, Ctrl+H or Ctrl+L). Figloo needs a Chromium browser that loads unpacked extensions: Arc is verified, and Chrome 116 or newer is expected to work.
+1. Open `chrome://extensions` (in Arc, `arc://extensions`), turn on Developer mode, click "Load unpacked", and choose `~/.figloo/extension`. The file picker hides folders whose names start with a dot: tell the user to press Cmd+Shift+. to show them, or Cmd+Shift+G and paste the path (on Linux, Ctrl+H or Ctrl+L). Figloo needs a Chromium browser that loads unpacked extensions: Arc and Chrome are verified.
 2. Open Figloo's options page (on the extension's card, Details, then Extension options), paste the token and the port, and click "Save and connect".
 
 **Done when** the user confirms both.

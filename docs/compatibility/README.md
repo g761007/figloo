@@ -1,6 +1,6 @@
 # 相容性與已知限制
 
-最後更新：2026-10-07。各項結論的細節見文末各階段的驗證紀錄。
+最後更新：2026-10-12。各項結論的細節見文末各階段的驗證紀錄。
 
 ## 瀏覽器與作業系統
 
@@ -10,7 +10,7 @@
 | Chrome for Testing 153.0.8010.12（Playwright，headless），macOS 27.0 | 自動化驗證。訪客分頁下的連線、分頁狀態、工具列圖示、頁面列舉、子樹、整頁截圖、popup 與錯誤處理 | 整合測試 |
 | Chrome for Testing（Playwright，headless），macOS 27.0，以專用測試帳號登入、檢視權限 | 自動化驗證，本機手動執行的登入版 canary：選取、子層、快照、屬性、匯出、截圖、還原畫面與相鄰圖層；2026-10-07 起 | `tests/canary/signed-in.mjs` |
 | Chrome for Testing（Playwright，headless），Ubuntu，GitHub Actions | 自動化驗證，每天由 Figma canary 執行同一組訪客整合測試；2026-10-07 起 | `.github/workflows/figma-canary.yml` |
-| Google Chrome 正式版 | 未驗證。Chrome 137 起不接受以命令列載入 extension，所以整合測試改用 Chrome for Testing；手動「載入未封裝項目」預期可用 | |
+| Google Chrome 154，macOS 27.0 | 已驗證。2026-10-12 照 README 的 Quickstart 以全新的 Claude Code 設定安裝，載入 release 的擴充功能、配對、`get_status` 與一次 Design-to-Code 都跑通。Chrome 137 起不接受以命令列載入 extension，所以自動化測試仍用 Chrome for Testing | [v0.5.0 計畫](../plans/2026-10-07-v0.5.0-reliability-dx.md)的 M7 |
 | 其他 Chromium 瀏覽器，例如 Edge 或 Brave | 未驗證 | |
 | Windows 與 Linux | Windows 未驗證；Linux 只有 GitHub Actions 那一列的訪客整合測試。程式本身不依賴 macOS；打包需要 `zip` 指令 | |
 | Figma 桌面 App | 不支援。Extension 只在瀏覽器中執行 | |
