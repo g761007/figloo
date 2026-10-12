@@ -421,6 +421,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         "colors with what they color (fill, text, border, shadow), text styles, auto layout gaps, padding sides, corner radii, border widths, shadows, " +
         "and the instances it uses by name with each combination of their component properties. Figma names an instance after its component unless the designer renamed it. " +
         "Reads the saved file only, like query_snapshot. Values are exactly as Figma shows them; a color is a hex code, or the name of a color style where the panel shows one. " +
+        "A value bound to a Figma variable, such as a gap bound to spacing/md, comes with the variable's name and is listed apart from the same value without one. " +
         "Each value says how many layers use it and gives a few of their refs to look up with query_snapshot. Hidden layers are left out, and unreadableLayers counts layers whose values Figloo could not read. " +
         "Long lists are cut to fit, the values fewest layers use first, and truncated says so; pass under to summarize one section.",
       inputSchema: {
@@ -460,6 +461,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         "iOS asset catalog colors and Swift Color, UIColor, and Font definitions, Android colors.xml and dimens.xml and Compose Color, dp, and TextStyle values, and Flutter Color and TextStyle values. " +
         "Each color, text style (by size and weight, not font family), spacing value, and corner radius of the snapshot comes with up to three matches: exact, or near with what differs, " +
         "such as a color difference (ΔE, where about 2.3 is just noticeable), an alpha, a pixel, or a weight. Each instance name comes with project components whose names share its words. " +
+        "A value bound to a Figma variable keeps the variable's name, and the token named like the variable comes first: exact when it holds the same value, near when it holds another. " +
         "Use exact matches as they are; show near matches and unmatched values to the user before choosing a token or adding one. " +
         "The scan reads at most 20,000 files in 15 seconds and skips dependencies, build output, and hidden folders; scanned.complete is false when it stopped early.",
       inputSchema: {

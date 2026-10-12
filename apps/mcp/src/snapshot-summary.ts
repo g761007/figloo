@@ -48,9 +48,14 @@ const byNumber = (a: { value: string }, b: { value: string }) => {
  * the values fewest layers use first, until `fits` accepts the summary.
  */
 export function summarizeLayers(layers: SnapshotLayer[], fits: (summary: SnapshotSummary) => boolean): SnapshotSummary {
-  const colors = new Tally<{ value: string; opacity: string | null; uses: SummaryColorUse[] }>();
+  const colors = new Tally<{ value: string; opacity: string | null; variable?: string; uses: SummaryColorUse[] }>();
   const typography = new Tally<{ font: string | null; weight: string | null; style: string | null; size: string | null; lineHeight: string | null; letterSpacing: string | null }>();
-  const scales = { gaps: new Tally<{ value: string }>(), paddings: new Tally<{ value: string }>(), radii: new Tally<{ value: string }>(), borders: new Tally<{ value: string }>() };
+  const scales = {
+    gaps: new Tally<{ value: string; variable?: string }>(),
+    paddings: new Tally<{ value: string; variable?: string }>(),
+    radii: new Tally<{ value: string; variable?: string }>(),
+    borders: new Tally<{ value: string; variable?: string }>(),
+  };
   const shadows = new Tally<{ properties: InspectedSection["properties"]; colors: InspectedSection["colors"] }>();
   const components = new Tally<{ name: string; variants: Map<string, { properties: Record<string, string>; count: number }> }>();
   let summarized = 0;
@@ -70,7 +75,11 @@ export function summarizeLayers(layers: SnapshotLayer[], fits: (summary: Snapsho
         section.kind === "colors" ? (layer.type === "Text" ? "text" : "fill") : section.kind === "borders" ? "border" : section.kind === "shadows" ? "shadow" : null;
       if (use) {
         for (const color of section.colors) {
-          const entry = colors.add(`${color.value}|${color.opacity ?? ""}`, () => ({ value: color.value, opacity: color.opacity, uses: [] }), layer.ref);
+          const entry = colors.add(
+            `${color.value}|${color.opacity ?? ""}|${color.variable ?? ""}`,
+            () => ({ value: color.value, opacity: color.opacity, ...(color.variable ? { variable: color.variable } : {}), uses: [] }),
+            layer.ref,
+          );
           if (!entry.uses.includes(use)) entry.uses.push(use);
         }
       }
@@ -96,7 +105,7 @@ export function summarizeLayers(layers: SnapshotLayer[], fits: (summary: Snapsho
             : p.group === "Radius" || (p.group === null && p.name === "Radius") ? scales.radii
             : p.name === "Border" ? scales.borders
             : null;
-          scale?.add(p.value, () => ({ value: p.value }), layer.ref);
+          scale?.add(`${p.value}|${p.variable ?? ""}`, () => ({ value: p.value, ...(p.variable ? { variable: p.variable } : {}) }), layer.ref);
         }
       }
     }

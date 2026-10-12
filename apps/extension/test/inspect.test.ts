@@ -72,7 +72,7 @@ describe("readInspection on captured view-only panels", () => {
 
 describe("sections Figloo cannot read", () => {
   it("finds every section of the captured panels readable", () => {
-    for (const name of ["auto-layout-frame", "auto-layout-component", "instance-with-properties", "mixed-text"]) {
+    for (const name of ["auto-layout-frame", "auto-layout-component", "instance-with-properties", "mixed-text", "variable-rectangle", "variable-auto-layout"]) {
       expect(readInspection(fixture(name)).filter((section) => section.unreadable)).toEqual([]);
     }
   });
@@ -87,3 +87,25 @@ describe("sections Figloo cannot read", () => {
   });
 });
 
+describe("values bound to Figma variables", () => {
+  it("reads a color bound to a variable as its hex, with the variable's name", () => {
+    const colors = readInspection(fixture("variable-rectangle")).find((section) => section.kind === "colors");
+    expect(colors?.colors).toEqual([{ value: "#02542D", opacity: null, variable: "Icon/Positive/Default" }]);
+  });
+
+  it("reads a number bound to a variable as the value it stands for, with the variable's name", () => {
+    const radius = readInspection(fixture("variable-rectangle"))
+      .find((section) => section.kind === "properties")
+      ?.properties.find((p) => p.name === "Radius");
+    expect(radius).toEqual({ group: null, name: "Radius", value: "8px", variable: "radius/sm" });
+    const gap = readInspection(fixture("variable-auto-layout"))
+      .find((section) => section.kind === "properties")
+      ?.properties.find((p) => p.name === "Gap");
+    expect(gap).toEqual({ group: null, name: "Gap", value: "16px", variable: "spacing/md" });
+  });
+
+  it("leaves the values of the same panel that use no variable as they were", () => {
+    const layout = readInspection(fixture("variable-rectangle")).find((section) => section.kind === "properties");
+    expect(layout?.properties.find((p) => p.name === "Width")).toEqual({ group: null, name: "Width", value: "215px" });
+  });
+});

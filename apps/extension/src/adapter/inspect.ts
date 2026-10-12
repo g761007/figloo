@@ -75,6 +75,8 @@ export function readInspection(root: ParentNode): InspectedSection[] {
   return sections;
 }
 
+const VARIABLE_PILL = '[data-testid="variable-pill-root"]';
+
 // Rows are copy buttons labelled "Copy Width: 393px" or, inside a group, "Copy Padding—Top: 24px".
 const COPY_LABEL = /^Copy (.+?): ([\s\S]*)$/;
 
@@ -83,21 +85,35 @@ function readProperties(section: Element): InspectedSection["properties"] {
   for (const el of section.querySelectorAll('[aria-label^="Copy "]')) {
     const match = COPY_LABEL.exec(el.getAttribute("aria-label") ?? "");
     if (!match) continue;
-    const [, label, value] = match;
+    const [, label, copied] = match;
+    // A value bound to a variable shows the variable's name, with what it stands for in the tooltip (2026-10-12).
+    const pill = el.querySelector(`${VARIABLE_PILL} [data-tooltip]`);
+    const bound = pill ? { value: pill.getAttribute("data-tooltip") || copied, variable: pill.getAttribute("aria-label") || copied } : { value: copied };
     const dash = label.indexOf("—");
-    out.push(dash >= 0 ? { group: label.slice(0, dash), name: label.slice(dash + 1), value } : { group: null, name: label, value });
+    out.push(dash >= 0 ? { group: label.slice(0, dash), name: label.slice(dash + 1), ...bound } : { group: null, name: label, ...bound });
   }
   return out;
 }
 
+const OPACITY = /^\d+(\.\d+)?%$/;
+
 function readColors(section: Element): InspectedSection["colors"] {
   const out: InspectedSection["colors"] = [];
-  for (const el of section.querySelectorAll('[data-testid="inspectColorRow"]')) {
-    const value = el.textContent?.trim() ?? "";
+  for (const el of section.querySelectorAll('[data-testid="inspectColorRow"], [data-testid="inspectMultilineColorRow"]')) {
+    if (el.getAttribute("data-testid") === "inspectColorRow") {
+      const value = el.textContent?.trim() ?? "";
+      if (!value) continue;
+      // The opacity, when it is not 100%, is the next span in the same row.
+      const next = el.nextElementSibling?.textContent?.trim() ?? "";
+      out.push({ value, opacity: OPACITY.test(next) ? next : null });
+      continue;
+    }
+    // A color bound to a variable takes two lines: the variable's name, then the hex (2026-10-12).
+    const variable = el.querySelector(`${VARIABLE_PILL} [aria-label]`)?.getAttribute("aria-label") ?? undefined;
+    const shown = [...el.querySelectorAll("span")].filter((span) => !span.closest(VARIABLE_PILL)).map((span) => span.textContent?.trim() ?? "");
+    const value = shown.find((text) => text && !OPACITY.test(text));
     if (!value) continue;
-    // The opacity, when it is not 100%, is the next span in the same row.
-    const next = el.nextElementSibling?.textContent?.trim() ?? "";
-    out.push({ value, opacity: /^\d+(\.\d+)?%$/.test(next) ? next : null });
+    out.push({ value, opacity: shown.find((text) => OPACITY.test(text)) ?? null, ...(variable ? { variable } : {}) });
   }
   return out;
 }

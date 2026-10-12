@@ -58,7 +58,7 @@ Also search the project for what `map_tokens` does not cover: icons and images, 
 
 - An exact match: use that token.
 - A near match or no match: show the user a short table of the design value, the closest token, and what differs, and ask whether to reuse the token or add a new one the way the project adds them. Do not pick a near token on your own; a difference in the design may be deliberate.
-- A color given as a style name maps to the token of that name.
+- A color given as a style name maps to the token of that name; a value bound to a Figma variable (its `variable`) maps to the token named like the variable, which `map_tokens` lists first.
 - Every repeated pattern uses an existing component, extended the way the project extends them, or a new component in the project's style. Read a candidate before reusing it.
 
 Done when the plan names a token for every color, text style, spacing value, and radius, and a component for every repeated pattern, with the user's answers for the near and unmatched ones.

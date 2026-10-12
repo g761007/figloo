@@ -451,13 +451,18 @@ export type InspectParams = z.infer<typeof InspectParamsSchema>;
 export const InspectedPropertySchema = z.object({
   group: z.string().nullable(),
   name: z.string(),
+  /** As the panel shows it; for a value bound to a variable, what the variable stands for, such as "16px". */
   value: z.string(),
+  /** The Figma variable the value is bound to, such as "spacing/md". Absent from extensions before 0.7.0. */
+  variable: z.string().optional(),
 });
 
 export const InspectedColorSchema = z.object({
   /** Hex such as "#08458A", or the name of a color style when the panel shows one. */
   value: z.string(),
   opacity: z.string().nullable(),
+  /** The Figma variable the color is bound to, such as "Icon/Positive/Default". Absent from extensions before 0.7.0. */
+  variable: z.string().optional(),
 });
 
 /** One block of the inspection panel, in panel order. */
@@ -1019,7 +1024,10 @@ export type QuerySnapshotOutput = z.infer<typeof QuerySnapshotOutputSchema>;
 
 /** Layers with one value, as many as `count`, and a few of their refs to look up with query_snapshot. */
 const SummaryUseSchema = { count: z.number().int().positive(), refs: z.array(z.string()) };
-const SummaryValueSchema = z.object({ value: z.string(), ...SummaryUseSchema });
+/** The Figma variable the layers bind a value to; layers that use the same value without it are listed apart. */
+const BoundVariableSchema = { variable: z.string().optional() };
+
+const SummaryValueSchema = z.object({ value: z.string(), ...BoundVariableSchema, ...SummaryUseSchema });
 
 export const SummaryColorUseSchema = z.enum(["fill", "text", "border", "shadow"]);
 export type SummaryColorUse = z.infer<typeof SummaryColorUseSchema>;
@@ -1069,7 +1077,7 @@ export const TokenMatchSchema = z.object({
   /** The definition as the project writes it. */
   written: z.string(),
   match: z.enum(["exact", "near"]),
-  /** What differs in a near match, such as "ΔE 1.4", "alpha 1 vs 0.4", "1px", or "weight 400 vs 500". */
+  /** What differs in a near match, such as "ΔE 1.4", "alpha 1 vs 0.4", "1px", "weight 400 vs 500", or "named like the variable; the value differs". */
   difference: z.string().nullable(),
 });
 export type TokenMatch = z.infer<typeof TokenMatchSchema>;
@@ -1090,10 +1098,10 @@ export const MapTokensOutputSchema = z.object({
     /** The files that define tokens, with their format and how many. */
     sources: z.array(z.object({ file: z.string(), format: z.string(), tokens: z.number().int().positive() })),
   }),
-  colors: z.array(z.object({ value: z.string(), opacity: z.string().nullable(), uses: z.array(SummaryColorUseSchema), ...MappedUseSchema })),
+  colors: z.array(z.object({ value: z.string(), opacity: z.string().nullable(), ...BoundVariableSchema, uses: z.array(SummaryColorUseSchema), ...MappedUseSchema })),
   typography: z.array(z.object({ font: z.string().nullable(), weight: z.string().nullable(), size: z.string().nullable(), lineHeight: z.string().nullable(), ...MappedUseSchema })),
-  spacing: z.array(z.object({ value: z.string(), uses: z.array(z.enum(["gap", "padding"])), ...MappedUseSchema })),
-  radii: z.array(z.object({ value: z.string(), ...MappedUseSchema })),
+  spacing: z.array(z.object({ value: z.string(), ...BoundVariableSchema, uses: z.array(z.enum(["gap", "padding"])), ...MappedUseSchema })),
+  radii: z.array(z.object({ value: z.string(), ...BoundVariableSchema, ...MappedUseSchema })),
   components: z.array(
     z.object({
       name: z.string(),

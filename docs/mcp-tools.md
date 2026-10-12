@@ -128,7 +128,7 @@ List the siblings of a layer by where they are on screen: direction right, left,
 
 ## inspect_nodes
 
-Read what Figma's inspection panel shows for up to 5 layers of a context. layout: size and sizing mode, position in the parent, auto layout flow, padding, gap, corner radius. appearance: fills, borders, shadows, image file names. typography: text content and, per style run, font, weight, style, size, line height, letter spacing. component: component properties and the parent component. Values are exactly as Figma displays them; groups a layer does not have are listed in notShown, and a section Figloo saw but could not read comes with unreadable: true and no values. Each layer is selected in turn, so the Figma tab must be visible; the user's selection is put back afterwards.
+Read what Figma's inspection panel shows for up to 5 layers of a context. layout: size and sizing mode, position in the parent, auto layout flow, padding, gap, corner radius. appearance: fills, borders, shadows, image file names. typography: text content and, per style run, font, weight, style, size, line height, letter spacing. component: component properties and the parent component. Values are exactly as Figma displays them; a value or color bound to a Figma variable gives what it stands for, with the variable's name in variable. Groups a layer does not have are listed in notShown, and a section Figloo saw but could not read comes with unreadable: true and no values. Each layer is selected in turn, so the Figma tab must be visible; the user's selection is put back afterwards.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -273,7 +273,7 @@ Look layers up in a snapshot from snapshot_layer. Reads the saved file only, so 
 
 ## summarize_snapshot
 
-Summarize the design values of a snapshot from snapshot_layer, to map them onto the project's tokens and components before writing code: colors with what they color (fill, text, border, shadow), text styles, auto layout gaps, padding sides, corner radii, border widths, shadows, and the instances it uses by name with each combination of their component properties. Figma names an instance after its component unless the designer renamed it. Reads the saved file only, like query_snapshot. Values are exactly as Figma shows them; a color is a hex code, or the name of a color style where the panel shows one. Each value says how many layers use it and gives a few of their refs to look up with query_snapshot. Hidden layers are left out, and unreadableLayers counts layers whose values Figloo could not read. Long lists are cut to fit, the values fewest layers use first, and truncated says so; pass under to summarize one section.
+Summarize the design values of a snapshot from snapshot_layer, to map them onto the project's tokens and components before writing code: colors with what they color (fill, text, border, shadow), text styles, auto layout gaps, padding sides, corner radii, border widths, shadows, and the instances it uses by name with each combination of their component properties. Figma names an instance after its component unless the designer renamed it. Reads the saved file only, like query_snapshot. Values are exactly as Figma shows them; a color is a hex code, or the name of a color style where the panel shows one. A value bound to a Figma variable, such as a gap bound to spacing/md, comes with the variable's name and is listed apart from the same value without one. Each value says how many layers use it and gives a few of their refs to look up with query_snapshot. Hidden layers are left out, and unreadableLayers counts layers whose values Figloo could not read. Long lists are cut to fit, the values fewest layers use first, and truncated says so; pass under to summarize one section.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -287,19 +287,19 @@ Summarize the design values of a snapshot from snapshot_layer, to map them onto 
 | `layers` | integer, at least 0 |
 | `hiddenSkipped` | integer, at least 0 |
 | `unreadableLayers` | integer, at least 0 |
-| `colors` | array of object with value, count, refs, opacity, uses |
+| `colors` | array of object with value, variable, count, refs, opacity, uses |
 | `typography` | array of object with font, weight, style, size, lineHeight, letterSpacing, count, refs |
-| `gaps` | array of object with value, count, refs |
-| `paddings` | array of object with value, count, refs |
-| `radii` | array of object with value, count, refs |
-| `borders` | array of object with value, count, refs |
+| `gaps` | array of object with value, variable, count, refs |
+| `paddings` | array of object with value, variable, count, refs |
+| `radii` | array of object with value, variable, count, refs |
+| `borders` | array of object with value, variable, count, refs |
 | `shadows` | array of object with properties, colors, count, refs |
 | `components` | array of object with name, count, refs, variants |
 | `truncated` | boolean |
 
 ## map_tokens
 
-Put a snapshot's design values next to the tokens and components the project already has, before writing code. Reads the snapshot file and the project's files, never Figma. It scans the project directory, or path inside it, for named token definitions: CSS custom properties and SCSS or Less variables, design token JSON, theme objects in JavaScript and TypeScript such as a Tailwind config, iOS asset catalog colors and Swift Color, UIColor, and Font definitions, Android colors.xml and dimens.xml and Compose Color, dp, and TextStyle values, and Flutter Color and TextStyle values. Each color, text style (by size and weight, not font family), spacing value, and corner radius of the snapshot comes with up to three matches: exact, or near with what differs, such as a color difference (ΔE, where about 2.3 is just noticeable), an alpha, a pixel, or a weight. Each instance name comes with project components whose names share its words. Use exact matches as they are; show near matches and unmatched values to the user before choosing a token or adding one. The scan reads at most 20,000 files in 15 seconds and skips dependencies, build output, and hidden folders; scanned.complete is false when it stopped early.
+Put a snapshot's design values next to the tokens and components the project already has, before writing code. Reads the snapshot file and the project's files, never Figma. It scans the project directory, or path inside it, for named token definitions: CSS custom properties and SCSS or Less variables, design token JSON, theme objects in JavaScript and TypeScript such as a Tailwind config, iOS asset catalog colors and Swift Color, UIColor, and Font definitions, Android colors.xml and dimens.xml and Compose Color, dp, and TextStyle values, and Flutter Color and TextStyle values. Each color, text style (by size and weight, not font family), spacing value, and corner radius of the snapshot comes with up to three matches: exact, or near with what differs, such as a color difference (ΔE, where about 2.3 is just noticeable), an alpha, a pixel, or a weight. Each instance name comes with project components whose names share its words. A value bound to a Figma variable keeps the variable's name, and the token named like the variable comes first: exact when it holds the same value, near when it holds another. Use exact matches as they are; show near matches and unmatched values to the user before choosing a token or adding one. The scan reads at most 20,000 files in 15 seconds and skips dependencies, build output, and hidden folders; scanned.complete is false when it stopped early.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -312,10 +312,10 @@ Put a snapshot's design values next to the tokens and components the project alr
 | `snapshot` | string |
 | `expiresAt` | string |
 | `scanned` | object with root, files, complete, tokens, sources |
-| `colors` | array of object with value, opacity, uses, count, refs, matches |
+| `colors` | array of object with value, opacity, variable, uses, count, refs, matches |
 | `typography` | array of object with font, weight, size, lineHeight, count, refs, matches |
-| `spacing` | array of object with value, uses, count, refs, matches |
-| `radii` | array of object with value, count, refs, matches |
+| `spacing` | array of object with value, variable, uses, count, refs, matches |
+| `radii` | array of object with value, variable, count, refs, matches |
 | `components` | array of object with name, count, refs, candidates |
 | `unmatched` | object with colors, typography, spacing, radii, components |
 | `truncated` | boolean |

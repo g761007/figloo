@@ -89,6 +89,7 @@
 - [`map_tokens` 與 skill 的工作流程評估](2026-10-07-map-tokens.md)
 - [快照的效能基準](2026-10-12-snapshot-benchmark.md)
 - [增量快照研究：截圖比對能不能找出修改](2026-10-12-incremental-snapshot-research.md)
+- [綁定 Figma 變數的值](2026-10-12-variables.md)
 - [分段續讀的快照](2026-10-02-resumable-snapshots.md)
 - [快照的變更比對](2026-10-03-snapshot-changes.md)
 - [截圖與快照後還原畫面](2026-10-03-view-restore.md)

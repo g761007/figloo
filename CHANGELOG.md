@@ -6,6 +6,8 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ### Added
 
+- Values bound to Figma variables carry the variable's name: `inspect_nodes`, snapshots, and `summarize_snapshot` give it as `variable`, next to the value it stands for, and `map_tokens` lists the project token named like the variable first, as exact when it holds the same value and near when it holds another.
+
 - `pnpm bench:snapshot` shows where a snapshot's time goes: the extension times each phase, such as the screenshot, the walk, and selecting and reading each layer, and the MCP server writes the numbers to its log, never layer names. The timings are an optional field of the bridge protocol, which stays 0.3.0.
 
 ### Changed
@@ -16,6 +18,7 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ### Fixed
 
+- A color bound to a Figma variable was unreadable, and a number bound to one, such as a gap, read as the variable's name instead of its value.
 - A snapshot of some frames failed with `UI_NOT_READY` ("the screenshot does not show the whole root"), and `capture` cropped them to one side: after zooming, Figma's screen reader mirror kept such a frame up to 141 px away from where it was drawn. Figloo now selects the layer anew after zooming, and a snapshot crops by where the screenshot shows the root.
 - The signed-in canary ran the extension's background script from an earlier build, because its browser profile kept the old service worker; it now clears it before each run.
 

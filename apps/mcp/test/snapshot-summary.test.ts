@@ -50,6 +50,29 @@ const text = (font: string, weight: string, size: string, kind = "typography") =
   ]);
 
 describe("summarizeLayers", () => {
+  it("lists a value bound to a variable apart from the same value without one, with the variable's name", () => {
+    const bound: InspectedSection = {
+      ...section("properties", [["Gap", "16px"]]),
+      properties: [{ group: null, name: "Gap", value: "16px", variable: "spacing/md" }],
+    };
+    const brand: InspectedSection = { ...fill(), colors: [{ value: "#02542D", opacity: null, variable: "Icon/Positive/Default" }] };
+    const summary = summarizeLayers(
+      [
+        layer("1:1", "Auto layout", [bound, brand]),
+        layer("1:2", "Auto layout", [section("properties", [["Gap", "16px"]]), fill(["#02542D"])]),
+      ],
+      always,
+    );
+    expect(summary.gaps).toEqual([
+      { value: "16px", variable: "spacing/md", count: 1, refs: ["1:1"] },
+      { value: "16px", count: 1, refs: ["1:2"] },
+    ]);
+    expect(summary.colors.map(({ value, variable, refs }) => ({ value, variable, refs }))).toEqual([
+      { value: "#02542D", variable: "Icon/Positive/Default", refs: ["1:1"] },
+      { value: "#02542D", variable: undefined, refs: ["1:2"] },
+    ]);
+  });
+
   it("counts each color once per layer and says what the layers color with it", () => {
     const summary = summarizeLayers(
       [

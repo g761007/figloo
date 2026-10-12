@@ -177,4 +177,26 @@ describe("mapping a snapshot onto a project", () => {
     expect(mapped.components.find((c) => c.name === "Confetti")!.candidates).toEqual([]);
     expect(mapped.unmatched).toMatchObject({ colors: 1, components: 2 });
   });
+
+  it("puts the token named like the variable a value is bound to first, and calls it near when the project gives it another value", async () => {
+    const bound: SnapshotSummary = {
+      ...summary,
+      colors: [{ value: "#0055FF", opacity: null, variable: "Brand/Primary", uses: ["fill"], count: 1, refs: ["6:1"] }],
+      gaps: [{ value: "16px", variable: "spacing/md", count: 1, refs: ["6:2"] }],
+      paddings: [],
+      radii: [{ value: "8px", variable: "radius/sm", count: 1, refs: ["6:3"] }],
+    };
+    const mapped = mapTokens(bound, await scanProject(join(FIXTURES, "web")));
+    // Both tokens hold the color; the Tailwind one ends in the variable's name, so it goes first.
+    expect(mapped.colors[0]).toMatchObject({ variable: "Brand/Primary" });
+    expect(mapped.colors[0]!.matches.map((m) => [m.token, m.match])).toEqual([
+      ["theme.extend.colors.brand.primary", "exact"],
+      ["--color-primary", "exact"],
+    ]);
+    expect(mapped.spacing[0]).toMatchObject({ variable: "spacing/md", uses: ["gap"] });
+    expect(mapped.spacing[0]!.matches[0]).toMatchObject({ token: "--spacing-md", match: "exact" });
+    // The project's radius.sm is 15px while the design's variable stands for 8px.
+    expect(mapped.radii[0]!.matches[0]).toMatchObject({ token: "radius.sm", match: "near", difference: "named like the variable; the value differs" });
+    expect(mapped.radii[0]!.matches[1]).toMatchObject({ token: "--radius-card", match: "exact" });
+  });
 });

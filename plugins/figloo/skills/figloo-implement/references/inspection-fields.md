@@ -34,7 +34,7 @@ Children of an auto layout frame show `?,?` or panel-derived places in the outli
 | Borders | weight, color | `border` | `.overlay(shape.stroke(color, lineWidth:))` | `Modifier.border(width, color, shape)` |
 | `Drop shadow` with `X`, `Y`, `Blur`, `Spread` | `0`, `-4`, `8`, `0` | `box-shadow: 0 -4px 8px 0 color` | `.shadow(color:radius:x:y:)` | `Modifier.shadow(elevation, shape)` |
 
-A color given as a name is a Figma color style: map it to the project's token of the same meaning. SwiftUI's shadow radius and Compose's elevation do not use Figma's blur scale; tune them against the screenshot.
+A color given as a name is a Figma color style: map it to the project's token of the same meaning. A value or color bound to a Figma variable comes with the variable's name in `variable`, such as `spacing/md` for a `16px` gap: use the project's token of that name. SwiftUI's shadow radius and Compose's elevation do not use Figma's blur scale; tune them against the screenshot.
 
 ## Typography
 
