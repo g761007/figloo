@@ -4,10 +4,13 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-12
+
+Snapshots are about twice as fast, values bound to Figma variables are read with the variable's name, and the screenshots of some frames are no longer cropped to one side. Update the extension and the MCP server together for all of it; the bridge protocol is still 0.3.0, so an older half keeps working without the timings and the variable names.
+
 ### Added
 
 - Values bound to Figma variables carry the variable's name: `inspect_nodes`, snapshots, and `summarize_snapshot` give it as `variable`, next to the value it stands for, and `map_tokens` lists the project token named like the variable first, as exact when it holds the same value and near when it holds another.
-
 - `pnpm bench:snapshot` shows where a snapshot's time goes: the extension times each phase, such as the screenshot, the walk, and selecting and reading each layer, and the MCP server writes the numbers to its log, never layer names. The timings are an optional field of the bridge protocol, which stays 0.3.0.
 
 ### Changed

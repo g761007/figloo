@@ -2,7 +2,7 @@
 
 Where Figloo is going, by area and by release. Figloo is versioned 0.x: a minor version adds features, a patch fixes problems, and tools and results may still change between minor versions. [CHANGELOG.md](CHANGELOG.md) lists what each release changed. The detailed plan behind this roadmap, in Traditional Chinese, is [docs/plans/2026-10-06-productization-and-reliability.md](docs/plans/2026-10-06-productization-and-reliability.md).
 
-Current release: 0.6.0.
+Current release: 0.7.0.
 
 ## Principles
 
@@ -60,11 +60,11 @@ Done when a coding agent in a fresh environment follows the README Quickstart, i
 
 Next in this area, once real projects have used it: grouping a design's values by what they are for, and detecting more of a project's conventions.
 
-## 0.7.0: performance
+## 0.7.0 (released): performance
 
-- Snapshot benchmarks first. On 2026-10-12, `pnpm bench:snapshot` measured 39 layers in 7.8 seconds and 605 layers in 75 seconds. A small frame spends most of its time on fixed costs, such as about 2.3 seconds waiting for Figma's zoom message to go away; a large one on selecting each layer and waiting for the inspection panel, about 80 ms per layer, and on expanding and collapsing layers, about 21 seconds for 605.
-- Research into incremental snapshots. The layers panel shows structure, not properties, so a changed color or spacing cannot be seen without selecting each layer. Unless another signal turns up, incremental snapshots can only cover structural changes.
-- Fewer UI operations per read, caching, and large screens.
+- `pnpm bench:snapshot` times each phase of a snapshot. A 605-layer screen in Arc went from 75 to 40 seconds: snapshots no longer wait for Figma's zoom message, open and close a subtree with one Alt-click each, and stop waiting for layers whose properties match the previous one's. What is left is mostly Figma drawing the selection and the inspection panel, about 60 ms per layer.
+- Research into incremental snapshots ended with no: comparing screenshots misses exact colors, covered layers, and settings that are not drawn, such as export settings, and a missed change would leave an agent with stale values. Snapshots stay full reads, cached for 24 hours.
+- Values bound to Figma variables are read with the variable's name, and `map_tokens` maps them to the project token named like the variable.
 
 ## 0.8 and later: compatibility and distribution
 

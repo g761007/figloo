@@ -33,7 +33,7 @@ Call `get_anchor` with the `tabId`. Done when you and the user agree on the one 
 
 ### 3. Snapshot
 
-Tell the user first: reading takes about 40 seconds per 300 layers, the Figma tab has to be on screen when it starts, and Stop or Esc on Figma's overlay cancels it cleanly. Then call `snapshot_layer` with the context and the layer's ref.
+Tell the user first: reading takes about 40 seconds per 600 layers, the Figma tab has to be on screen when it starts, and Stop or Esc on Figma's overlay cancels it cleanly. Then call `snapshot_layer` with the context and the layer's ref.
 
 - One call reads for at most 3 minutes. While it returns `complete: false`, tell the user the progress and call it again with the same context and ref; it reads on where the last call stopped.
 
