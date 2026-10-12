@@ -177,7 +177,9 @@ export async function snapshotTab(tabId: number, params: unknown): Promise<TabOp
   if (root && shot.dataUrl && shot.plan) {
     const aligned = await alignCapture(shot.dataUrl, root, shot.plan.viewport);
     ({ root, alignment } = aligned);
-    const recrop = alignment === "corrected" ? intersect(inflate(aligned.root, CAPTURE_MARGIN_PX), shot.plan.canvas) : null;
+    // The capture cropped by where the mirror put the root then, which can be off; the root found in the screenshot now says where to crop.
+    const outside = alignment !== "unconfirmed" && !insideImage(placeInImage(aligned.root, crop, image), image);
+    const recrop = alignment === "corrected" || outside ? intersect(inflate(aligned.root, CAPTURE_MARGIN_PX), shot.plan.canvas) : null;
     if (recrop) {
       const { crop: shown, ...cropped } = await cropCapture(shot.dataUrl, recrop, shot.plan.viewport);
       image = { ...cropped, mimeType: "image/jpeg" };

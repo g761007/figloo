@@ -163,7 +163,7 @@ export class ExplorerCore {
       const changed = inspectionSignature(this.doc) !== previous;
       const elapsed = Date.now() - started;
       how = changed && named ? "named" : changed ? "unnamed" : "unchanged";
-      // Some headers show something else, such as an image's file name; identical neighbours do not change the panel.
+      // Some headers show something else, such as an image's file name; neighbours with the same name and properties do not change the panel.
       return (changed && (named || elapsed > 500)) || (named && elapsed > 400);
     });
     if (!ready) throw new OpError("UI_NOT_READY", `the inspection panel did not show layer ${row.id}`);

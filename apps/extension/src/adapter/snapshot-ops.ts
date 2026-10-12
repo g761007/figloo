@@ -98,17 +98,21 @@ export async function readSubtree(core: ExplorerCore, params: ReadSubtreeParams)
           if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${layer.row.id} is no longer in the layers panel`);
           const previous = inspectionSignature(core.doc);
           if (!(await timings.time("layer.select", () => source.select(row)))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${row.id}`);
+          // The user's own selection is the root, usually the screen they picked: the panel shows it already.
+          const shownAlready = index === 0 && before.kind === "layer" && before.id === row.id;
           // Two layers that look alike leave the panel unchanged; the selection itself did change.
-          const switched = await timings.time("layer.panel", () => core.waitForPanel(row, previous, source)).then(
-            (how) => {
-              if (how !== "named") timings.count(`panel.${how}`);
-              return true;
-            },
-            () => {
-              timings.count("panel.timeout");
-              return false;
-            },
-          );
+          const switched =
+            shownAlready ||
+            (await timings.time("layer.panel", () => core.waitForPanel(row, previous, source)).then(
+              (how) => {
+                if (how !== "named") timings.count(`panel.${how}`);
+                return true;
+              },
+              () => {
+                timings.count("panel.timeout");
+                return false;
+              },
+            ));
           const parseStarted = performance.now();
           const sections = readInspection(inspectionRoot(core.doc) ?? core.doc);
           // Every layer shows at least its size, so a root without sections means a panel Figloo does not know.

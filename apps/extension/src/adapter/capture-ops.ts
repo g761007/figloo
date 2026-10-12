@@ -82,7 +82,17 @@ export async function prepareCapture(core: ExplorerCore, params: CaptureParams):
       const zoom = parseZoom(source.zoomLabel());
       const expected = size && zoom ? { width: size.width * zoom, height: size.height * zoom } : null;
       // Figma animates the zoom and updates the mirror as it goes, so wait for the bounds to settle.
-      const bounds = await stableRect(() => source.mirrorRect(params.ref!), expected);
+      let bounds = await stableRect(() => source.mirrorRect(params.ref!), expected);
+      // After the zoom the mirror can keep a layer away from where it is drawn until the selection changes
+      // (141 px for one frame of the canary file, 2026-10-12); selected anew, the layer is placed where it shows.
+      if (bounds) {
+        source.pressKey("Escape", "Escape", 27);
+        await source.settle(() => core.selectedCount() === 0);
+        if (await source.select(row)) {
+          await source.settle(() => source.mirrorRect(params.ref!) !== null);
+          bounds = source.mirrorRect(params.ref!) ?? bounds;
+        }
+      }
       const fitted = bounds ? intersect(inflate(bounds, CAPTURE_MARGIN_PX), canvas) : expected ? intersect(centered(canvas, expected, CAPTURE_FALLBACK_MARGIN_PX), canvas) : null;
       if (fitted) {
         crop = fitted;

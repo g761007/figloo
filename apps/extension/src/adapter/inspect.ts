@@ -42,11 +42,15 @@ export function inspectionHeader(doc: Document): string | null {
   return header?.textContent?.replace(/\s+/g, " ").trim() || null;
 }
 
-/** A cheap fingerprint of the panel, to notice when it re-renders for another layer. */
+/**
+ * A cheap fingerprint of the panel, to notice when it re-renders for another layer: its header and
+ * sections. Figma redraws both together, so a new header alone shows the switch to a layer whose
+ * properties match the last one's, such as a duplicate (2026-10-12).
+ */
 export function inspectionSignature(doc: Document): string {
   const root = inspectionRoot(doc);
   if (!root) return "";
-  return [...root.querySelectorAll(`[data-testid$="${SECTION_SUFFIX}"]`)].map((el) => el.textContent ?? "").join("|");
+  return [inspectionHeader(doc) ?? "", ...[...root.querySelectorAll(`[data-testid$="${SECTION_SUFFIX}"]`)].map((el) => el.textContent ?? "")].join("|");
 }
 
 /** Every section except export, in panel order. Values are kept exactly as the panel shows them. */

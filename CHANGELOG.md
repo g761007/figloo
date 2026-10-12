@@ -12,9 +12,11 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 - Snapshots and screenshots no longer wait about two seconds for Figma's "Zoom to selection" message to go away: Figloo hides Figma's messages while it takes the screenshot and shows them again right after.
 - A snapshot opens each collapsed layer it meets together with everything inside it, with one Alt-click, and closes it the same way at the end, instead of one click per layer each way. The layers panel shows what it showed before; a layer that was expanded inside a collapsed one comes back collapsed.
+- Reading a layer whose properties match the previous layer's, such as a duplicate, no longer waits 400 ms when the inspection panel's header shows another name, and a snapshot of the layer the user has selected reads it at once.
 
 ### Fixed
 
+- A snapshot of some frames failed with `UI_NOT_READY` ("the screenshot does not show the whole root"), and `capture` cropped them to one side: after zooming, Figma's screen reader mirror kept such a frame up to 141 px away from where it was drawn. Figloo now selects the layer anew after zooming, and a snapshot crops by where the screenshot shows the root.
 - The signed-in canary ran the extension's background script from an earlier build, because its browser profile kept the old service worker; it now clears it before each run.
 
 ## [0.6.0] - 2026-10-07

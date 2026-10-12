@@ -26,7 +26,15 @@ describe("how the panel wait knew it shows the layer, which the benchmark counts
     expect(Date.now() - started).toBeLessThan(300);
   });
 
-  it("waits out 400 ms for a layer that looks like the previous one", async () => {
+  it("answers at once for a duplicate, whose properties match but whose header names it", async () => {
+    const { core, source, previous, set } = panel("Rectangle 24", "W 100");
+    set("header", "Rectangle 23");
+    const started = Date.now();
+    expect(await core.waitForPanel(layer("Rectangle 23"), previous, source)).toBe("named");
+    expect(Date.now() - started).toBeLessThan(300);
+  });
+
+  it("waits out 400 ms for a layer with the same name and properties as the previous one", async () => {
     const { core, source, previous } = panel("Card", "W 100");
     const started = Date.now();
     expect(await core.waitForPanel(layer("Card"), previous, source)).toBe("unchanged");
