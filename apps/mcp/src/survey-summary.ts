@@ -77,6 +77,11 @@ function frameOf(n: number, root: SurveyRoot): Frame {
   return frame;
 }
 
+/** The frames of a survey with their numbers, #1 on, in layers panel order: what the overview and the contact sheets call them. */
+export function numberedFrames(file: SurveyFile): { n: number; root: SurveyRoot }[] {
+  return file.roots.filter((root) => FRAME_TYPES.has(root.type ?? "")).map((root, i) => ({ n: i + 1, root }));
+}
+
 /** One part of the overview; parts with a lower `priority` are cut first when it does not fit. */
 export interface OverviewPart {
   title: string;
@@ -92,14 +97,9 @@ export interface SurveyOverview {
 
 /** The survey as text, part by part: frames, frames by name, sections, notes, components, what is worth a look, and the rest. */
 export function surveyOverview(file: SurveyFile): SurveyOverview {
-  const frames: Frame[] = [];
-  const notes: SurveyRoot[] = [];
-  const other: SurveyRoot[] = [];
-  for (const root of file.roots) {
-    if (FRAME_TYPES.has(root.type ?? "")) frames.push(frameOf(frames.length + 1, root));
-    else if (root.type === "Text") notes.push(root);
-    else other.push(root);
-  }
+  const frames: Frame[] = numberedFrames(file).map(({ n, root }) => frameOf(n, root));
+  const notes = file.roots.filter((root) => root.type === "Text");
+  const other = file.roots.filter((root) => root.type !== "Text" && !FRAME_TYPES.has(root.type ?? ""));
   // A group or frame named exactly like a component or an instance elsewhere may be a detached instance;
   // one-word names such as "Card" are too common to tell.
   const componentNames = new Set<string>();

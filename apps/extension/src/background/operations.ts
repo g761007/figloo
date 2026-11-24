@@ -1,8 +1,8 @@
-import { CaptureParamsSchema, ExplorePageParamsSchema, ExportRequestSchema, InspectParamsSchema, ListNeighborsParamsSchema, SnapshotParamsSchema, SurveyParamsSchema, VisualNeighborsParamsSchema, type TabOpResponse } from "@figloo/protocol";
+import { CaptureParamsSchema, ExplorePageParamsSchema, ExportRequestSchema, InspectParamsSchema, ListNeighborsParamsSchema, SnapshotParamsSchema, SurveyParamsSchema, SurveyThumbnailsParamsSchema, VisualNeighborsParamsSchema, type TabOpResponse } from "@figloo/protocol";
 import { MAX_RECENT_ERRORS, type RecentError } from "../diagnostics.js";
 import { parseFigmaUrl } from "../figma-url.js";
 import { send } from "./connection.js";
-import { captureTab, exportTab, sendToTab, snapshotTab } from "./delivery.js";
+import { captureTab, exportTab, sendToTab, snapshotTab, surveyThumbnailsTab } from "./delivery.js";
 import { refreshAllTabs, tabs } from "./tabs.js";
 
 /** The last ops that failed, by code, for diagnostics. */
@@ -23,7 +23,8 @@ export async function handleRequest(id: string, op: string, tabId?: number, para
       case "export_asset":
       case "visual_neighbors":
       case "snapshot_layer":
-      case "survey_frames": {
+      case "survey_frames":
+      case "survey_thumbnails": {
         const reply = await runInTab(tabId, op, params);
         if (!reply.ok) recordError(op, reply.error?.code ?? "INTERNAL");
         send(reply.ok ? { type: "response", id, ok: true, result: reply.result } : { type: "response", id, ok: false, error: reply.error });
@@ -47,7 +48,7 @@ const tabQueues = new Map<number, Promise<unknown>>();
 /** Tabs with a snapshot or survey queued or running; these take minutes, so other ops do not wait behind them. */
 export const snapshotting = new Set<number>();
 /** Ops that read for minutes, behind the reading overlay. */
-const READING_OPS = new Set(["snapshot_layer", "survey_frames"]);
+const READING_OPS = new Set(["snapshot_layer", "survey_frames", "survey_thumbnails"]);
 
 /** Forwards an op to the tab's content script; each tab runs one UI operation sequence at a time. */
 export async function runInTab(tabId: number | undefined, op: string, params: unknown): Promise<TabOpResponse> {
@@ -71,7 +72,9 @@ export async function runInTab(tabId: number | undefined, op: string, params: un
         ? exportTab(tabId, params)
         : op === "snapshot_layer"
           ? snapshotTab(tabId, params)
-          : sendToTab(tabId, op, params),
+          : op === "survey_thumbnails"
+            ? surveyThumbnailsTab(tabId, params)
+            : sendToTab(tabId, op, params),
   );
   const settled = current.catch(() => undefined);
   tabQueues.set(tabId, settled);
@@ -91,4 +94,5 @@ const PARAM_SCHEMAS: Record<string, { safeParse(value: unknown): { success: bool
   visual_neighbors: VisualNeighborsParamsSchema,
   snapshot_layer: SnapshotParamsSchema,
   survey_frames: SurveyParamsSchema,
+  survey_thumbnails: SurveyThumbnailsParamsSchema,
 };

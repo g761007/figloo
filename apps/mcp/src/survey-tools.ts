@@ -1,10 +1,20 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { MAX_SURVEY_REFS, SURVEY_TIME_BUDGET_MS, SurveyOutputSchema, SurveyResultSchema, type SurveyOutput } from "@figloo/protocol";
+import {
+  MAX_SURVEY_REFS,
+  MAX_THUMBNAIL_FRAMES,
+  SURVEY_TIME_BUDGET_MS,
+  SurveyOutputSchema,
+  SurveyResultSchema,
+  SurveyThumbnailsOutputSchema,
+  SurveyThumbnailsResultSchema,
+  type SurveyOutput,
+  type SurveyThumbnailsOutput,
+} from "@figloo/protocol";
 import { BridgeError, type Bridge } from "./bridge.js";
 import { knownParents, type ContextStore, type ExplorationContext } from "./contexts.js";
 import type { ToolErrorResult } from "./export-asset.js";
-import { fitOverview, surveyOverview } from "./survey-summary.js";
+import { fitOverview, numberedFrames, surveyOverview } from "./survey-summary.js";
 import { surveyId, type SurveyFile, type SurveyStore } from "./surveys.js";
 
 /** The tab gets 180 s, the rest covers messaging; one long request, no polling. */
@@ -154,6 +164,96 @@ export function registerSurveyTools(server: McpServer, deps: SurveyDeps, toolErr
         const output = make(text, truncated);
         log(`survey_frames fromCache=${fromCache} complete=${survey.complete} roots=${survey.roots.length} truncated=${truncated} bytes=${Buffer.byteLength(JSON.stringify(output))}`);
         return { content: [{ type: "text" as const, text: JSON.stringify(output) }], structuredContent: output as unknown as Record<string, unknown> };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "survey_thumbnails",
+    {
+      description:
+        "Contact sheets of the frames of a survey from survey_frames, to see what the screens look like before choosing which to snapshot: 12 frames to an image, each under its #n from the survey's overview. " +
+        "Use it when names say too little, for example for frames the overview marks as mostly auto-named, or to compare frames that look alike by name; pass frames to take only those, or omit it for every frame. " +
+        "Each frame is captured as capture does, about 2 s a frame, so the Figma tab must stay on screen and Figma's view moves from frame to frame meanwhile; tell the user before, and ask them not to use Figma until it ends. " +
+        "The user's selection is put back after each frame and their zoom and place on the canvas at the end. " +
+        `One call works for at most ${SURVEY_TIME_BUDGET_MS / 60_000} minutes; frames it did not get to come back as remaining: pass them as frames to go on. ` +
+        "A frame that cannot be captured is listed in failed and the others go on; stoppedBy says what ended a call early, such as the user using Figma. " +
+        "The sheets are for recognizing screens and layouts; read exact values from a snapshot.",
+      inputSchema: {
+        contextId: z.string(),
+        survey: z.string().describe("The survey id from survey_frames, of the page this context is on"),
+        frames: z.array(z.number().int().positive()).min(1).max(MAX_THUMBNAIL_FRAMES).optional().describe("Frame numbers (#n) from the survey's overview; omit for every frame"),
+      },
+      outputSchema: SurveyThumbnailsOutputSchema,
+    },
+    async ({ contextId, survey: id, frames: wanted }) => {
+      try {
+        const started = Date.now();
+        const context = contexts.get(contextId);
+        if (!context) throw new SurveyFailure("CONTEXT_NOT_FOUND", `no context ${contextId}`);
+        const file = await surveys.read(id);
+        if (!file) throw new SurveyFailure("SURVEY_NOT_FOUND", `there is no survey ${id}, or it expired`);
+        if (!file.complete) throw new SurveyFailure("SURVEY_INCOMPLETE", `survey ${id} has layers left to survey`);
+        if (file.fileKey !== context.identity.fileKey || file.page !== context.identity.page) {
+          throw new SurveyFailure("INVALID_ARGUMENT", `survey ${id} is of another file or page than context ${contextId}; get a context on that page with explore_page`);
+        }
+        const numbered = numberedFrames(file);
+        const byNumber = new Map(numbered.map((frame) => [frame.n, frame.root.ref]));
+        const asked = wanted ?? numbered.map((frame) => frame.n).slice(0, MAX_THUMBNAIL_FRAMES);
+        const unknown = asked.filter((n) => !byNumber.has(n));
+        if (unknown.length > 0) throw new SurveyFailure("INVALID_ARGUMENT", `survey ${id} has no frame ${unknown.map((n) => `#${n}`).join(", ")}; it numbers ${numbered.length} frames`);
+        adoptSurvey(context, file);
+        const frames = asked.map((n) => ({ ref: byNumber.get(n)!, n }));
+        let result;
+        try {
+          result = SurveyThumbnailsResultSchema.parse(
+            await bridge.request(
+              "survey_thumbnails",
+              {
+                expect: context.identity,
+                frames,
+                ...knownParents(
+                  context,
+                  frames.map((frame) => frame.ref),
+                ),
+                ...(testTimeBudgetMs ? { timeBudgetMs: testTimeBudgetMs } : {}),
+              },
+              SURVEY_TIMEOUT_MS,
+              context.tabId,
+            ),
+          );
+        } catch (error) {
+          if (error instanceof BridgeError && error.code === "CONTEXT_EXPIRED") contexts.release(contextId);
+          throw error;
+        }
+        const done = new Set([...result.captured, ...result.failed.map((failure) => failure.n)]);
+        // Without frames, a page of more than MAX_THUMBNAIL_FRAMES frames leaves the rest for later calls too.
+        const all = wanted ?? numbered.map((frame) => frame.n);
+        const output: SurveyThumbnailsOutput = {
+          contextId,
+          survey: id,
+          sheets: result.sheets.map((sheet) => ({ frames: sheet.frames, width: sheet.image.width, height: sheet.image.height })),
+          captured: result.captured,
+          remaining: all.filter((n) => !done.has(n)),
+          failed: result.failed,
+          stoppedBy: result.stoppedBy,
+          userSelectionRestored: result.userSelectionRestored,
+          viewRestored: result.viewRestored,
+          elapsedMs: Date.now() - started,
+        };
+        log(
+          `survey_thumbnails captured=${result.captured.length} failed=${result.failed.length} remaining=${output.remaining.length} sheets=${result.sheets.length} ` +
+            `stoppedBy=${result.stoppedBy?.code ?? "none"} viewRestored=${result.viewRestored} ms=${Math.round(result.elapsedMs)}`,
+        );
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify(output) },
+            ...result.sheets.map((sheet) => ({ type: "image" as const, data: sheet.image.data, mimeType: sheet.image.mimeType })),
+          ],
+          structuredContent: output as unknown as Record<string, unknown>,
+        };
       } catch (error) {
         return toolError(error);
       }

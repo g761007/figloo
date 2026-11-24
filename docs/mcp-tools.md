@@ -347,6 +347,29 @@ Survey many frames at once for an overview, before choosing which to snapshot: w
 | `userSelectionRestored` | boolean |
 | `elapsedMs` | number, at least 0 |
 
+## survey_thumbnails
+
+Contact sheets of the frames of a survey from survey_frames, to see what the screens look like before choosing which to snapshot: 12 frames to an image, each under its #n from the survey's overview. Use it when names say too little, for example for frames the overview marks as mostly auto-named, or to compare frames that look alike by name; pass frames to take only those, or omit it for every frame. Each frame is captured as capture does, about 2 s a frame, so the Figma tab must stay on screen and Figma's view moves from frame to frame meanwhile; tell the user before, and ask them not to use Figma until it ends. The user's selection is put back after each frame and their zoom and place on the canvas at the end. One call works for at most 3 minutes; frames it did not get to come back as remaining: pass them as frames to go on. A frame that cannot be captured is listed in failed and the others go on; stoppedBy says what ended a call early, such as the user using Figma. The sheets are for recognizing screens and layouts; read exact values from a snapshot.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `contextId` | string | yes |  |
+| `survey` | string | yes | The survey id from survey_frames, of the page this context is on |
+| `frames` | array of integer, at least 1 | no | Frame numbers (#n) from the survey's overview; omit for every frame |
+
+| Result field | Type |
+|---|---|
+| `contextId` | string |
+| `survey` | string |
+| `sheets` | array of object with frames, width, height |
+| `captured` | array of integer, at least 1 |
+| `remaining` | array of integer, at least 1 |
+| `failed` | array of object with n, code, message |
+| `stoppedBy` | object with code, message or null |
+| `userSelectionRestored` | boolean |
+| `viewRestored` | boolean |
+| `elapsedMs` | number, at least 0 |
+
 ## release_context
 
 Forget an exploration context and the refs it returned.
@@ -387,6 +410,8 @@ An error result is `{ error: { code, message, hint, category, retry } }`. `retry
 | `SNAPSHOT_INCOMPLETE` | snapshot | no | Call snapshot_layer again with the same root until it returns complete: true; each call reads on where the last one stopped. |
 | `SNAPSHOT_NOT_FOUND` | snapshot | no | Pass the snapshot id exactly as snapshot_layer returned it; without one, take a snapshot with snapshot_layer. |
 | `SUBTREE_TOO_LARGE` | snapshot | no | Snapshot a smaller root: call snapshot_layer on one of the children listed in the message, or on a layer further down. |
+| `SURVEY_INCOMPLETE` | snapshot | no | Call survey_frames again with the same contextId and refs until it returns complete: true. |
+| `SURVEY_NOT_FOUND` | snapshot | no | Pass the survey id exactly as survey_frames returned it; an expired survey is gone, so call survey_frames again. |
 | `TAB_IN_BACKGROUND` | user_action | after_user | Ask the user to bring the Figma tab to the front (visible on screen, it may sit beside other windows), then retry. Reading pages, the selection, and already expanded layers still works from the background. |
 | `TAB_NOT_FOUND` | context | no | Call get_status to list the open Figma tabs and their tabId. |
 | `TIMEOUT` | connection | yes | The Figma tab did not answer in time; call get_status. |

@@ -138,6 +138,7 @@ export const BridgeOpSchema = z.enum([
   "visual_neighbors",
   "snapshot_layer",
   "survey_frames",
+  "survey_thumbnails",
 ]);
 export type BridgeOp = z.infer<typeof BridgeOpSchema>;
 
@@ -1212,3 +1213,49 @@ export const SurveyOutputSchema = z.object({
   elapsedMs: z.number().nonnegative(),
 });
 export type SurveyOutput = z.infer<typeof SurveyOutputSchema>;
+
+/** Most frames one survey_thumbnails call is asked for; a call takes about 2 s per frame. */
+export const MAX_THUMBNAIL_FRAMES = 100;
+
+/** What the MCP server asks the service worker to capture for thumbnails: frames with their numbers in the survey. */
+export const SurveyThumbnailsParamsSchema = z.object({
+  expect: PageIdentitySchema,
+  frames: z.array(z.object({ ref: z.string(), n: z.number().int().positive() })).min(1).max(MAX_THUMBNAIL_FRAMES),
+  known: KnownLayersSchema.optional(),
+  /** A shorter time for this call than SURVEY_TIME_BUDGET_MS, for tests. */
+  timeBudgetMs: z.number().int().positive().max(SURVEY_TIME_BUDGET_MS).optional(),
+});
+export type SurveyThumbnailsParams = z.infer<typeof SurveyThumbnailsParamsSchema>;
+
+/** Result of the `survey_thumbnails` op: contact sheets of the frames it captured, each labeled with its number. */
+export const SurveyThumbnailsResultSchema = z.object({
+  identity: PageIdentitySchema,
+  sheets: z.array(z.object({ image: CaptureImageSchema, frames: z.array(z.number().int().positive()) })),
+  captured: z.array(z.number().int().positive()),
+  /** Frames that could not be captured, such as one no longer on the page; the others go on. */
+  failed: z.array(z.object({ n: z.number().int().positive(), code: z.string(), message: z.string() })),
+  /** What stopped the call before the last frame, such as TAB_IN_BACKGROUND; null when it was not stopped. */
+  stoppedBy: z.object({ code: z.string(), message: z.string() }).nullable(),
+  userSelectionRestored: z.boolean(),
+  viewRestored: z.boolean(),
+  elapsedMs: z.number().nonnegative(),
+});
+export type SurveyThumbnailsResult = z.infer<typeof SurveyThumbnailsResultSchema>;
+
+/** What `survey_thumbnails` returns to the coding agent, next to the contact sheets. */
+export const SurveyThumbnailsOutputSchema = z.object({
+  contextId: z.string(),
+  survey: z.string(),
+  /** The images that follow, in order, with the frame numbers on each. */
+  sheets: z.array(z.object({ frames: z.array(z.number().int().positive()), width: z.number().int(), height: z.number().int() })),
+  captured: z.array(z.number().int().positive()),
+  /** Frames asked for that this call did not get to: pass them as frames to go on. */
+  remaining: z.array(z.number().int().positive()),
+  failed: z.array(z.object({ n: z.number().int().positive(), code: z.string(), message: z.string() })),
+  stoppedBy: z.object({ code: z.string(), message: z.string() }).nullable(),
+  userSelectionRestored: z.boolean(),
+  /** False when the user's zoom and place on the canvas could not be put back. */
+  viewRestored: z.boolean(),
+  elapsedMs: z.number().nonnegative(),
+});
+export type SurveyThumbnailsOutput = z.infer<typeof SurveyThumbnailsOutputSchema>;

@@ -1,5 +1,6 @@
-import { CaptureParamsSchema, CapturePlanSchema, ExportFinishSchema, ExportPlanSchema, MAX_SNAPSHOT_LAYERS, SNAPSHOT_TIME_BUDGET_MS, SnapshotParamsSchema, SnapshotReadResultSchema, TabOpResponseSchema, type CapturePlan, type CaptureResult, type ImageAlignment, type Rect, type TabOpResponse } from "@figloo/protocol";
+import { CaptureParamsSchema, CapturePlanSchema, ExportFinishSchema, ExportPlanSchema, MAX_SNAPSHOT_LAYERS, SNAPSHOT_TIME_BUDGET_MS, SURVEY_TIME_BUDGET_MS, SnapshotParamsSchema, SnapshotReadResultSchema, SurveyThumbnailsParamsSchema, TabOpResponseSchema, type CanvasView, type CapturePlan, type CaptureResult, type ImageAlignment, type PageIdentity, type Rect, type SurveyThumbnailsResult, type TabOpResponse } from "@figloo/protocol";
 import { CAPTURE_MARGIN_PX, alignCapture, cropCapture, insideImage, intersect, inflate, placeInImage, trimToContent } from "../capture.js";
+import { ContactSheets } from "../contact-sheet.js";
 import { installExportCapture, removeExportCapture } from "../export-capture.js";
 import { Timings } from "../timings.js";
 import { server } from "./connection.js";
@@ -209,4 +210,74 @@ export async function snapshotTab(tabId: number, params: unknown): Promise<TabOp
       timings: timings.toJSON(),
     },
   };
+}
+
+/** Kept back from a thumbnail call's time: the last capture, encoding the sheet, and putting the view back. */
+const THUMBNAILS_RESERVE_MS = 8_000;
+/** A frame that cannot be captured is skipped with these; anything else stops the call. */
+const SKIPPED_FRAME_CODES = new Set(["NODE_NOT_FOUND", "UI_NOT_READY"]);
+
+/**
+ * Captures frames one after another, as `capture` does, and lays them out on contact sheets, each
+ * picture under its number. The view stays zoomed from one frame to the next and goes back to where
+ * the user had it once at the end. Stops before the time runs out, when the user uses Figma, or when
+ * the tab goes to the background; the frames it did not get to are for the next call.
+ */
+export async function surveyThumbnailsTab(tabId: number, params: unknown): Promise<TabOpResponse> {
+  const started = Date.now();
+  const { expect, frames, known, timeBudgetMs } = SurveyThumbnailsParamsSchema.parse(params);
+  const deadline = started + (timeBudgetMs ?? SURVEY_TIME_BUDGET_MS) - THUMBNAILS_RESERVE_MS;
+  const sheets = new ContactSheets();
+  const captured: number[] = [];
+  const failed: SurveyThumbnailsResult["failed"] = [];
+  let stoppedBy: SurveyThumbnailsResult["stoppedBy"] = null;
+  let identity: PageIdentity | null = null;
+  let userView: CanvasView | null | undefined;
+  let userSelectionRestored = true;
+  let firstFailure: TabOpResponse | null = null;
+  for (const frame of frames) {
+    if (captured.length + failed.length > 0 && Date.now() > deadline) break;
+    const shot = await takeCapture(tabId, { expect, ref: frame.ref, ...(known ? { known } : {}) }, true);
+    if (!shot.response.ok) {
+      const error = shot.response.error ?? { code: "INTERNAL", message: "the capture failed" };
+      if (SKIPPED_FRAME_CODES.has(error.code)) {
+        firstFailure ??= shot.response;
+        failed.push({ n: frame.n, code: error.code, message: error.message });
+        continue;
+      }
+      // Nothing captured yet: the call fails as a capture would.
+      if (identity === null) return shot.response;
+      stoppedBy = { code: error.code, message: error.message };
+      break;
+    }
+    const result = shot.response.result as CaptureResult;
+    identity ??= result.identity;
+    // The first capture found the view the user left; later ones only see the one before.
+    if (userView === undefined) userView = shot.plan?.view ?? null;
+    userSelectionRestored &&= result.userSelectionRestored;
+    await sheets.add(frame.n, shot.dataUrl!, result.crop, shot.plan!.viewport);
+    captured.push(frame.n);
+    if (shot.interrupted) {
+      stoppedBy = { code: "USER_INTERRUPTED", message: "the user used Figma while the thumbnails were taken; their selection and view stay as they left them" };
+      break;
+    }
+  }
+  // Every frame failed; the call fails as the first capture did.
+  if (identity === null) return firstFailure ?? { ok: false, error: { code: "INTERNAL", message: "no frame was captured" } };
+  let viewRestored = false;
+  if (userView !== undefined && stoppedBy?.code !== "USER_INTERRUPTED") {
+    const back = await sendToTab(tabId, "put_view_back", { view: userView });
+    viewRestored = back.ok && (back.result as { viewRestored?: boolean } | undefined)?.viewRestored === true;
+  }
+  const result: SurveyThumbnailsResult = {
+    identity,
+    sheets: await sheets.finish(),
+    captured,
+    failed,
+    stoppedBy,
+    userSelectionRestored: userSelectionRestored && stoppedBy?.code !== "USER_INTERRUPTED",
+    viewRestored,
+    elapsedMs: Date.now() - started,
+  };
+  return { ok: true, result };
 }

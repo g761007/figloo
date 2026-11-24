@@ -146,10 +146,15 @@ export async function cropCapture(dataUrl: string, crop: Rect, viewport: { width
   const canvas = new OffscreenCanvas(plan.width, plan.height);
   canvas.getContext("2d")!.drawImage(bitmap, plan.sx, plan.sy, plan.sw, plan.sh, 0, 0, plan.width, plan.height);
   bitmap.close();
+  return { data: await jpegBase64(canvas), width: plan.width, height: plan.height, crop: plan.shown };
+}
+
+/** A canvas as a base64 JPEG. */
+export async function jpegBase64(canvas: OffscreenCanvas): Promise<string> {
   const jpeg = new Uint8Array(await (await canvas.convertToBlob({ type: "image/jpeg", quality: 0.85 })).arrayBuffer());
   let binary = "";
   for (let i = 0; i < jpeg.length; i += 0x8000) binary += String.fromCharCode(...jpeg.subarray(i, i + 0x8000));
-  return { data: btoa(binary), width: plan.width, height: plan.height, crop: plan.shown };
+  return btoa(binary);
 }
 
 /** RGBA pixels, four bytes each, row by row, as ImageData holds them. */

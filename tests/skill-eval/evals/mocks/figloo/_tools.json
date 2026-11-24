@@ -3799,6 +3799,172 @@
       }
     },
     {
+      "name": "survey_thumbnails",
+      "description": "Contact sheets of the frames of a survey from survey_frames, to see what the screens look like before choosing which to snapshot: 12 frames to an image, each under its #n from the survey's overview. Use it when names say too little, for example for frames the overview marks as mostly auto-named, or to compare frames that look alike by name; pass frames to take only those, or omit it for every frame. Each frame is captured as capture does, about 2 s a frame, so the Figma tab must stay on screen and Figma's view moves from frame to frame meanwhile; tell the user before, and ask them not to use Figma until it ends. The user's selection is put back after each frame and their zoom and place on the canvas at the end. One call works for at most 3 minutes; frames it did not get to come back as remaining: pass them as frames to go on. A frame that cannot be captured is listed in failed and the others go on; stoppedBy says what ended a call early, such as the user using Figma. The sheets are for recognizing screens and layouts; read exact values from a snapshot.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "survey": {
+            "type": "string",
+            "description": "The survey id from survey_frames, of the page this context is on"
+          },
+          "frames": {
+            "description": "Frame numbers (#n) from the survey's overview; omit for every frame",
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "required": [
+          "contextId",
+          "survey"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string"
+          },
+          "survey": {
+            "type": "string"
+          },
+          "sheets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "frames": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "width": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "frames",
+                "width",
+                "height"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "captured": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "remaining": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "n": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "n",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "stoppedBy": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "userSelectionRestored": {
+            "type": "boolean"
+          },
+          "viewRestored": {
+            "type": "boolean"
+          },
+          "elapsedMs": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "contextId",
+          "survey",
+          "sheets",
+          "captured",
+          "remaining",
+          "failed",
+          "stoppedBy",
+          "userSelectionRestored",
+          "viewRestored",
+          "elapsedMs"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
       "name": "release_context",
       "description": "Forget an exploration context and the refs it returned.",
       "inputSchema": {

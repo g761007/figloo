@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, describe, expect, it } from "vitest";
-import { GetAnchorOutputSchema, SurveyOutputSchema, type LayerNode, type RequestMessage, type SurveyResult, type SurveyRoot } from "@figloo/protocol";
+import { GetAnchorOutputSchema, SurveyOutputSchema, SurveyThumbnailsOutputSchema, type LayerNode, type RequestMessage, type SurveyResult, type SurveyRoot, type SurveyThumbnailsResult } from "@figloo/protocol";
 import type { Bridge } from "../src/bridge.js";
 import { MAX_OUTPUT_BYTES } from "../src/exploration.js";
 import { createServer } from "../src/server.js";
@@ -43,7 +43,7 @@ afterEach(async () => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-async function setup(answer: (request: RequestMessage, calls: number) => SurveyResult) {
+async function setup(answer: (request: RequestMessage, calls: number) => unknown) {
   const dir = mkdtempSync(join(tmpdir(), "figloo-surveys-"));
   dirs.push(dir);
   const clock = { now: Date.parse("2026-11-24T09:00:00Z") };
@@ -75,7 +75,12 @@ async function setup(answer: (request: RequestMessage, calls: number) => SurveyR
     return { output: reply.isError ? null : SurveyOutputSchema.parse(reply.structuredContent), reply };
   };
   const surveyRequests = () => requests.filter((request) => request.op === "survey_frames");
-  return { dir: join(dir, "surveys"), clock, call, contextId, survey, surveyRequests };
+  const thumbnails = async (args: Record<string, unknown>) => {
+    const reply = await call("survey_thumbnails", { contextId, ...args });
+    return { output: reply.isError ? null : SurveyThumbnailsOutputSchema.parse(reply.structuredContent), reply };
+  };
+  const thumbnailRequests = () => requests.filter((request) => request.op === "survey_thumbnails");
+  return { dir: join(dir, "surveys"), clock, call, contextId, survey, surveyRequests, thumbnails, thumbnailRequests };
 }
 
 describe("survey_frames", () => {
@@ -162,5 +167,58 @@ describe("survey_frames", () => {
     expect(output!.truncated).toBe(true);
     expect(Buffer.byteLength((reply.content as { text: string }[])[0]!.text)).toBeLessThanOrEqual(MAX_OUTPUT_BYTES);
     expect(output!.overview).toContain("## Frames\n#1 2:0 ");
+  });
+});
+
+describe("survey_thumbnails", () => {
+  const sheet = (numbers: number[]) => ({ image: { data: Buffer.from("jpeg").toString("base64"), mimeType: "image/jpeg" as const, width: 1568, height: 788 }, frames: numbers });
+  const note: SurveyRoot = { ref: "1:9", name: "Primary color for buttons", type: "Text", sectionRef: null, hidden: false, size: null, complete: true, layers: [] };
+  const withNote = [frames[0]!, note, frames[1]!, frames[2]!];
+
+  function answer(thumbnails: (request: RequestMessage) => SurveyThumbnailsResult) {
+    return (request: RequestMessage) => (request.op === "survey_thumbnails" ? thumbnails(request) : result(withNote, "complete", withNote));
+  }
+
+  it("captures frames by their numbers in the overview, notes left out, and hands the sheets over as images", async () => {
+    const { survey, thumbnails, thumbnailRequests } = await setup(
+      answer(() => ({ identity, sheets: [sheet([1, 2, 3])], captured: [1, 2, 3], failed: [], stoppedBy: null, userSelectionRestored: true, viewRestored: true, elapsedMs: 6_000 })),
+    );
+    const id = (await survey()).output!.survey;
+    const { output, reply } = await thumbnails({ survey: id });
+    expect(thumbnailRequests()[0]!.params).toMatchObject({ frames: [{ ref: "1:1", n: 1 }, { ref: "1:2", n: 2 }, { ref: "1:3", n: 3 }] });
+    expect(output).toMatchObject({ captured: [1, 2, 3], remaining: [], sheets: [{ frames: [1, 2, 3], width: 1568, height: 788 }], viewRestored: true });
+    expect((reply.content as { type: string }[]).map((part) => part.type)).toEqual(["text", "image"]);
+  });
+
+  it("says which frames are left when a call stopped early, and which failed", async () => {
+    const { survey, thumbnails, thumbnailRequests } = await setup(
+      answer(() => ({
+        identity,
+        sheets: [sheet([3])],
+        captured: [3],
+        failed: [{ n: 1, code: "NODE_NOT_FOUND", message: "layer 1:1 is no longer in the layers panel" }],
+        stoppedBy: { code: "TAB_IN_BACKGROUND", message: "the Figma tab went to the background" },
+        userSelectionRestored: true,
+        viewRestored: false,
+        elapsedMs: 4_000,
+      })),
+    );
+    const id = (await survey()).output!.survey;
+    const { output } = await thumbnails({ survey: id, frames: [3, 1, 2] });
+    expect(thumbnailRequests()[0]!.params).toMatchObject({ frames: [{ ref: "1:3", n: 3 }, { ref: "1:1", n: 1 }, { ref: "1:2", n: 2 }] });
+    expect(output).toMatchObject({ captured: [3], remaining: [2], failed: [{ n: 1, code: "NODE_NOT_FOUND" }], stoppedBy: { code: "TAB_IN_BACKGROUND" } });
+  });
+
+  it("refuses an unknown survey, one still in progress, and frame numbers the survey does not have, before touching Figma", async () => {
+    const { survey, thumbnails, thumbnailRequests } = await setup((request, n) =>
+      request.op === "survey_frames" && n === 1 ? result(frames.slice(0, 1), "partial") : result(frames, "complete"),
+    );
+    const codeOf = (reply: { content: unknown }) => JSON.parse((reply.content as { text: string }[])[0]!.text).error.code;
+    expect(codeOf((await thumbnails({ survey: "abc/page-0123456789abcdef" })).reply)).toBe("SURVEY_NOT_FOUND");
+    const id = (await survey()).output!.survey;
+    expect(codeOf((await thumbnails({ survey: id })).reply)).toBe("SURVEY_INCOMPLETE");
+    await survey();
+    expect(codeOf((await thumbnails({ survey: id, frames: [4] })).reply)).toBe("INVALID_ARGUMENT");
+    expect(thumbnailRequests()).toHaveLength(0);
   });
 });

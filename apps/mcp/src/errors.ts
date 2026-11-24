@@ -15,7 +15,7 @@ export interface ErrorInfo {
 }
 
 /** Error codes only the MCP server reports, beyond those of the bridge protocol. */
-export const SERVER_ERROR_CODES = ["INVALID_ARGUMENT", "SAVE_REFUSED", "SNAPSHOT_EXPIRED", "SNAPSHOT_INCOMPLETE", "SNAPSHOT_NOT_FOUND", "SUBTREE_TOO_LARGE"] as const;
+export const SERVER_ERROR_CODES = ["INVALID_ARGUMENT", "SAVE_REFUSED", "SNAPSHOT_EXPIRED", "SNAPSHOT_INCOMPLETE", "SNAPSHOT_NOT_FOUND", "SUBTREE_TOO_LARGE", "SURVEY_INCOMPLETE", "SURVEY_NOT_FOUND"] as const;
 
 export const ERRORS: Record<string, ErrorInfo> = {
   NOT_CONNECTED: { category: "connection", retry: "after_user", hint: "Call get_status for setup steps." },
@@ -88,6 +88,12 @@ export const ERRORS: Record<string, ErrorInfo> = {
     retry: "no",
     hint: "Call snapshot_layer again with the same root until it returns complete: true; each call reads on where the last one stopped.",
   },
+  SURVEY_NOT_FOUND: {
+    category: "snapshot",
+    retry: "no",
+    hint: "Pass the survey id exactly as survey_frames returned it; an expired survey is gone, so call survey_frames again.",
+  },
+  SURVEY_INCOMPLETE: { category: "snapshot", retry: "no", hint: "Call survey_frames again with the same contextId and refs until it returns complete: true." },
   INVALID_ARGUMENT: { category: "request", retry: "no", hint: "Check the tool's parameters against its description." },
   BAD_MESSAGE: { category: "request", retry: "no", hint: "Figloo could not read a message between its parts; ask the user to report it with the Diagnostics from the Figloo popup." },
   INTERNAL: { category: "internal", retry: "no", hint: "Something failed inside Figloo; the message says what. Ask the user to report it with the Diagnostics from the Figloo popup if it happens again." },

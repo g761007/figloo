@@ -169,6 +169,16 @@ export async function finishCapture(core: ExplorerCore, token: string, keepView 
   }
 }
 
+/** Puts the user's view back after captures that kept the view zoomed, unless the user used Figma since. */
+export async function putViewBackNow(core: ExplorerCore, view: CanvasView | null): Promise<{ viewRestored: boolean }> {
+  const user = watchForUser(core.win);
+  try {
+    return { viewRestored: await core.putViewBack(view, user) };
+  } finally {
+    user.dispose();
+  }
+}
+
 /**
  * The user's view, once the mirror has caught up with it: the zoom label follows a zoom at once and
  * the mirror about 0.5 s later. Null without the mirror, or when it does not catch up in time.
