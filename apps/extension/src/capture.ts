@@ -78,6 +78,67 @@ export async function alignCapture(dataUrl: string, root: Rect, viewport: { widt
   return { root: { x: rect.x / scale, y: rect.y / scale, width: root.width, height: root.height }, alignment };
 }
 
+/**
+ * The part of `crop` a page capture should keep: what is on the page with a margin, without the empty
+ * canvas around it, in viewport CSS pixels. `crop` itself when nothing stands out from the canvas.
+ */
+export async function trimToContent(dataUrl: string, crop: Rect, viewport: { width: number; height: number }): Promise<Rect> {
+  const bitmap = await createImageBitmap(await (await fetch(dataUrl)).blob());
+  const scale = bitmap.width / viewport.width;
+  const plan = planCrop(crop, viewport, { width: bitmap.width, height: bitmap.height }, Number.POSITIVE_INFINITY);
+  const canvas = new OffscreenCanvas(plan.sw, plan.sh);
+  const context = canvas.getContext("2d")!;
+  context.drawImage(bitmap, plan.sx, plan.sy, plan.sw, plan.sh, 0, 0, plan.sw, plan.sh);
+  bitmap.close();
+  const found = contentBounds(context.getImageData(0, 0, plan.sw, plan.sh), Math.round(CAPTURE_MARGIN_PX * scale));
+  if (!found) return crop;
+  return { x: plan.shown.x + found.x / scale, y: plan.shown.y + found.y / scale, width: found.width / scale, height: found.height / scale };
+}
+
+/** Pixels next to the image's edges that contentBounds ignores, where panel borders can reach into the canvas. */
+const BORDER_INSET = 4;
+
+/**
+ * Where something other than the canvas shows in a screenshot of the canvas, with `margin` pixels
+ * around it, kept inside the image; null when all of it is canvas. The canvas is the color most
+ * pixels just inside the image's edges share. `tolerance` is the largest channel difference between
+ * pixels of the same color.
+ */
+export function contentBounds(pixels: Pixels, margin: number, tolerance = 4): Rect | null {
+  const { width, height, data } = pixels;
+  const inner: Rect = { x: BORDER_INSET, y: BORDER_INSET, width: width - 2 * BORDER_INSET, height: height - 2 * BORDER_INSET };
+  if (inner.width < 1 || inner.height < 1) return null;
+  const same = (a: Color, b: Color) => Math.abs(a[0] - b[0]) <= tolerance && Math.abs(a[1] - b[1]) <= tolerance && Math.abs(a[2] - b[2]) <= tolerance;
+  const counts: { color: Color; n: number }[] = [];
+  for (const [x, y] of edgePoints(inner, -1)) {
+    const color = colorAt(pixels, x, y);
+    if (!color) continue;
+    const known = counts.find((entry) => same(entry.color, color));
+    if (known) known.n += 1;
+    else counts.push({ color, n: 1 });
+  }
+  const canvas = counts.sort((a, b) => b.n - a.n)[0]?.color;
+  if (!canvas) return null;
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = -1;
+  let bottom = -1;
+  for (let y = inner.y; y < inner.y + inner.height; y += 1) {
+    for (let x = inner.x; x < inner.x + inner.width; x += 1) {
+      const i = (y * width + x) * 4;
+      if (Math.abs(data[i]! - canvas[0]) <= tolerance && Math.abs(data[i + 1]! - canvas[1]) <= tolerance && Math.abs(data[i + 2]! - canvas[2]) <= tolerance) continue;
+      if (x < left) left = x;
+      if (x > right) right = x;
+      if (y < top) top = y;
+      bottom = y;
+    }
+  }
+  if (right < 0) return null;
+  const x = Math.max(0, left - margin);
+  const y = Math.max(0, top - margin);
+  return { x, y, width: Math.min(width, right + 1 + margin) - x, height: Math.min(height, bottom + 1 + margin) - y };
+}
+
 /** Crops and scales a captured PNG in the service worker and returns it as base64 JPEG, with the viewport rectangle it shows. */
 export async function cropCapture(dataUrl: string, crop: Rect, viewport: { width: number; height: number }): Promise<{ data: string; width: number; height: number; crop: Rect }> {
   const bitmap = await createImageBitmap(await (await fetch(dataUrl)).blob());

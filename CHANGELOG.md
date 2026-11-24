@@ -4,6 +4,11 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+### Fixed
+
+- Screenshots from `capture` and `snapshot_layer` showed other people's cursors with their names, and Figma's toolbar with the view-only banner, which could cover the bottom of a tall frame. Figloo hides them, and comment pins, while it takes the screenshot, as it already did with Figma's messages. Other people's selection boxes are drawn in the canvas itself and still show.
+- A screenshot of a whole page kept the empty canvas around the page, which zooming to fit leaves on two sides, and was scaled down to fit it. It is now cropped to what is on the page.
+
 ## [0.7.0] - 2026-10-12
 
 Snapshots are about twice as fast, values bound to Figma variables are read with the variable's name, and the screenshots of some frames are no longer cropped to one side. Update the extension and the MCP server together for all of it; the bridge protocol is still 0.3.0, so an older half keeps working without the timings and the variable names.

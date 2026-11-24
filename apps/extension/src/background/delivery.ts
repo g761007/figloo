@@ -1,5 +1,5 @@
-import { CapturePlanSchema, ExportFinishSchema, ExportPlanSchema, MAX_SNAPSHOT_LAYERS, SNAPSHOT_TIME_BUDGET_MS, SnapshotParamsSchema, SnapshotReadResultSchema, TabOpResponseSchema, type CapturePlan, type CaptureResult, type ImageAlignment, type Rect, type TabOpResponse } from "@figloo/protocol";
-import { CAPTURE_MARGIN_PX, alignCapture, cropCapture, insideImage, intersect, inflate, placeInImage } from "../capture.js";
+import { CaptureParamsSchema, CapturePlanSchema, ExportFinishSchema, ExportPlanSchema, MAX_SNAPSHOT_LAYERS, SNAPSHOT_TIME_BUDGET_MS, SnapshotParamsSchema, SnapshotReadResultSchema, TabOpResponseSchema, type CapturePlan, type CaptureResult, type ImageAlignment, type Rect, type TabOpResponse } from "@figloo/protocol";
+import { CAPTURE_MARGIN_PX, alignCapture, cropCapture, insideImage, intersect, inflate, placeInImage, trimToContent } from "../capture.js";
 import { installExportCapture, removeExportCapture } from "../export-capture.js";
 import { Timings } from "../timings.js";
 import { server } from "./connection.js";
@@ -119,7 +119,9 @@ async function takeCapture(
   timings.merge(plan.timings);
   try {
     const dataUrl = await timings.time("capture.screen", () => chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" }));
-    const { crop, ...image } = await timings.time("capture.crop", () => cropCapture(dataUrl, plan.crop, plan.viewport));
+    // A page capture leaves out the empty canvas around the page, which zooming to fit leaves on two sides.
+    const wholePage = CaptureParamsSchema.safeParse(params).data?.ref === null;
+    const { crop, ...image } = await timings.time("capture.crop", async () => cropCapture(dataUrl, wholePage ? await trimToContent(dataUrl, plan.crop, plan.viewport) : plan.crop, plan.viewport));
     const finished = await timings.time("capture.finish", () => sendToTab(tabId, "finish_capture", { token: plan.token, keepView }));
     const done = finished.ok ? (finished.result as { userSelectionRestored?: boolean; viewRestored?: boolean; interrupted?: boolean } | undefined) : undefined;
     const result: CaptureResult = {

@@ -13,8 +13,18 @@ const PENDING_CAPTURE_TIMEOUT_MS = 10_000;
 const CAPTURE_FALLBACK_MARGIN_PX = 48;
 const ZOOM_ANIMATION_MS = 500;
 const TOAST_TIMEOUT_MS = 4_000;
-/** Figma's toasts, such as "Zoom to selection" after Shift+2, which stay about three seconds (2026-10-12). */
-const HIDE_TOASTS_CSS = '[data-testid="visual-bell-root"] { visibility: hidden !important; }';
+/**
+ * What Figma draws over the canvas and a screenshot should leave out: its toasts, such as "Zoom to
+ * selection" after Shift+2, which stay about three seconds (2026-10-12); other people's cursors with
+ * their names; the toolbar at the bottom with the view-only banner above it; and comment pins
+ * (2026-11-24). Other people's selection boxes are drawn in the canvas itself and stay.
+ */
+const HIDE_OVERLAYS_CSS = [
+  '[data-testid="visual-bell-root"]',
+  '[data-testid^="multiplayer-cursor-"]',
+  '[data-testid="positioned-design-toolbelt"]',
+  '[class*="comments_view--outerAnchorContainer"]',
+].join(", ") + " { visibility: hidden !important; }";
 
 export interface PendingCapture {
   token: string;
@@ -23,14 +33,17 @@ export interface PendingCapture {
   view: CanvasView | null;
   user: UserWatch;
   timer: ReturnType<typeof setTimeout>;
-  /** Shows Figma's toasts again. */
-  showToasts: () => void;
+  /** Shows what hideOverlays hid. */
+  showOverlays: () => void;
 }
 
-/** Hides Figma's toasts until the returned function runs, so a capture need not wait for them to go. */
-export function hideToasts(doc: Document): () => void {
+/**
+ * Hides what Figma draws over the canvas until the returned function runs, so a capture need not
+ * wait for toasts to go and shows neither other people's cursors nor Figma's toolbar.
+ */
+export function hideOverlays(doc: Document): () => void {
   const style = doc.createElement("style");
-  style.textContent = HIDE_TOASTS_CSS;
+  style.textContent = HIDE_OVERLAYS_CSS;
   (doc.head ?? doc.documentElement).append(style);
   return () => style.remove();
 }
@@ -54,7 +67,7 @@ export async function prepareCapture(core: ExplorerCore, params: CaptureParams):
   if (core.pendingCapture) await finishCapture(core, core.pendingCapture.token);
   let before: UserSelection = { kind: "none" };
   const timings = new Timings();
-  const showToasts = hideToasts(core.doc);
+  const showOverlays = hideOverlays(core.doc);
   const { value } = await core.run(async (tree, source) => {
     const selecting = performance.now();
     before = await core.userSelection(tree);
@@ -112,7 +125,7 @@ export async function prepareCapture(core: ExplorerCore, params: CaptureParams):
     timings.add("capture.toast", performance.now() - toast);
     return { crop, cropSource, canvas, zoom: source.zoomLabel(), view };
   }).catch((error: unknown) => {
-    showToasts();
+    showOverlays();
     throw error;
   });
   const token = crypto.randomUUID();
@@ -122,7 +135,7 @@ export async function prepareCapture(core: ExplorerCore, params: CaptureParams):
     view: value.view,
     user: watchForUser(core.win),
     timer: setTimeout(() => void finishCapture(core, token), PENDING_CAPTURE_TIMEOUT_MS),
-    showToasts,
+    showOverlays,
   };
   core.pendingCapture = pending;
   return { identity, token, ...value, viewport: { width: core.win.innerWidth, height: core.win.innerHeight }, timings: timings.toJSON() };
@@ -138,7 +151,7 @@ export async function finishCapture(core: ExplorerCore, token: string, keepView 
   core.pendingCapture = null;
   clearTimeout(pending.timer);
   // The screenshot is taken by now.
-  pending.showToasts();
+  pending.showOverlays();
   try {
     // If the user clicked or typed while the capture ran, their new selection and view win.
     if (pending.user.interrupted()) return { userSelectionRestored: false, viewRestored: false, interrupted: true };

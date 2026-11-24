@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignRoot, insideImage, placeInImage, planCrop, type Pixels } from "../src/capture.js";
+import { alignRoot, contentBounds, insideImage, placeInImage, planCrop, type Pixels } from "../src/capture.js";
 
 describe("planCrop", () => {
   it("maps a layer's CSS pixel bounds onto a 2x capture", () => {
@@ -117,5 +117,55 @@ describe("alignRoot", () => {
     for (let i = 0; i < busy.data.length; i += 4) (busy.data as Uint8ClampedArray).set([40 + ((i / 4) % 150), 90, 150], i);
     const stale = { ...root, y: root.y - 66 };
     expect(alignRoot(busy, stale, 200)).toEqual({ rect: stale, alignment: "unconfirmed" });
+  });
+});
+
+describe("contentBounds", () => {
+  const CANVAS: [number, number, number] = [233, 236, 242];
+
+  /** A screenshot of the canvas with filled rectangles on it. */
+  function canvasWith(width: number, height: number, fills: { x: number; y: number; width: number; height: number; color: [number, number, number] }[]): Pixels {
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const fill = fills.findLast((f) => x >= f.x && x < f.x + f.width && y >= f.y && y < f.y + f.height);
+        const [r, g, b] = fill?.color ?? CANVAS;
+        data.set([r, g, b, 255], (y * width + x) * 4);
+      }
+    }
+    return { data, width, height };
+  }
+
+  it("keeps the frames on the page and the margin around them, leaving out the empty canvas", () => {
+    // Zooming to fit a wide page into a tall canvas leaves empty canvas above and below it.
+    const pixels = canvasWith(200, 400, [
+      { x: 20, y: 150, width: 60, height: 100, color: [255, 255, 255] },
+      { x: 110, y: 160, width: 70, height: 80, color: [231, 43, 140] },
+    ]);
+    expect(contentBounds(pixels, 10)).toEqual({ x: 10, y: 140, width: 180, height: 120 });
+  });
+
+  it("counts a frame of nearly the canvas color as canvas, but not one a few shades off", () => {
+    const close = canvasWith(100, 100, [{ x: 40, y: 40, width: 20, height: 20, color: [235, 238, 244] }]);
+    expect(contentBounds(close, 0)).toBeNull();
+    const off = canvasWith(100, 100, [{ x: 40, y: 40, width: 20, height: 20, color: [240, 236, 242] }]);
+    expect(contentBounds(off, 0)).toEqual({ x: 40, y: 40, width: 20, height: 20 });
+  });
+
+  it("ignores the panel borders along the image's edges", () => {
+    const pixels = canvasWith(100, 100, [
+      { x: 0, y: 0, width: 2, height: 100, color: [200, 200, 200] },
+      { x: 30, y: 30, width: 10, height: 10, color: [0, 0, 0] },
+    ]);
+    expect(contentBounds(pixels, 0)).toEqual({ x: 30, y: 30, width: 10, height: 10 });
+  });
+
+  it("keeps the margin inside the image", () => {
+    const pixels = canvasWith(100, 100, [{ x: 6, y: 6, width: 88, height: 88, color: [0, 0, 0] }]);
+    expect(contentBounds(pixels, 24)).toEqual({ x: 0, y: 0, width: 100, height: 100 });
+  });
+
+  it("finds nothing on an empty page", () => {
+    expect(contentBounds(canvasWith(50, 50, []), 12)).toBeNull();
   });
 });
