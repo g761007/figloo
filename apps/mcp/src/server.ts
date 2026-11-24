@@ -6,6 +6,7 @@ import { configDir } from "./config.js";
 import { ContextStore } from "./contexts.js";
 import { registerExplorationTools } from "./exploration.js";
 import { SnapshotStore } from "./snapshots.js";
+import { SurveyStore } from "./surveys.js";
 import { overallStatus, statusHint, tabLimitations } from "./status.js";
 
 export interface ServerDeps {
@@ -17,6 +18,8 @@ export interface ServerDeps {
   root?: string;
   /** Where snapshots are kept; ~/.figloo/snapshots with a 24-hour lifetime by default. */
   snapshots?: SnapshotStore;
+  /** Where surveys are kept; ~/.figloo/surveys with a 24-hour lifetime by default. */
+  surveys?: SurveyStore;
   /** Clock for the tools' time budgets. */
   now?: () => number;
 }
@@ -45,6 +48,7 @@ export function createServer(deps: ServerDeps): McpServer {
     ...(deps.root ? { root: deps.root } : {}),
     ...(deps.now ? { now: deps.now } : {}),
     snapshots: deps.snapshots ?? new SnapshotStore(join(configDir(), "snapshots")),
+    surveys: deps.surveys ?? new SurveyStore(join(configDir(), "surveys")),
   });
 
   return server;

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = "0.3.0";
+export const PROTOCOL_VERSION = "0.4.0";
 
 /** Chrome extension ID pinned by the `key` field in apps/extension/static/manifest.json. */
 export const EXTENSION_ID = "offikfnknfkgijgianpfcghbccmkcjnb";
@@ -137,6 +137,7 @@ export const BridgeOpSchema = z.enum([
   "export_asset",
   "visual_neighbors",
   "snapshot_layer",
+  "survey_frames",
 ]);
 export type BridgeOp = z.infer<typeof BridgeOpSchema>;
 
@@ -1116,3 +1117,98 @@ export const MapTokensOutputSchema = z.object({
   truncated: z.boolean(),
 });
 export type MapTokensOutput = z.infer<typeof MapTokensOutputSchema>;
+
+/** Most frames or sections one survey names; a survey without refs takes every layer on the page. */
+export const MAX_SURVEY_REFS = 100;
+/** Time one survey call may take; the next call goes on with the frames left. */
+export const SURVEY_TIME_BUDGET_MS = 180_000;
+/** A note, text directly on the page or in a section, keeps this much of its text. */
+export const MAX_NOTE_LENGTH = 1_000;
+
+/** What the MCP server asks the tab to survey. */
+export const SurveyParamsSchema = z.object({
+  expect: PageIdentitySchema,
+  /** Frames or sections; a section stands for the layers in it. null for every layer directly on the page. */
+  refs: z.array(z.string()).min(1).max(MAX_SURVEY_REFS).nullable(),
+  known: KnownLayersSchema.optional(),
+  /** Layers earlier calls of this survey finished, which this call skips. */
+  done: z.array(z.string()).optional(),
+  /** A shorter time for this call than SURVEY_TIME_BUDGET_MS, for tests. */
+  timeBudgetMs: z.number().int().positive().max(SURVEY_TIME_BUDGET_MS).optional(),
+});
+export type SurveyParams = z.infer<typeof SurveyParamsSchema>;
+
+/** A layer inside a surveyed layer, as the layers panel shows it; instances count as one layer. */
+export const SurveyedLayerSchema = z.object({
+  ref: z.string(),
+  parentRef: z.string(),
+  name: z.string(),
+  type: z.string().nullable(),
+  hidden: z.boolean(),
+});
+export type SurveyedLayer = z.infer<typeof SurveyedLayerSchema>;
+
+/** One layer of the survey's scope and what is inside it. */
+export const SurveyRootSchema = z.object({
+  ref: z.string(),
+  /** Up to MAX_NOTE_LENGTH characters for text, MAX_NAME_LENGTH for other layers. */
+  name: z.string(),
+  type: z.string().nullable(),
+  /** The section it is in, null for a layer directly on the page. */
+  sectionRef: z.string().nullable(),
+  hidden: z.boolean(),
+  /** From the inspection panel; null for text and sections, for guests, and when the panel did not show it. */
+  size: z.object({ width: z.number(), height: z.number() }).nullable(),
+  /** False when it holds more than MAX_SNAPSHOT_LAYERS layers, and layers lists only the first ones. */
+  complete: z.boolean(),
+  /** The layers inside it in layers panel order, without itself. */
+  layers: z.array(SurveyedLayerSchema),
+});
+export type SurveyRoot = z.infer<typeof SurveyRootSchema>;
+
+/** Result of the `survey_frames` op: the scope, and the layers of it this call surveyed. */
+export const SurveyResultSchema = z.object({
+  identity: PageIdentitySchema,
+  status: z.enum(["complete", "partial"]),
+  /** Every layer of the scope in layers panel order, sections replaced by what is in them. */
+  scope: z.array(z.object({ ref: z.string(), sectionRef: z.string().nullable() })),
+  /** The sections the scope came from, with their names. */
+  sections: z.array(z.object({ ref: z.string(), name: z.string(), parentRef: z.string().nullable() })),
+  roots: z.array(SurveyRootSchema),
+  userSelectionRestored: z.boolean(),
+  uiOps: z.number().int().nonnegative(),
+  elapsedMs: z.number().nonnegative(),
+  timings: SnapshotTimingsSchema.optional(),
+});
+export type SurveyResult = z.infer<typeof SurveyResultSchema>;
+
+/** What `survey_frames` returns to the coding agent. */
+export const SurveyOutputSchema = z.object({
+  contextId: z.string(),
+  /** The saved survey, which survey_frames returns again without reading Figma until expiresAt. */
+  survey: z.string(),
+  fileKey: z.string(),
+  page: z.string().nullable(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  fromCache: z.boolean(),
+  /** False while layers are left to survey: call survey_frames again with the same contextId and refs to go on. */
+  complete: z.boolean(),
+  progress: z.object({ surveyed: z.number().int().nonnegative(), total: z.number().int().nonnegative() }),
+  /** Frames, notes, sections, and other layers in the scope, and the layers inside the frames. */
+  counts: z.object({
+    frames: z.number().int().nonnegative(),
+    notes: z.number().int().nonnegative(),
+    sections: z.number().int().nonnegative(),
+    other: z.number().int().nonnegative(),
+    layers: z.number().int().nonnegative(),
+  }),
+  /** The survey as text, part by part; empty while complete is false. */
+  overview: z.string(),
+  /** True when parts of the overview were cut to fit one result. */
+  truncated: z.boolean(),
+  /** False when the user's selection in Figma could not be put back; true from the cache. */
+  userSelectionRestored: z.boolean(),
+  elapsedMs: z.number().nonnegative(),
+});
+export type SurveyOutput = z.infer<typeof SurveyOutputSchema>;

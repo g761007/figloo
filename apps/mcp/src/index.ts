@@ -7,6 +7,7 @@ import { configDir, configPath, loadOrCreateConfig, projectName } from "./config
 import { formatDoctor, runDoctor } from "./doctor.js";
 import { createServer } from "./server.js";
 import { SnapshotStore } from "./snapshots.js";
+import { SurveyStore } from "./surveys.js";
 
 /** Set by `pnpm package`, whose single-file bundle has no package.json next to it. */
 declare const __FIGLOO_VERSION__: string | undefined;
@@ -33,7 +34,8 @@ if (command !== "serve") {
 
 const bridge = new Bridge({ ...config, serverVersion: VERSION, project: projectName() });
 await bridge.start();
-const server = createServer({ bridge, version: VERSION, snapshots: new SnapshotStore(join(configDir(), "snapshots"), config.snapshotTtlHours * 3_600_000) });
+const ttlMs = config.snapshotTtlHours * 3_600_000;
+const server = createServer({ bridge, version: VERSION, snapshots: new SnapshotStore(join(configDir(), "snapshots"), ttlMs), surveys: new SurveyStore(join(configDir(), "surveys"), ttlMs) });
 server.server.oninitialized = () => {
   const client = server.server.getClientVersion();
   bridge.session.client = client?.title ?? client?.name ?? null;

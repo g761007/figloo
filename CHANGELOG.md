@@ -4,6 +4,14 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+### Added
+
+- `survey_frames` gives an overview of many frames at once, before choosing which to snapshot: each frame's name, size, layer count, the instances it uses most, the start of its text, and how long its snapshot would take; frames grouped by name; sections; the notes designers wrote on the canvas, in full; components shared across frames, with names that may mean one component; and what is worth a look, such as groups named like an instance elsewhere, pasted screenshots, and frames whose layers are mostly auto-named. It walks the layers panel and selects each frame once for its size, without reading inspection panels: a page of 70 frames holding 7,600 layers took about 30 s. The survey covers the page, or the frames and sections asked for, never switches Figma pages, goes on over several calls, and is saved like a snapshot.
+
+### Changed
+
+- The bridge protocol is 0.4.0, for `survey_frames`: update the extension and the MCP server together. A mismatched pair reports `PROTOCOL_MISMATCH` and says which side to update.
+
 ### Fixed
 
 - Screenshots from `capture` and `snapshot_layer` showed other people's cursors with their names, and Figma's toolbar with the view-only banner, which could cover the bottom of a tall frame. Figloo hides them, and comment pins, while it takes the screenshot, as it already did with Figma's messages. Other people's selection boxes are drawn in the canvas itself and still show.

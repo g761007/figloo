@@ -41,6 +41,8 @@ import { describeError } from "./errors.js";
 import { registerExportAssetsTool, registerExportTool } from "./export-asset.js";
 import { registerSnapshotTools } from "./snapshot-tools.js";
 import type { SnapshotStore } from "./snapshots.js";
+import { registerSurveyTools } from "./survey-tools.js";
+import type { SurveyStore } from "./surveys.js";
 
 /** The tab gets 15 s for UI work; the rest covers messaging. */
 const OP_TIMEOUT_MS = 20_000;
@@ -75,6 +77,7 @@ export interface ExplorationDeps {
   /** Directory export_asset may write into; defaults to the working directory. */
   root?: string;
   snapshots: SnapshotStore;
+  surveys: SurveyStore;
   /** Clock for the time budget of export_assets. */
   now?: () => number;
 }
@@ -418,6 +421,7 @@ export function registerExplorationTools(server: McpServer, deps: ExplorationDep
   registerExportTool(server, deps, toolError);
   registerExportAssetsTool(server, deps, toolError);
   registerSnapshotTools(server, { bridge, contexts, snapshots: deps.snapshots, log, maxOutputBytes: MAX_OUTPUT_BYTES, ...(deps.root ? { root: deps.root } : {}) }, toolError);
+  registerSurveyTools(server, { bridge, contexts, surveys: deps.surveys, log, maxOutputBytes: MAX_OUTPUT_BYTES }, toolError);
 
   server.registerTool(
     "release_context",

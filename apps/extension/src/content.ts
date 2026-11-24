@@ -1,4 +1,4 @@
-import type { CaptureParams, ExplorePageParams, ExportParams, InspectParams, ListNeighborsParams, ReadSubtreeParams, VisualNeighborsParams } from "@figloo/protocol";
+import type { CaptureParams, ExplorePageParams, ExportParams, InspectParams, ListNeighborsParams, ReadSubtreeParams, SurveyParams, VisualNeighborsParams } from "@figloo/protocol";
 import { Explorer, OpError } from "./adapter/ops.js";
 import { probeFigmaPage } from "./probe.js";
 import { deriveReadiness } from "./readiness.js";
@@ -63,6 +63,8 @@ async function runOp(message: OpMessage): Promise<unknown> {
       }
       case "read_subtree":
         return { ok: true, result: await explorer.readSubtree(message.params as ReadSubtreeParams) };
+      case "survey_frames":
+        return { ok: true, result: await explorer.surveyFrames(message.params as SurveyParams) };
       case "prepare_export":
         return { ok: true, result: await explorer.prepareExport(message.params as ExportParams) };
       case "finish_export": {

@@ -2,6 +2,7 @@
 export type ReadingProgress =
   | { phase: "walking"; found: number }
   | { phase: "reading"; done: number; total: number; remainingMs: number | null }
+  | { phase: "surveying"; done: number; total: number; remainingMs: number | null }
   | { phase: "finishing" };
 
 /** The overlay text changes at most this often, so reading hundreds of layers does not churn the DOM. */
@@ -41,6 +42,8 @@ export function progressText(progress: ReadingProgress): string {
       return `Finding layers: ${progress.found} so far`;
     case "reading":
       return `Read ${progress.done} of ${progress.total} layers${progress.remainingMs === null ? "" : `, ${remainingText(progress.remainingMs)}`}`;
+    case "surveying":
+      return `Looked through ${progress.done} of ${progress.total} frames and other layers${progress.remainingMs === null ? "" : `, ${remainingText(progress.remainingMs)}`}`;
     case "finishing":
       return "Putting the layers panel back";
   }

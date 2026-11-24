@@ -1,4 +1,4 @@
-import { CaptureParamsSchema, ExplorePageParamsSchema, ExportRequestSchema, InspectParamsSchema, ListNeighborsParamsSchema, SnapshotParamsSchema, VisualNeighborsParamsSchema, type TabOpResponse } from "@figloo/protocol";
+import { CaptureParamsSchema, ExplorePageParamsSchema, ExportRequestSchema, InspectParamsSchema, ListNeighborsParamsSchema, SnapshotParamsSchema, SurveyParamsSchema, VisualNeighborsParamsSchema, type TabOpResponse } from "@figloo/protocol";
 import { MAX_RECENT_ERRORS, type RecentError } from "../diagnostics.js";
 import { parseFigmaUrl } from "../figma-url.js";
 import { send } from "./connection.js";
@@ -22,7 +22,8 @@ export async function handleRequest(id: string, op: string, tabId?: number, para
       case "capture":
       case "export_asset":
       case "visual_neighbors":
-      case "snapshot_layer": {
+      case "snapshot_layer":
+      case "survey_frames": {
         const reply = await runInTab(tabId, op, params);
         if (!reply.ok) recordError(op, reply.error?.code ?? "INTERNAL");
         send(reply.ok ? { type: "response", id, ok: true, result: reply.result } : { type: "response", id, ok: false, error: reply.error });
@@ -43,8 +44,10 @@ function recordError(op: string, code: string): void {
 }
 
 const tabQueues = new Map<number, Promise<unknown>>();
-/** Tabs with a snapshot queued or running; a snapshot takes minutes, so other ops do not wait behind it. */
+/** Tabs with a snapshot or survey queued or running; these take minutes, so other ops do not wait behind them. */
 export const snapshotting = new Set<number>();
+/** Ops that read for minutes, behind the reading overlay. */
+const READING_OPS = new Set(["snapshot_layer", "survey_frames"]);
 
 /** Forwards an op to the tab's content script; each tab runs one UI operation sequence at a time. */
 export async function runInTab(tabId: number | undefined, op: string, params: unknown): Promise<TabOpResponse> {
@@ -57,9 +60,9 @@ export async function runInTab(tabId: number | undefined, op: string, params: un
     return { ok: false, error: { code: "BAD_MESSAGE", message: `${op} params do not match the protocol schema` } };
   }
   if (snapshotting.has(tabId)) {
-    return { ok: false, error: { code: "BUSY", message: "Figloo is reading a snapshot in this tab, which takes up to three minutes" } };
+    return { ok: false, error: { code: "BUSY", message: "Figloo is reading a snapshot or survey in this tab, which takes up to three minutes" } };
   }
-  if (op === "snapshot_layer") snapshotting.add(tabId);
+  if (READING_OPS.has(op)) snapshotting.add(tabId);
   const previous = tabQueues.get(tabId) ?? Promise.resolve();
   const current = previous.then((): Promise<TabOpResponse> =>
     op === "capture"
@@ -73,7 +76,7 @@ export async function runInTab(tabId: number | undefined, op: string, params: un
   const settled = current.catch(() => undefined);
   tabQueues.set(tabId, settled);
   void settled.then(() => {
-    if (op === "snapshot_layer") snapshotting.delete(tabId);
+    if (READING_OPS.has(op)) snapshotting.delete(tabId);
     if (tabQueues.get(tabId) === settled) tabQueues.delete(tabId);
   });
   return current;
@@ -87,4 +90,5 @@ const PARAM_SCHEMAS: Record<string, { safeParse(value: unknown): { success: bool
   export_asset: ExportRequestSchema,
   visual_neighbors: VisualNeighborsParamsSchema,
   snapshot_layer: SnapshotParamsSchema,
+  survey_frames: SurveyParamsSchema,
 };

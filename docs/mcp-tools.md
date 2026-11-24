@@ -320,6 +320,33 @@ Put a snapshot's design values next to the tokens and components the project alr
 | `unmatched` | object with colors, typography, spacing, radii, components |
 | `truncated` | boolean |
 
+## survey_frames
+
+Survey many frames at once for an overview, before choosing which to snapshot: when a request spans several frames, such as a new app, a new feature, or a redesign. Returns text in parts: each frame's ref, name, size, and how many layers, instances, and text layers it holds, the instances it uses most, the start of its text, and how long its snapshot would take; frames grouped by the start of their names, which usually names a flow; sections; the notes designers wrote on the canvas, in full; the components used across frames, with names that may mean one component; and what is worth a look: layers named like components that are not instances (maybe detached), pasted screenshots, frames whose layer names are mostly auto-named, and hidden frames. It reads the layers panel and selects each frame once for its size; it does not read colors, text styles, or spacing: snapshot_layer reads those, for the frames you pick. Agree on the scope with the user first. Without refs it surveys every layer directly on the context's page, in sections too; with refs, those frames, a section standing for the frames in it. It never switches Figma pages. A page of 70 frames holding 7,600 layers took about 30 s. One call works for at most 3 minutes and returns complete: false and no overview when layers are left: call survey_frames again with the same contextId and refs to go on. The survey is saved and comes back without reading Figma until expiresAt; pass refresh: true when the user says the design changed. The Figma tab must be on screen to start; Figma shows an overlay with a Stop button meanwhile, and the user's selection is put back. Every ref the survey names works in this context.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `contextId` | string | yes |  |
+| `refs` | array of string | no | Frames or sections returned earlier in this context; omit for every layer on the page |
+| `refresh` | boolean | no | Read Figma again even when a saved survey has not expired |
+
+| Result field | Type |
+|---|---|
+| `contextId` | string |
+| `survey` | string |
+| `fileKey` | string |
+| `page` | string or null |
+| `createdAt` | string |
+| `expiresAt` | string |
+| `fromCache` | boolean |
+| `complete` | boolean |
+| `progress` | object with surveyed, total |
+| `counts` | object with frames, notes, sections, other, layers |
+| `overview` | string |
+| `truncated` | boolean |
+| `userSelectionRestored` | boolean |
+| `elapsedMs` | number, at least 0 |
+
 ## release_context
 
 Forget an exploration context and the refs it returned.

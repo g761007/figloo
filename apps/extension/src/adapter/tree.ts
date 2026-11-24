@@ -416,17 +416,20 @@ export class LayerTree {
     return { rows, total: total ?? (ended ? 0 : null), from, nextFrom: hasMore ? lastPosition + 1 : null, hasMore, stopReason: hasMore ? "limit" : "complete" };
   }
 
-  /** Collapses what this exploration expanded, deepest first. Only user input stops it. */
-  async restore(): Promise<void> {
+  /**
+   * Collapses what this exploration expanded, deepest first; with `since`, a value expandedCount()
+   * returned earlier, only what it expanded after that. Only user input stops it.
+   */
+  async restore(since = 0): Promise<void> {
     await this.whileRestoring(async () => {
-      for (const id of this.expandedByUs.splice(0).reverse()) {
+      for (const id of this.expandedByUs.splice(since).reverse()) {
         const row = await this.find(id);
         if (row?.expanded) {
           this.spend();
           this.snapshot = await this.source.toggle(row, this.expandedWithAll.has(id));
         }
+        this.expandedWithAll.delete(id);
       }
-      this.expandedWithAll.clear();
     });
   }
 

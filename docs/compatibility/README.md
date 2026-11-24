@@ -95,3 +95,4 @@
 - [快照的變更比對](2026-10-03-snapshot-changes.md)
 - [截圖與快照後還原畫面](2026-10-03-view-restore.md)
 - [截圖不拍進協作者的游標與介面覆蓋物](2026-11-24-capture-overlays.md)
+- [盤點多個 frame：`survey_frames`](2026-11-24-frame-survey.md)

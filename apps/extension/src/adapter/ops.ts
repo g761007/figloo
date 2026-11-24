@@ -1,10 +1,11 @@
-import type { CaptureParams, ExplorePageParams, ExportParams, InspectParams, ListNeighborsParams, ReadSubtreeParams, VisualNeighborsParams } from "@figloo/protocol";
+import type { CaptureParams, ExplorePageParams, ExportParams, InspectParams, ListNeighborsParams, ReadSubtreeParams, SurveyParams, VisualNeighborsParams } from "@figloo/protocol";
 import { finishCapture, prepareCapture } from "./capture-ops.js";
 import { ExplorerCore } from "./explorer-core.js";
 import { finishExport, prepareExport } from "./export-ops.js";
 import { inspectNodes, visualNeighbors } from "./inspect-ops.js";
 import { explorePage, getAnchor, listNeighbors, listPages } from "./navigation-ops.js";
 import { readSubtree } from "./snapshot-ops.js";
+import { surveyFrames } from "./survey-ops.js";
 
 export { OpError } from "./operation.js";
 
@@ -44,6 +45,10 @@ export class Explorer extends ExplorerCore {
 
   readSubtree(params: ReadSubtreeParams) {
     return readSubtree(this, params);
+  }
+
+  surveyFrames(params: SurveyParams) {
+    return surveyFrames(this, params);
   }
 
   prepareExport(params: ExportParams) {
