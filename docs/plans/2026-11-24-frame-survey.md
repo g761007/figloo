@@ -1,7 +1,7 @@
 # 盤點多個 frame：先看全貌，再決定快照哪些畫面
 
 日期：2026-11-24
-狀態：使用者已確認（2026-11-24）；M1 完成（a94bd45）；M2 完成（12f37a4）；M3 完成，待 commit；下一步 M4
+狀態：完成，v0.8.0（2026-11-24）。M1 a94bd45、M2 12f37a4、M3 75ad8da、M4 隨 0.8.0 發布
 依據：2026-11-24 的可行性討論，以及同日在使用者提供的私人測試檔上的實測
 
 ## 使用情境
@@ -214,3 +214,13 @@
 - 改為獨立的工具 `survey_thumbnails(contextId, survey, frames?)`，以 survey 的 `#n` 指定 frame；縮圖與總覽圖不存檔。理由：分次續做時不必重送概覽，agent 也能只要部分 frame。
 - 每個 frame 約 1.4 秒，24 個 34 秒；每張總覽圖 12 個 frame，畫面認得出來，標題讀得到。
 - 分次續做在真實的 Figma 上驗證過；截圖途中使用者介入、分頁進入背景與截不到的 frame 沒有。
+
+## M4 結果，2026-11-24
+
+- figloo-implement 新增「Surveying several frames」：確定範圍、盤點、名稱看不出內容時看縮圖、回報並提出要快照的畫面，使用者同意後才快照。skill 的 description 加上 `survey_frames` 與「先看過許多畫面」的情境。
+- README 與繁體中文 README 的工具表、使用流程與注意事項，疑難排解（中英）的盤點與 `PROTOCOL_MISMATCH`，ROADMAP 的 0.8.0。
+- Skill 評估：
+  - 觸發案例 `plugins/figloo/evals/survey-many-screens`：3 次都觸發，$0.15。
+  - 流程案例 `tests/skill-eval/evals/survey-new-feature`：3 次都先盤點、沒有在同意前快照，並回報共用元件、註解與建議的畫面，$0.26。
+  - 原有的「不該觸發」案例沒有重跑。
+- 發版前檢查：單元測試與 typecheck 全過；`pnpm test:release` 以發版檔通過；登入版 canary 通過（17 秒）。登入版 canary 的帳號曾經登出，使用者重新登入後才通過。

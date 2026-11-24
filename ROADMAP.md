@@ -2,7 +2,7 @@
 
 Where Figloo is going, by area and by release. Figloo is versioned 0.x: a minor version adds features, a patch fixes problems, and tools and results may still change between minor versions. [CHANGELOG.md](CHANGELOG.md) lists what each release changed. The detailed plan behind this roadmap, in Traditional Chinese, is [docs/plans/2026-10-06-productization-and-reliability.md](docs/plans/2026-10-06-productization-and-reliability.md).
 
-Current release: 0.7.0.
+Current release: 0.8.0.
 
 ## Principles
 
@@ -66,7 +66,15 @@ Next in this area, once real projects have used it: grouping a design's values b
 - Research into incremental snapshots ended with no: comparing screenshots misses exact colors, covered layers, and settings that are not drawn, such as export settings, and a missed change would leave an agent with stale values. Snapshots stay full reads, cached for 24 hours.
 - Values bound to Figma variables are read with the variable's name, and `map_tokens` maps them to the project token named like the variable.
 
-## 0.8 and later: compatibility and distribution
+## 0.8.0 (released): surveying many frames
+
+- `survey_frames` gives an agent an overview of many frames before it snapshots any: it walks each frame's layers without reading inspection panels, about 30 seconds for 70 frames, and returns the frames with sizes and layer counts, flows by name, the notes designers left on the canvas, components shared across frames and the names that may mean one, and what is worth a look. The user decides the scope, a page or sections, and Figloo never switches Figma pages for it.
+- `survey_thumbnails` shows the frames of a survey on numbered contact sheets, for the screens whose layer names say little.
+- The figloo-implement skill surveys first when work spans many frames, such as a new app, a new feature, or a redesign, and proposes which frames to snapshot before reading any in full.
+- Screenshots leave out other people's cursors, Figma's toolbar with the view-only banner, and comment pins, and a screenshot of a whole page leaves out the empty canvas around it.
+- The bridge protocol is 0.4.0.
+
+## 0.9 and later: compatibility and distribution
 
 - Figma UI languages other than English, starting with the parts that depend on English labels.
 - More Chromium browsers, and noticing a new generation of Figma's UI.

@@ -4,14 +4,18 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-24
+
+Agents can survey many frames before snapshotting any: `survey_frames` gives an overview of a page or of the sections the user picks, and `survey_thumbnails` shows the frames on numbered contact sheets. Screenshots no longer show other people's cursors or Figma's toolbar. The bridge protocol is 0.4.0, so update the extension and the MCP server together, and restart agent sessions started before the update.
+
 ### Added
 
 - `survey_frames` gives an overview of many frames at once, before choosing which to snapshot: each frame's name, size, layer count, the instances it uses most, the start of its text, and how long its snapshot would take; frames grouped by name; sections; the notes designers wrote on the canvas, in full; components shared across frames, with names that may mean one component; and what is worth a look, such as groups named like an instance elsewhere, pasted screenshots, and frames whose layers are mostly auto-named. It walks the layers panel and selects each frame once for its size, without reading inspection panels: a page of 70 frames holding 7,600 layers took about 30 s. The survey covers the page, or the frames and sections asked for, never switches Figma pages, goes on over several calls, and is saved like a snapshot.
-
 - `survey_thumbnails` lays the frames of a survey out on contact sheets, 12 to an image, each under its number in the survey's overview, to recognize screens whose names say little. It captures each frame as `capture` does, about 1.4 s a frame, puts the user's view back once at the end, and goes on over several calls.
 
 ### Changed
 
+- The figloo-implement skill surveys first when work spans many frames, such as a new app, a new feature, or a redesign: it reports the flows, the components the frames share, and the designers' notes, and proposes which frames to snapshot before reading any in full.
 - The bridge protocol is 0.4.0, for `survey_frames` and `survey_thumbnails`: update the extension and the MCP server together. A mismatched pair reports `PROTOCOL_MISMATCH` and says which side to update.
 
 ### Fixed
