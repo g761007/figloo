@@ -1,6 +1,6 @@
 ---
 name: figloo-implement
-description: Implement, inspect, or export from a Figma design open in the user's browser, through the Figloo MCP tools (get_anchor, snapshot_layer, query_snapshot, export_asset). Use when the user pastes a prompt copied from Figloo's popup, asks to build or match a Figma page, screen, or component they have open, or asks for icons and images from it. Only for designs Figloo reads in a browser tab; Figma links meant for the Figma REST API or Figma's own MCP server belong to those tools.
+description: Implement, survey, inspect, or export from a Figma design open in the user's browser, through the Figloo MCP tools (get_anchor, survey_frames, snapshot_layer, query_snapshot, export_asset). Use when the user pastes a prompt copied from Figloo's popup, asks to build or match a Figma page, screen, or component they have open, asks to go through many screens of it first, such as for a new app, a new feature, or a redesign, or asks for icons and images from it. Only for designs Figloo reads in a browser tab; Figma links meant for the Figma REST API or Figma's own MCP server belong to those tools.
 ---
 
 # Working from a Figma design with Figloo
@@ -10,6 +10,7 @@ Figloo reads the Figma design open in the user's browser through Figma's web UI,
 Pick the flow from the request:
 
 - Build or update a page or component: **Implementing**, below.
+- Work that spans many frames, such as a new app, a new feature, or a redesign, or an overview before planning: **Surveying several frames**, after Implementing.
 - Answer a question about a design: **Looking**, at the end.
 - Get icons or images: **Exporting**, at the end.
 
@@ -30,6 +31,7 @@ Call `get_anchor` with the `tabId`. Done when you and the user agree on the one 
 - A frame on the canvas or directly in a section is a page: implement it.
 - A smaller layer, or several layers: confirm whether the user wants just that part or its whole page (`get_neighbors` with `ancestors` finds the page).
 - Nothing selected: find the frame with `list_pages` and `explore_page`, or ask the user to select it.
+- The request spans many frames: survey them first, see **Surveying several frames**.
 
 ### 3. Snapshot
 
@@ -89,11 +91,23 @@ When you can render the result (a dev server, a simulator, a preview), capture i
 
 Tell the user what you implemented, how the design mapped onto their components and tokens (a table of each design value with the token it uses, and whether it matched exactly, nearly, or became a new token), the assumptions you made, and what remains.
 
+## Surveying several frames
+
+When the work spans many frames, read them all cheaply before snapshotting any: a survey walks each frame's layers without reading inspection panels, so a page of 70 frames takes about 30 seconds and a short overview instead of many snapshots.
+
+1. **Scope.** Connect as in Implementing step 1, then agree on the frames with the user: the frames or sections they select (`get_anchor`), or the page shown in Figma (`explore_page` without `page`). Do not switch Figma pages yourself; when related frames are on another page, ask the user. Done when you hold a contextId on the right page, and the refs of the frames or sections when the user picked some.
+2. **Survey.** Call `survey_frames` with the contextId, and `refs` when the user picked frames or sections. While it returns `complete: false`, call it again with the same arguments. Done when you hold the overview.
+3. **Read it.** The overview numbers the frames `#1`, `#2`, …, and lists flows by name, sections, the designers' notes in full, the components shared across frames, names that may mean one component, and what is worth a look. The notes are the designers' intent, such as token values and when to use a dialog or a sheet; names are only hints, since many layers keep names Figma gave them.
+4. **Look where names say little.** For frames the overview marks as mostly auto-named, or frames whose names do not tell them apart, call `survey_thumbnails` with the survey id and those frame numbers. Tell the user first: Figma's view moves from frame to frame, about 1.4 seconds each, and they should not use Figma until it ends. While `remaining` is not empty, call it again with `frames` set to `remaining`.
+5. **Report and propose.** Tell the user, briefly: the flows and their frames; the components shared across frames, and the ones that appear under several names or as detached copies; the rules and token values in the notes; and what looked inconsistent. Then propose which frames to snapshot and why, such as one frame per distinct layout, the frames that use components no other frame does, and a component or style guide frame when there is one, with the time from the overview's estimates. Do not snapshot before the user agrees. Done when the user agreed on the list.
+6. **Go on.** Snapshot each agreed frame as in Implementing step 3. To plan the work, run `summarize_snapshot` and `map_tokens` on each snapshot and combine them into a list of shared tokens and components, which values are new, and the order to build the screens in; to build, follow Implementing from step 4 for each frame.
+
 ## Looking
 
 Use steps 1 and 2 to reach the layer, then:
 
 - `capture` for a picture of a layer or the page.
+- `survey_frames` for an overview of many frames, and `survey_thumbnails` to see them; see **Surveying several frames**.
 - `get_neighbors` for structure, a page at a time; `get_visual_neighbors` for what sits beside a layer on screen.
 - `inspect_nodes` for the exact values of up to 5 layers. For more than that, or a whole page, take a snapshot and use `query_snapshot`.
 - `summarize_snapshot` on a snapshot for what a page uses overall: its colors, text styles, spacing, radii, shadows, and components; `map_tokens` for which of them the project already has.

@@ -71,6 +71,8 @@ Agent 會檢查 Node.js、下載最新版本並核對檢查碼、註冊 MCP 伺�
    - 用 `export_assets` 匯出需要的 icon 與圖片；
    - 實作頁面、與截圖比對，並回報用了哪些 token 與元件。
 
+涉及許多畫面的工作，例如全新 App、新功能或改版，可以請 agent 先看過整頁，或你指定的 section。它會用 `survey_frames` 盤點每個 frame，對圖層名稱看不出內容的畫面用 `survey_thumbnails` 看縮圖，告訴你有哪些流程、畫面共用哪些元件、設計師在畫布上留了哪些註解，並在完整讀取任何畫面之前，先提出要快照哪些畫面。
+
 ## 需求
 
 - 支援 MCP 伺服器的 coding agent：Claude Code 已驗證；Codex 有專屬的安裝步驟，但尚未完整實測
@@ -100,6 +102,9 @@ Agent 會檢查 Node.js、下載最新版本並核對檢查碼、註冊 MCP 伺�
 | **讀取設計稿** | |
 | `inspect_nodes` | 最多 5 個圖層在屬性面板中顯示的一切，包括數值綁定的 Figma 變數。 |
 | `capture` | 圖層或整個頁面的截圖。 |
+| **盤點多個 frame** | |
+| `survey_frames` | 整頁或你指定的 section 中每個 frame 的概覽，不讀屬性面板：尺寸、圖層數、依名稱分出的流程、畫布上的註解、共用的元件，以及需要人判斷的地方。70 個 frame 約 30 秒。 |
+| `survey_thumbnails` | 把盤點中的 frame 排成附編號的縮圖總覽，每張 12 個。 |
 | **依快照工作** | |
 | `snapshot_layer` | 讀取最多 2,000 個圖層的畫面並附截圖，存成快照，並說明和上一份快照相比改了什麼。 |
 | `query_snapshot` | 不需要 Figma 分頁，依 ref、文字、類型或區塊查詢快照中的圖層。 |
@@ -114,7 +119,7 @@ Agent 會檢查 Node.js、下載最新版本並核對檢查碼、註冊 MCP 伺�
 使用時要知道的事：
 
 - Figma 只在分頁可見時套用選取、縮放與切換頁面，所以請把 Figma 分頁放在 agent 視窗旁邊。讀取頁面與選取在背景分頁也能運作；需要分頁在畫面上的工具會回報 `TAB_IN_BACKGROUND`，快照則會暫停，等分頁回到畫面上再繼續。
-- 這些工具會依序選取圖層，`capture` 與 `snapshot_layer` 還會縮放畫面。之後會還原你的選取；開啟「Adapt content for screen readers」時，縮放比例與畫面位置也會還原。
+- 這些工具會依序選取圖層，`capture`、`snapshot_layer` 與 `survey_thumbnails` 還會縮放畫面。之後會還原你的選取；開啟「Adapt content for screen readers」時，縮放比例與畫面位置也會還原。
 - 開著多個 Figma 分頁時，從 popup 複製的提示會寫出分頁；沒有提示時，`get_status` 會請 agent 向你確認要用哪個檔案。
 
 ## 工具列圖示與 popup

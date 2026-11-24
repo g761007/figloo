@@ -38,6 +38,9 @@
 - `export_asset` 回報 `LAYER_HIDDEN`：這個圖層或它所在的上層在 Figma 中是隱藏的，Figma 不會匯出它，在 Figma 裡直接按 Export 也一樣。
 - `export_asset` 回報 `EXPORT_PENDING`：瀏覽器正在等待儲存備援的下載，通常是停在另存新檔的對話框。請確認儲存，或關閉「每次下載前詢問儲存位置」。
 - `snapshot_layer` 回傳 `complete: false`：這個圖層超過一次呼叫在三分鐘內讀得完的量。請用同一個 root 再呼叫，直到 `complete` 為 true；在那之前，`query_snapshot` 會回報 `SNAPSHOT_INCOMPLETE`。
+- `survey_frames` 回傳 `complete: false`：這一頁的 frame 超過一次呼叫在三分鐘內走訪得完的量。請用同樣的 contextId 與 refs 再呼叫，直到 `complete` 為 true；在那之前，`survey_thumbnails` 會回報 `SURVEY_INCOMPLETE`。
+- `survey_thumbnails` 的 `remaining` 還有 frame：這次呼叫的時間用完了，或 `stoppedBy` 寫出了中止的原因，例如使用者動了 Figma。請把這些 frame 再傳一次。執行期間 Figma 的畫面會在 frame 之間移動，而且沒有遮罩，因為遮罩會被截進圖裡。
+- 更新到 0.8.0 後，`get_status` 回報 `PROTOCOL_MISMATCH`：bridge 協定改為 0.4.0，擴充功能與 MCP 伺服器都必須是 0.8.0。請重新載入擴充功能，並重新啟動更新前就開著的 agent 工作階段：它們的伺服器仍是 0.3.0，其中一個佔著連線埠時，擴充功能會被拒絕，一分鐘後才再試。
 - `snapshot_layer` 回報 `SUBTREE_TOO_LARGE`：這個圖層中有超過 2,000 個圖層。請改為對訊息中列出的某個子層建立快照。
 - 在 Codex 中，`snapshot_layer` 在 60 秒後失敗：請調高 `tool_timeout_sec`，見[在 agent 中註冊 MCP 伺服器](installation.zh-TW.md#2-在-agent-中註冊-mcp-伺服器)。
 - 工具回報 `BUSY` 並寫出另一個工作階段：Figloo 正在服務那個工作階段，它正在工作，或在 10 秒內用過 Figloo。稍後再試，或先在那個工作階段完成工作。

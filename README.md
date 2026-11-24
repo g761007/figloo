@@ -69,6 +69,8 @@ Then start a new agent session, open a Figma design file, and ask the agent to c
    - exports the icons and images it needs with `export_assets`,
    - builds the page, compares it with the screenshot, and reports what it used.
 
+For work that spans many screens, such as a new app, a new feature, or a redesign, ask the agent to go through the page or the sections you point at first. It surveys every frame with `survey_frames`, looks at the ones whose layer names say little with `survey_thumbnails`, tells you the flows, the components the screens share, and the notes your designers left on the canvas, and proposes which screens to snapshot before reading any of them in full.
+
 ## Requirements
 
 - A coding agent that uses MCP servers: Claude Code is verified; Codex has its own install steps, not yet verified end to end
@@ -98,6 +100,9 @@ Setting up takes four steps: load the extension, register the MCP server with yo
 | **Read the design** | |
 | `inspect_nodes` | Everything the inspection panel shows for up to 5 layers, including the Figma variables values are bound to. |
 | `capture` | A screenshot of a layer or the whole page. |
+| **Survey many frames** | |
+| `survey_frames` | An overview of every frame on a page or in the sections you pick, without reading their inspection panels: sizes, layer counts, flows by name, the notes on the canvas, shared components, and what is worth a look. About 30 seconds for 70 frames. |
+| `survey_thumbnails` | The frames of a survey on numbered contact sheets, 12 to an image. |
 | **Work from snapshots** | |
 | `snapshot_layer` | Reads a screen of up to 2,000 layers with a screenshot, saves it, and says what changed since the last snapshot of it. |
 | `query_snapshot` | Looks layers up in a snapshot by ref, text, type, or section, without the Figma tab. |
@@ -112,7 +117,7 @@ Every parameter, result field, and error code is in [docs/mcp-tools.md](docs/mcp
 Good to know:
 
 - Figma applies selection, zoom, and page changes only while its tab is visible, so keep the Figma tab beside your agent window. Reading pages and the selection works from a background tab; the tools that need the tab on screen say so with `TAB_IN_BACKGROUND`, and a snapshot pauses until the tab is back.
-- The tools select layers one after another, and `capture` and `snapshot_layer` zoom the view. Your selection is put back afterwards, and so are the zoom and the place on the canvas when "Adapt content for screen readers" is on.
+- The tools select layers one after another, and `capture`, `snapshot_layer`, and `survey_thumbnails` zoom the view. Your selection is put back afterwards, and so are the zoom and the place on the canvas when "Adapt content for screen readers" is on.
 - With several Figma tabs open, the prompt from the popup names its tab; without it, `get_status` asks the agent to check with you which file to use.
 
 ## Toolbar icon and popup
