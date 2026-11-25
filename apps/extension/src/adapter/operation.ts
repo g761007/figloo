@@ -9,6 +9,7 @@ export const OP_TIME_BUDGET_MS = 15_000;
 export const OP_MAX_UI_OPS = 300;
 export const MAX_NAME_LENGTH = 200;
 export const BACKGROUND_MESSAGE = "the Figma tab is in the background, where Figma does not apply selection, zoom, or page changes";
+export const STOPPED_MESSAGE = "the user stopped Figloo with Stop or Esc on its overlay in Figma; what Figloo changed in Figma was put back";
 
 /** Budgets of one operation, and what happens to the layers panel when the user steps in. */
 export interface RunLimits {
@@ -16,8 +17,6 @@ export interface RunLimits {
   maxUiOps: number;
   /** Close the layers this operation opened even after the user stepped in, until their next input. */
   collapseAfterInterrupt?: boolean;
-  /** Shown during the operation: input on it is not the user stepping in, and its Stop ends the operation. */
-  overlay?: ReadingOverlay;
   /** Wait while the tab is in the background instead of failing; ending there puts the panel back once the tab returns. */
   pause?: BackgroundPause;
 }

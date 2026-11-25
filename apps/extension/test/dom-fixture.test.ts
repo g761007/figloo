@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DomRowSource } from "../src/adapter/dom-source.js";
 import { Explorer, OpError } from "../src/adapter/ops.js";
-import { ReadingOverlay } from "../src/adapter/overlay.js";
+import { watchForUser } from "../src/adapter/operation.js";
 import { readRenderedRows } from "../src/adapter/row.js";
 import { StopExploration, type LayerTree } from "../src/adapter/tree.js";
 import { BackgroundPause } from "../src/adapter/visibility.js";
@@ -190,17 +190,16 @@ describe("Explorer on captured Figma markup", () => {
   });
 });
 
-/** Runs an operation with the reading overlay the way readSubtree does, with a probe as its work. */
+/** Runs an operation with Figma locked, the way readSubtree does, with a probe as its work. */
 class OverlayRun extends Explorer {
-  start<T>(overlay: ReadingOverlay, work: (tree: LayerTree) => T, putBack: (tree: LayerTree) => void, pause?: BackgroundPause): Promise<{ value: T }> {
-    return this.run(
-      async (tree) => {
-        overlay.show();
-        return work(tree);
-      },
-      async (tree) => putBack(tree),
-      { timeBudgetMs: 5_000, maxUiOps: 10, overlay, ...(pause ? { pause } : {}) },
-    ).finally(() => overlay.remove());
+  start<T>(work: (tree: LayerTree) => T, putBack: (tree: LayerTree) => void, pause?: BackgroundPause): Promise<{ value: T }> {
+    return this.holding(() =>
+      this.run(
+        async (tree) => work(tree),
+        async (tree) => putBack(tree),
+        { timeBudgetMs: 5_000, maxUiOps: 10, ...(pause ? { pause } : {}) },
+      ),
+    );
   }
 }
 
@@ -213,12 +212,11 @@ function trustedPress(): PointerEvent {
 
 describe("the reading overlay during an operation", () => {
   it("ends the operation on Stop and still puts the layers panel and selection back", async () => {
-    const overlay = new ReadingOverlay(document);
     let putBack = false;
-    const run = new OverlayRun("page-1", document, window).start(
-      overlay,
+    const explorer = new OverlayRun("page-1", document, window);
+    const run = explorer.start(
       (tree) => {
-        overlay.root.querySelector("button")!.click();
+        explorer.lock.root.querySelector("button")!.click();
         tree.check();
         return "read";
       },
@@ -228,7 +226,7 @@ describe("the reading overlay during an operation", () => {
         putBack = true;
       },
     );
-    await expect(run).rejects.toMatchObject({ code: "USER_INTERRUPTED", message: expect.stringMatching(/stopped the read with Stop or Esc/) });
+    await expect(run).rejects.toMatchObject({ code: "USER_INTERRUPTED", message: expect.stringMatching(/stopped Figloo with Stop or Esc/) });
     expect(putBack).toBe(true);
     expect(document.querySelector("figloo-reading-overlay")).toBeNull();
   });
@@ -238,7 +236,6 @@ describe("the reading overlay during an operation", () => {
     try {
       let putBack = false;
       const run = new OverlayRun("page-1", document, window).start(
-        new ReadingOverlay(document),
         (tree) => {
           vi.setSystemTime(Date.now() + 6_000);
           tree.check();
@@ -259,11 +256,10 @@ describe("the reading overlay during an operation", () => {
 
   it("does not take a click on the overlay for the user stepping in, but a click in Figma still is", async () => {
     let putBack = false;
-    const onOverlay = new ReadingOverlay(document);
-    const read = new OverlayRun("page-1", document, window).start(
-      onOverlay,
+    const onOverlay = new OverlayRun("page-1", document, window);
+    const read = onOverlay.start(
       (tree) => {
-        onOverlay.root.firstElementChild!.dispatchEvent(trustedPress());
+        onOverlay.lock.root.firstElementChild!.dispatchEvent(trustedPress());
         tree.check();
         return "read";
       },
@@ -274,7 +270,6 @@ describe("the reading overlay during an operation", () => {
 
     putBack = false;
     const inFigma = new OverlayRun("page-1", document, window).start(
-      new ReadingOverlay(document),
       (tree) => {
         document.body.dispatchEvent(trustedPress());
         tree.check();
@@ -285,6 +280,74 @@ describe("the reading overlay during an operation", () => {
     await expect(inFigma).rejects.toMatchObject({ code: "USER_INTERRUPTED", message: expect.stringMatching(/interacted with Figma/) });
     // The user's own input wins: nothing is put back over it.
     expect(putBack).toBe(false);
+  });
+});
+
+describe("Figma locked while Figloo works in it", () => {
+  const host = () => document.querySelector("figloo-reading-overlay");
+  /** The service worker's hold across the steps of one tool call, and a press of Stop. */
+  const stopDuringToolCall = (explorer: Explorer) => {
+    const release = explorer.lock.hold(30_000);
+    explorer.lock.root.querySelector("button")!.click();
+    return release;
+  };
+
+  it("locks Figma from the start of an operation until it ends, but not to read the pages list", async () => {
+    const explorer = new Explorer("page-1", document, window);
+    const anchoring = explorer.getAnchor();
+    expect(host()).not.toBeNull();
+    await anchoring;
+    expect(host()).toBeNull();
+
+    // Reading the pages list clicks nothing, so the user keeps Figma.
+    const listing = explorer.listPages().catch(() => undefined);
+    expect(host()).toBeNull();
+    await listing;
+  });
+
+  it("after Stop, changes nothing in Figma in the steps that follow, but still puts the view back", async () => {
+    const explorer = new Explorer("page-1", document, window);
+    const { identity } = await explorer.getAnchor();
+    const release = stopDuringToolCall(explorer);
+    const run = vi.spyOn(explorer, "run");
+    const viewBack = vi.spyOn(explorer, "putViewBack");
+
+    await expect(explorer.getAnchor()).rejects.toMatchObject({ code: "USER_INTERRUPTED", message: expect.stringMatching(/stopped Figloo with Stop or Esc/) });
+    await expect(explorer.inspectNodes({ expect: identity, refs: ["1335:5269"] })).rejects.toMatchObject({ code: "USER_INTERRUPTED" });
+    // A snapshot reads after its screenshot zoomed the view; stopped in between, it reads nothing and puts the view back.
+    await expect(explorer.readSubtree({ expect: identity, ref: "1335:5269", maxLayers: 10, timeBudgetMs: 5_000, view: null })).rejects.toMatchObject({ code: "USER_INTERRUPTED" });
+    expect(viewBack).toHaveBeenCalledTimes(1);
+    await expect(explorer.putViewBackNow(null)).resolves.toEqual({ viewRestored: false });
+    expect(viewBack).toHaveBeenCalledTimes(2);
+    expect(run).not.toHaveBeenCalled();
+
+    // Stop ends with the tool call: the next one runs.
+    release();
+    expect(explorer.lock.stopRequested).toBe(false);
+    await expect(explorer.getAnchor()).resolves.toMatchObject({ identity });
+  });
+
+  it("ends an export's wait for its files at once on Stop, and still reselects the user's layer", async () => {
+    const explorer = new Explorer("page-1", document, window);
+    const { anchor } = await explorer.getAnchor();
+    explorer.pendingExport = {
+      token: "export-1",
+      files: [],
+      notes: [],
+      onMessage: () => undefined,
+      before: { kind: "layer", id: anchor.ref },
+      original: [],
+      temporary: false,
+      user: watchForUser(window, explorer.lock),
+      timer: setTimeout(() => undefined, 0),
+    };
+    const release = explorer.lock.hold(30_000);
+    setTimeout(() => explorer.lock.root.querySelector("button")!.click(), 50);
+    const started = Date.now();
+    const finished = await explorer.finishExport("export-1", 1, 60_000);
+    expect(Date.now() - started).toBeLessThan(3_000);
+    expect(finished).toMatchObject({ files: [], stopped: true, userSelectionRestored: true });
+    release();
   });
 });
 
@@ -353,21 +416,28 @@ describe("a read while the tab goes to the background", () => {
     const restore = simulateHiddenTab();
     try {
       let putBack = false;
+      let lockedMeanwhile = false;
       const pause = new BackgroundPause(document, Date.now() + 5_000);
-      const run = new OverlayRun("page-1", document, window).start(
-        new ReadingOverlay(document),
+      const explorer = new OverlayRun("page-1", document, window);
+      const run = explorer.start(
         () => {
           setHidden(true);
           throw new StopExploration("time_budget");
         },
-        () => (putBack = true),
+        () => {
+          putBack = true;
+          lockedMeanwhile = explorer.lock.held;
+        },
         pause,
       );
       await expect(run).rejects.toMatchObject({ code: "BUDGET_EXCEEDED", message: expect.stringMatching(/in the background/) });
       expect(putBack).toBe(false);
+      expect(explorer.lock.held).toBe(false);
       setHidden(false);
       await new Promise((r) => setTimeout(r, 0));
       expect(putBack).toBe(true);
+      // Putting the panel back later is Figloo working in Figma too, so the page is locked meanwhile.
+      expect(lockedMeanwhile).toBe(true);
     } finally {
       restore();
     }
@@ -379,7 +449,6 @@ describe("a read while the tab goes to the background", () => {
       for (const meanwhile of [() => document.body.dispatchEvent(trustedPress()), () => (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL("https://www.figma.com/design/OtherFileKey0000000000/Other")]) {
         let putBack = false;
         const run = new OverlayRun("page-1", document, window).start(
-          new ReadingOverlay(document),
           () => {
             setHidden(true);
             throw new StopExploration("time_budget");

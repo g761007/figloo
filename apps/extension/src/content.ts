@@ -1,5 +1,6 @@
 import type { CanvasView, CaptureParams, ExplorePageParams, ExportParams, InspectParams, ListNeighborsParams, ReadSubtreeParams, SurveyParams, VisualNeighborsParams } from "@figloo/protocol";
 import { Explorer, OpError } from "./adapter/ops.js";
+import type { ReadingProgress } from "./adapter/overlay.js";
 import { probeFigmaPage } from "./probe.js";
 import { deriveReadiness } from "./readiness.js";
 
@@ -20,6 +21,8 @@ let lastReadiness = "";
 
 /** A new ID per page load: contexts created before a reload or re-injection must not match. */
 const explorer = new Explorer(crypto.randomUUID(), document, window);
+/** Holds of the page lock the service worker took across the steps of one tool call, by token. */
+const serviceWorkerHolds = new Map<string, () => void>();
 
 interface OpMessage {
   type: "figloo:op";
@@ -73,6 +76,22 @@ async function runOp(message: OpMessage): Promise<unknown> {
         const { token, expected, waitMs } = message.params as { token: string; expected: number; waitMs: number };
         return { ok: true, result: await explorer.finishExport(token, expected, waitMs) };
       }
+      // The service worker keeps Figma locked between the steps of one tool call; the lease ends a hold it never releases.
+      case "lock": {
+        const { token, leaseMs } = message.params as { token: string; leaseMs: number };
+        serviceWorkerHolds.get(token)?.();
+        serviceWorkerHolds.set(token, explorer.lock.hold(leaseMs));
+        return { ok: true, result: {} };
+      }
+      case "unlock": {
+        const { token } = message.params as { token: string };
+        serviceWorkerHolds.get(token)?.();
+        serviceWorkerHolds.delete(token);
+        return { ok: true, result: {} };
+      }
+      case "lock_progress":
+        explorer.lock.update((message.params as { progress: ReadingProgress }).progress);
+        return { ok: true, result: {} };
       default:
         return { ok: false, error: { code: "BAD_MESSAGE", message: `unsupported op ${message.op}` } };
     }
@@ -106,6 +125,12 @@ const timer = setInterval(watch, WATCH_INTERVAL_MS);
 
 function stop(): void {
   clearInterval(timer);
+  // The service worker can no longer reach this copy to unlock the page. An operation still running
+  // here keeps its own hold until it ends, since it goes on clicking in Figma meanwhile.
+  for (const release of serviceWorkerHolds.values()) release();
+  serviceWorkerHolds.clear();
+  // A capture waiting for a screenshot that will not come keeps the page locked until it gives up, so the card shows meanwhile.
+  explorer.lock.reveal();
   try {
     chrome.runtime.onMessage.removeListener(onMessage);
   } catch {

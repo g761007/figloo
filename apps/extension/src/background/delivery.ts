@@ -1,4 +1,4 @@
-import { CaptureParamsSchema, CapturePlanSchema, ExportFinishSchema, ExportPlanSchema, MAX_SNAPSHOT_LAYERS, SNAPSHOT_TIME_BUDGET_MS, SURVEY_TIME_BUDGET_MS, SnapshotParamsSchema, SnapshotReadResultSchema, SurveyThumbnailsParamsSchema, TabOpResponseSchema, type CanvasView, type CapturePlan, type CaptureResult, type ImageAlignment, type PageIdentity, type Rect, type SurveyThumbnailsResult, type TabOpResponse } from "@figloo/protocol";
+import { CaptureParamsSchema, CapturePlanSchema, ExportFinishSchema, ExportPlanSchema, MAX_SNAPSHOT_LAYERS, SNAPSHOT_TIME_BUDGET_MS, SURVEY_TIME_BUDGET_MS, SnapshotParamsSchema, SnapshotReadResultSchema, SurveyThumbnailsParamsSchema, TabOpResponseSchema, type CanvasView, type CapturePlan, type CaptureResult, type ExportPlan, type ImageAlignment, type PageIdentity, type Rect, type SurveyThumbnailsResult, type TabOpResponse } from "@figloo/protocol";
 import { CAPTURE_MARGIN_PX, alignCapture, cropCapture, insideImage, intersect, inflate, placeInImage, trimToContent } from "../capture.js";
 import { ContactSheets } from "../contact-sheet.js";
 import { installExportCapture, removeExportCapture } from "../export-capture.js";
@@ -9,6 +9,25 @@ import { server } from "./connection.js";
 const EXPORT_CAPTURE_WAIT_MS = 8_000;
 /** How long a browser download may take before the export is reported as pending. */
 const EXPORT_DOWNLOAD_WAIT_MS = 30_000;
+/** A capture or an export locks Figma for seconds; the MCP server gives up on either after 20 s. */
+const SHORT_LOCK_LEASE_MS = 30_000;
+/** Added to a long call's time budget, so a lease only ends a hold this worker lost track of. */
+const LOCK_LEASE_MARGIN_MS = 30_000;
+const EXPORT_STOPPED_MESSAGE =
+  "the user stopped Figloo with Stop or Esc on its overlay in Figma before the export arrived; the layer's export settings and the user's selection were put back";
+
+/**
+ * Keeps Figma locked across the steps of one tool call, so the user cannot step in between them;
+ * each step also locks it while it runs in the tab. The lease unlocks the tab should this worker
+ * stop before it calls the returned function.
+ */
+async function lockTab(tabId: number, leaseMs: number): Promise<() => Promise<void>> {
+  const token = crypto.randomUUID();
+  await sendToTab(tabId, "lock", { token, leaseMs });
+  return async () => {
+    await sendToTab(tabId, "unlock", { token });
+  };
+}
 
 /**
  * Exports a layer. First choice: a short-lived hook in the page's main world receives the files
@@ -26,12 +45,21 @@ export async function exportTab(tabId: number, params: unknown): Promise<TabOpRe
   chrome.downloads.onCreated.addListener(onCreated);
   try {
     await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: installExportCapture, args: [token, EXPORT_CAPTURE_WAIT_MS + 20_000] });
-    const prepared = await sendToTab(tabId, "prepare_export", { ...(params as object), token });
-    if (!prepared.ok) return prepared;
-    const plan = ExportPlanSchema.parse(prepared.result);
-    const finished = await sendToTab(tabId, "finish_export", { token, expected: plan.settings.length, waitMs: EXPORT_CAPTURE_WAIT_MS });
+    // Locked until the tab has its files and put the layer back; waiting for a browser download needs no Figma.
+    const unlock = await lockTab(tabId, SHORT_LOCK_LEASE_MS);
+    let plan: ExportPlan;
+    let finished: TabOpResponse;
+    try {
+      const prepared = await sendToTab(tabId, "prepare_export", { ...(params as object), token });
+      if (!prepared.ok) return prepared;
+      plan = ExportPlanSchema.parse(prepared.result);
+      finished = await sendToTab(tabId, "finish_export", { token, expected: plan.settings.length, waitMs: EXPORT_CAPTURE_WAIT_MS });
+    } finally {
+      await unlock();
+    }
     if (!finished.ok) return finished;
-    const { files, notes, userSelectionRestored } = ExportFinishSchema.parse(finished.result);
+    const { files, notes, userSelectionRestored, stopped } = ExportFinishSchema.parse(finished.result);
+    if (stopped && files.length === 0) return { ok: false, error: { code: "USER_INTERRUPTED", message: EXPORT_STOPPED_MESSAGE } };
     // The MCP server opens any ZIP and keeps only plan.onlyFormat at the requested scale, so every file goes along as is.
     const base = { identity: plan.identity, onlyFormat: plan.onlyFormat, settings: plan.settings, usedExistingSettings: !plan.temporary, userSelectionRestored };
     if (files.length > 0) {
@@ -93,7 +121,12 @@ export async function sendToTab(tabId: number, op: string, params: unknown): Pro
  * screen, crops it to the target, and the tab then puts the user's selection and view back.
  */
 export async function captureTab(tabId: number, params: unknown): Promise<TabOpResponse> {
-  return (await takeCapture(tabId, params)).response;
+  const unlock = await lockTab(tabId, SHORT_LOCK_LEASE_MS);
+  try {
+    return (await takeCapture(tabId, params)).response;
+  } finally {
+    await unlock();
+  }
 }
 
 /**
@@ -154,6 +187,16 @@ const SNAPSHOT_CLEANUP_MS = 15_000;
  * the user's view back once it is done.
  */
 export async function snapshotTab(tabId: number, params: unknown): Promise<TabOpResponse> {
+  // Locked from the screenshot through the read, so the view cannot move in between.
+  const unlock = await lockTab(tabId, SNAPSHOT_TIME_BUDGET_MS + LOCK_LEASE_MARGIN_MS);
+  try {
+    return await takeSnapshot(tabId, params);
+  } finally {
+    await unlock();
+  }
+}
+
+async function takeSnapshot(tabId: number, params: unknown): Promise<TabOpResponse> {
   const started = Date.now();
   const { expect, ref, known, resume, timeBudgetMs: shorter } = SnapshotParamsSchema.parse(params);
   const shot = await takeCapture(tabId, { expect, ref, known }, true);
@@ -220,8 +263,9 @@ const SKIPPED_FRAME_CODES = new Set(["NODE_NOT_FOUND", "UI_NOT_READY"]);
 /**
  * Captures frames one after another, as `capture` does, and lays them out on contact sheets, each
  * picture under its number. The view stays zoomed from one frame to the next and goes back to where
- * the user had it once at the end. Stops before the time runs out, when the user uses Figma, or when
- * the tab goes to the background; the frames it did not get to are for the next call.
+ * the user had it once at the end, with Figma locked throughout. Stops before the time runs out,
+ * when the user presses Stop or uses Figma, or when the tab goes to the background; the frames it
+ * did not get to are for the next call.
  */
 export async function surveyThumbnailsTab(tabId: number, params: unknown): Promise<TabOpResponse> {
   const started = Date.now();
@@ -235,39 +279,48 @@ export async function surveyThumbnailsTab(tabId: number, params: unknown): Promi
   let userView: CanvasView | null | undefined;
   let userSelectionRestored = true;
   let firstFailure: TabOpResponse | null = null;
-  for (const frame of frames) {
-    if (captured.length + failed.length > 0 && Date.now() > deadline) break;
-    const shot = await takeCapture(tabId, { expect, ref: frame.ref, ...(known ? { known } : {}) }, true);
-    if (!shot.response.ok) {
-      const error = shot.response.error ?? { code: "INTERNAL", message: "the capture failed" };
-      if (SKIPPED_FRAME_CODES.has(error.code)) {
-        firstFailure ??= shot.response;
-        failed.push({ n: frame.n, code: error.code, message: error.message });
-        continue;
-      }
-      // Nothing captured yet: the call fails as a capture would.
-      if (identity === null) return shot.response;
-      stoppedBy = { code: error.code, message: error.message };
-      break;
-    }
-    const result = shot.response.result as CaptureResult;
-    identity ??= result.identity;
-    // The first capture found the view the user left; later ones only see the one before.
-    if (userView === undefined) userView = shot.plan?.view ?? null;
-    userSelectionRestored &&= result.userSelectionRestored;
-    await sheets.add(frame.n, shot.dataUrl!, result.crop, shot.plan!.viewport);
-    captured.push(frame.n);
-    if (shot.interrupted) {
-      stoppedBy = { code: "USER_INTERRUPTED", message: "the user used Figma while the thumbnails were taken; their selection and view stay as they left them" };
-      break;
-    }
-  }
-  // Every frame failed; the call fails as the first capture did.
-  if (identity === null) return firstFailure ?? { ok: false, error: { code: "INTERNAL", message: "no frame was captured" } };
+  /** The user used Figma, so their selection and view stay as they left them; Stop changes nothing in Figma. */
+  let tookOver = false;
   let viewRestored = false;
-  if (userView !== undefined && stoppedBy?.code !== "USER_INTERRUPTED") {
-    const back = await sendToTab(tabId, "put_view_back", { view: userView });
-    viewRestored = back.ok && (back.result as { viewRestored?: boolean } | undefined)?.viewRestored === true;
+  const unlock = await lockTab(tabId, (timeBudgetMs ?? SURVEY_TIME_BUDGET_MS) + LOCK_LEASE_MARGIN_MS);
+  try {
+    for (const frame of frames) {
+      if (captured.length + failed.length > 0 && Date.now() > deadline) break;
+      await sendToTab(tabId, "lock_progress", { progress: { phase: "capturing", done: captured.length + failed.length, total: frames.length } });
+      const shot = await takeCapture(tabId, { expect, ref: frame.ref, ...(known ? { known } : {}) }, true);
+      if (!shot.response.ok) {
+        const error = shot.response.error ?? { code: "INTERNAL", message: "the capture failed" };
+        if (SKIPPED_FRAME_CODES.has(error.code)) {
+          firstFailure ??= shot.response;
+          failed.push({ n: frame.n, code: error.code, message: error.message });
+          continue;
+        }
+        // Nothing captured yet: the call fails as a capture would.
+        if (identity === null) return shot.response;
+        stoppedBy = { code: error.code, message: error.message };
+        break;
+      }
+      const result = shot.response.result as CaptureResult;
+      identity ??= result.identity;
+      // The first capture found the view the user left; later ones only see the one before.
+      if (userView === undefined) userView = shot.plan?.view ?? null;
+      userSelectionRestored &&= result.userSelectionRestored;
+      await sheets.add(frame.n, shot.dataUrl!, result.crop, shot.plan!.viewport);
+      captured.push(frame.n);
+      if (shot.interrupted) {
+        tookOver = true;
+        stoppedBy = { code: "USER_INTERRUPTED", message: "the user used Figma while the thumbnails were taken; their selection and view stay as they left them" };
+        break;
+      }
+    }
+    // Every frame failed; the call fails as the first capture did.
+    if (identity === null) return firstFailure ?? { ok: false, error: { code: "INTERNAL", message: "no frame was captured" } };
+    if (userView !== undefined && !tookOver) {
+      const back = await sendToTab(tabId, "put_view_back", { view: userView });
+      viewRestored = back.ok && (back.result as { viewRestored?: boolean } | undefined)?.viewRestored === true;
+    }
+  } finally {
+    await unlock();
   }
   const result: SurveyThumbnailsResult = {
     identity,
@@ -275,7 +328,7 @@ export async function surveyThumbnailsTab(tabId: number, params: unknown): Promi
     captured,
     failed,
     stoppedBy,
-    userSelectionRestored: userSelectionRestored && stoppedBy?.code !== "USER_INTERRUPTED",
+    userSelectionRestored: userSelectionRestored && !tookOver,
     viewRestored,
     elapsedMs: Date.now() - started,
   };

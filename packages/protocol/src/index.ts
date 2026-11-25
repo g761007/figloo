@@ -702,7 +702,8 @@ export const CapturedFileSchema = z.object({ name: z.string(), mimeType: z.strin
 export type CapturedFile = z.infer<typeof CapturedFileSchema>;
 
 /** The files captured, and notes on how Figma tried to hand files over, such as "a Blob of image/png, 1200 bytes". */
-export const ExportFinishSchema = z.object({ files: z.array(CapturedFileSchema), notes: z.array(z.string()), userSelectionRestored: z.boolean() });
+/** What the tab hands the service worker once an export is done; `stopped`: the user pressed Stop or Esc while it waited for files. */
+export const ExportFinishSchema = z.object({ files: z.array(CapturedFileSchema), notes: z.array(z.string()), userSelectionRestored: z.boolean(), stopped: z.boolean().optional() });
 
 export const ExportResultSchema = z.object({
   identity: PageIdentitySchema,

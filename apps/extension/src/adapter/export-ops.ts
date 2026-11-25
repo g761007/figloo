@@ -48,57 +48,65 @@ export async function prepareExport(core: ExplorerCore, params: ExportParams): P
   let before: UserSelection = { kind: "none" };
   let original: string[] = [];
   let temporary = false;
+  let failed = false;
   try {
-    const { value } = await core.run(async (tree, source) => {
-      before = await core.userSelection(tree);
-      try {
-        const row = await tree.find(params.ref);
-        if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${params.ref} is no longer in the layers panel`);
-        // Figma's Export button does nothing for such a layer, so there is no file to wait for.
-        if (row.hidden) throw new OpError("LAYER_HIDDEN", `layer ${params.ref} is hidden in Figma, or inside a hidden layer, and Figma exports nothing for it`);
-        const previous = inspectionSignature(core.doc);
-        if (!(await source.select(row))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${params.ref}; guest sessions cannot select layers`);
-        await core.waitForPanel(row, previous, source);
-        // Right after a selection change the section can still list the previous layer's settings.
-        // A layer without settings keeps the previous button label, so settings count as this
-        // layer's only under a button that names it.
-        await source.settle(() => {
-          const shown = exportSection(core.doc);
-          return shown !== null && (exportRows(shown).length === 0 || exportsLayer(shown, row.name));
-        });
-        const section = exportSection(core.doc);
-        if (!section) throw new OpError("UI_NOT_READY", "the inspection panel does not show an export section for this layer");
-        // Exporting would add a setting beside ones Figloo cannot see, and could not take it out again.
-        if (unreadableExportRows(section) > 0) {
-          throw new OpError("UI_NOT_READY", `Figloo cannot read the export settings Figma shows for layer ${params.ref}, so it changed and exported nothing; Figma may have changed its export section`);
+    const { value } = await core.run(
+      async (tree, source) => {
+        before = await core.userSelection(tree);
+        try {
+          const row = await tree.find(params.ref);
+          if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${params.ref} is no longer in the layers panel`);
+          // Figma's Export button does nothing for such a layer, so there is no file to wait for.
+          if (row.hidden) throw new OpError("LAYER_HIDDEN", `layer ${params.ref} is hidden in Figma, or inside a hidden layer, and Figma exports nothing for it`);
+          const previous = inspectionSignature(core.doc);
+          if (!(await source.select(row))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${params.ref}; guest sessions cannot select layers`);
+          await core.waitForPanel(row, previous, source);
+          // Right after a selection change the section can still list the previous layer's settings.
+          // A layer without settings keeps the previous button label, so settings count as this
+          // layer's only under a button that names it.
+          await source.settle(() => {
+            const shown = exportSection(core.doc);
+            return shown !== null && (exportRows(shown).length === 0 || exportsLayer(shown, row.name));
+          });
+          const section = exportSection(core.doc);
+          if (!section) throw new OpError("UI_NOT_READY", "the inspection panel does not show an export section for this layer");
+          // Exporting would add a setting beside ones Figloo cannot see, and could not take it out again.
+          if (unreadableExportRows(section) > 0) {
+            throw new OpError("UI_NOT_READY", `Figloo cannot read the export settings Figma shows for layer ${params.ref}, so it changed and exported nothing; Figma may have changed its export section`);
+          }
+          original = exportSettings(section);
+          if (original.length > 0 && !exportsLayer(section, row.name)) throw new OpError("UI_NOT_READY", `the export section did not switch to layer ${params.ref}`);
+          // The requested format, or SVG for a layer without settings; a matching setting is reused.
+          const format = params.format ?? (original.length === 0 ? "svg" : undefined);
+          const scale = params.scale ?? "1x";
+          if (format !== undefined && !original.includes(`${format.toUpperCase()} ${scale}`)) {
+            temporary = true;
+            const failure = await addTemporarySetting(section, original, format, scale);
+            if (failure) throw new OpError("UI_NOT_READY", failure);
+          }
+          const settings = exportRows(section).map(({ format, scale }) => ({ format: format ?? "unknown", scale }));
+          // Once the layer has a setting the button names it; a stale label would export another layer.
+          if (!(await source.settle(() => exportsLayer(section, row.name)))) {
+            throw new OpError("UI_NOT_READY", `the Export button does not name layer ${params.ref}, so Figloo did not click it`);
+          }
+          const button = exportButton(section);
+          if (!button) throw new OpError("UI_NOT_READY", "the inspection panel has no Export button for this layer");
+          // Stopped while the settings were changed: nothing is exported.
+          tree.check();
+          source.actions += 1;
+          synthesizeClick(button);
+          return { name: row.name.slice(0, MAX_NAME_LENGTH), settings, temporary, onlyFormat: params.format !== undefined && original.length > 0 ? params.format : null };
+        } catch (error) {
+          // Leave the layer as it was: drop a half-configured temporary setting here, and reselect once the panel is put back.
+          if (temporary) await removeTemporaryRow(core, original);
+          failed = true;
+          throw error;
         }
-        original = exportSettings(section);
-        if (original.length > 0 && !exportsLayer(section, row.name)) throw new OpError("UI_NOT_READY", `the export section did not switch to layer ${params.ref}`);
-        // The requested format, or SVG for a layer without settings; a matching setting is reused.
-        const format = params.format ?? (original.length === 0 ? "svg" : undefined);
-        const scale = params.scale ?? "1x";
-        if (format !== undefined && !original.includes(`${format.toUpperCase()} ${scale}`)) {
-          temporary = true;
-          const failure = await addTemporarySetting(section, original, format, scale);
-          if (failure) throw new OpError("UI_NOT_READY", failure);
-        }
-        const settings = exportRows(section).map(({ format, scale }) => ({ format: format ?? "unknown", scale }));
-        // Once the layer has a setting the button names it; a stale label would export another layer.
-        if (!(await source.settle(() => exportsLayer(section, row.name)))) {
-          throw new OpError("UI_NOT_READY", `the Export button does not name layer ${params.ref}, so Figloo did not click it`);
-        }
-        const button = exportButton(section);
-        if (!button) throw new OpError("UI_NOT_READY", "the inspection panel has no Export button for this layer");
-        source.actions += 1;
-        synthesizeClick(button);
-        return { name: row.name.slice(0, MAX_NAME_LENGTH), settings, temporary, onlyFormat: params.format !== undefined && original.length > 0 ? params.format : null };
-      } catch (error) {
-        // Leave the layer as it was: drop a half-configured temporary setting and reselect.
-        if (temporary) await removeTemporaryRow(core, original);
-        await tree.whileRestoring(() => core.restoreSelection(tree, source, before)).catch(() => false);
-        throw error;
-      }
-    });
+      },
+      async (tree, source) => {
+        if (failed) await core.restoreSelection(tree, source, before);
+      },
+    );
     core.pendingExport = {
       token: params.token,
       files,
@@ -107,8 +115,8 @@ export async function prepareExport(core: ExplorerCore, params: ExportParams): P
       before,
       original,
       temporary,
-      user: watchForUser(core.win),
-      timer: setTimeout(() => void finishExport(core, params.token, 0, 0), PENDING_EXPORT_TIMEOUT_MS),
+      user: watchForUser(core.win, core.lock),
+      timer: setTimeout(() => void core.holding(() => finishExport(core, params.token, 0, 0)), PENDING_EXPORT_TIMEOUT_MS),
     };
     return { identity, ...value };
   } catch (error) {
@@ -117,19 +125,23 @@ export async function prepareExport(core: ExplorerCore, params: ExportParams): P
   }
 }
 
-/** Waits up to `waitMs` for `expected` captured files, then removes the temporary setting and reselects. */
-export async function finishExport(core: ExplorerCore, token: string, expected: number, waitMs: number): Promise<{ files: CapturedFile[]; notes: string[]; userSelectionRestored: boolean }> {
+/**
+ * Waits up to `waitMs` for `expected` captured files, then removes the temporary setting and
+ * reselects. Stop ends the wait at once; `stopped` says so.
+ */
+export async function finishExport(core: ExplorerCore, token: string, expected: number, waitMs: number): Promise<{ files: CapturedFile[]; notes: string[]; userSelectionRestored: boolean; stopped: boolean }> {
   const pending = core.pendingExport;
-  if (!pending || pending.token !== token) return { files: [], notes: [], userSelectionRestored: false };
+  if (!pending || pending.token !== token) return { files: [], notes: [], userSelectionRestored: false, stopped: false };
   const deadline = Date.now() + waitMs;
   // Figma may pack several files into one ZIP, which then holds all of them.
   const zipped = () => pending.files.some((file) => file.mimeType === "application/zip" || /\.zip$/i.test(file.name));
-  while (pending.files.length < expected && !zipped() && Date.now() < deadline && !pending.user.interrupted()) await sleep(100);
+  while (pending.files.length < expected && !zipped() && Date.now() < deadline && !pending.user.interrupted() && !core.lock.stopRequested) await sleep(100);
+  const stopped = core.lock.stopRequested;
   core.pendingExport = null;
   clearTimeout(pending.timer);
   core.win.removeEventListener("message", pending.onMessage);
   pending.user.dispose();
-  if (pending.user.interrupted()) return { files: pending.files, notes: pending.notes, userSelectionRestored: false };
+  if (pending.user.interrupted()) return { files: pending.files, notes: pending.notes, userSelectionRestored: false, stopped };
   let restored = false;
   await core.run(
     async () => undefined,
@@ -138,7 +150,7 @@ export async function finishExport(core: ExplorerCore, token: string, expected: 
       restored = await core.restoreSelection(tree, source, pending.before);
     },
   );
-  return { files: pending.files, notes: pending.notes, userSelectionRestored: restored };
+  return { files: pending.files, notes: pending.notes, userSelectionRestored: restored, stopped };
 }
 
 async function removeTemporaryRow(core: ExplorerCore, original: string[]): Promise<void> {

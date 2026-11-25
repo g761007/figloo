@@ -5,7 +5,8 @@ import { parseSelectedCount } from "../probe.js";
 import { UI_ANCHORS } from "./anchors.js";
 import { DomRowSource, synthesizeClick } from "./dom-source.js";
 import { inspectionHeader, inspectionRoot, inspectionSignature, showsDesignPanel } from "./inspect.js";
-import { DEFAULT_LIMITS, MAX_NAME_LENGTH, OpError, normalized, sleep, translate, watchForUser, type RunLimits, type UserSelection, type UserWatch } from "./operation.js";
+import { DEFAULT_LIMITS, MAX_NAME_LENGTH, OpError, STOPPED_MESSAGE, normalized, sleep, translate, watchForUser, type RunLimits, type UserSelection, type UserWatch } from "./operation.js";
+import { ReadingOverlay } from "./overlay.js";
 import { layersPanel, type Row } from "./row.js";
 import { LayerTree, StopExploration, type IndexEntry, type Page } from "./tree.js";
 import { restoreView } from "./view.js";
@@ -19,7 +20,6 @@ export const VIEW_UPDATE_TIMEOUT_MS = 1_500;
 const EDIT_ACCESS_MESSAGE =
   "this session has edit access, where Figma shows the Design panel instead of the inspection panel Figloo reads, so Figloo cannot read properties or export settings in this file; layers and screenshots still work";
 
-const STOPPED_MESSAGE = "the user stopped the read with Stop or Esc on Figloo's reading overlay; the layers panel and the selection were put back";
 const BACKGROUND_TIMEOUT_MESSAGE =
   "the read ran out of time while the Figma tab was in the background; Figloo puts the layers panel and the selection back once the tab is on screen again, unless the user uses Figma first";
 
@@ -36,6 +36,8 @@ export type PanelSwitch = "named" | "unnamed" | "unchanged";
  */
 export class ExplorerCore {
   readonly index = new Map<string, IndexEntry>();
+  /** Keeps the user's input from Figma while Figloo works in it; operations and the service worker hold it. */
+  readonly lock: ReadingOverlay;
   running = false;
   pendingCapture: PendingCapture | null = null;
   pendingExport: PendingExport | null = null;
@@ -44,7 +46,30 @@ export class ExplorerCore {
     readonly pageId: string,
     readonly doc: Document,
     readonly win: Window,
-  ) {}
+  ) {
+    this.lock = new ReadingOverlay(doc);
+  }
+
+  /** Runs an operation with Figma locked; after Stop, the steps that follow change nothing in Figma. */
+  async locked<T>(work: () => Promise<T>): Promise<T> {
+    const release = this.lock.hold();
+    try {
+      if (this.lock.stopRequested) throw new OpError("USER_INTERRUPTED", STOPPED_MESSAGE);
+      return await work();
+    } finally {
+      release();
+    }
+  }
+
+  /** Runs a step that puts things back with Figma locked, Stop or not. */
+  async holding<T>(work: () => Promise<T>): Promise<T> {
+    const release = this.lock.hold();
+    try {
+      return await work();
+    } finally {
+      release();
+    }
+  }
 
   identity(): PageIdentity {
     const { fileKey } = parseFigmaUrl(this.win.location.href);
@@ -183,8 +208,8 @@ export class ExplorerCore {
     if (!layersPanel(this.doc)) throw new OpError("UI_NOT_READY", "the layers panel is not rendered; expand the Figma UI");
     this.running = true;
     const started = Date.now();
-    const user = watchForUser(this.win, limits.overlay);
-    let stopped = () => user.interrupted() || limits.overlay?.stopRequested === true;
+    const user = watchForUser(this.win, this.lock);
+    let stopped = () => user.interrupted() || this.lock.stopRequested;
     const source = new DomRowSource(this.doc, limits.pause);
     const tree = new LayerTree(source, this.index, {
       deadline: started + limits.timeBudgetMs,
@@ -207,7 +232,7 @@ export class ExplorerCore {
             throw error instanceof StopExploration && error.cause === "time_budget" ? new OpError("BUDGET_EXCEEDED", BACKGROUND_TIMEOUT_MESSAGE) : translate(error);
           }
           await this.putBack(tree, source, finish);
-          if (limits.overlay?.stopRequested && !user.interrupted()) throw new OpError("USER_INTERRUPTED", STOPPED_MESSAGE);
+          if (this.lock.stopRequested && !user.interrupted()) throw new OpError("USER_INTERRUPTED", STOPPED_MESSAGE);
         } else if (limits.collapseAfterInterrupt) {
           // The user's new selection and scroll position stay; only what this operation opened closes.
           const seen = user.inputs();
@@ -242,7 +267,7 @@ export class ExplorerCore {
     finish: ((tree: LayerTree, source: DomRowSource) => Promise<void>) | undefined,
     watchWith: (watch: UserWatch) => void,
   ): void {
-    const watch = watchForUser(this.win);
+    const watch = watchForUser(this.win, this.lock);
     watchWith(watch);
     const page = JSON.stringify(this.identity());
     const onVisibility = () => {
@@ -253,7 +278,9 @@ export class ExplorerCore {
         return;
       }
       this.running = true;
+      const release = this.lock.hold();
       void this.putBack(tree, source, finish).finally(() => {
+        release();
         watch.dispose();
         this.running = false;
       });

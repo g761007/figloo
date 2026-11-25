@@ -4,7 +4,7 @@ import { Timings } from "../timings.js";
 import type { ExplorerCore } from "./explorer-core.js";
 import { inspectionSignature, layerSize } from "./inspect.js";
 import { BACKGROUND_MESSAGE, MAX_NAME_LENGTH, OpError, type UserSelection } from "./operation.js";
-import { ReadingOverlay, estimateRemainingMs } from "./overlay.js";
+import { estimateRemainingMs } from "./overlay.js";
 import type { Row } from "./row.js";
 import { StopExploration, hiddenLayers, learnParents, type LayerTree, type Page } from "./tree.js";
 import { BackgroundPause } from "./visibility.js";
@@ -39,7 +39,7 @@ export async function surveyFrames(core: ExplorerCore, params: SurveyParams): Pr
     () => true,
     () => false,
   );
-  const overlay = new ReadingOverlay(core.doc);
+  const overlay = core.lock;
   const timeBudgetMs = params.timeBudgetMs ?? SURVEY_TIME_BUDGET_MS;
   const deadline = Date.now() + timeBudgetMs;
   const pause = new BackgroundPause(core.doc, deadline, (paused) => overlay.setPaused(paused));
@@ -49,7 +49,6 @@ export async function surveyFrames(core: ExplorerCore, params: SurveyParams): Pr
   const ran = await core
     .run(
       async (tree, source) => {
-        overlay.show();
         before = await core.userSelection(tree);
         const scoping = performance.now();
         const { entries, sections } = await scopeOf(tree, params.refs);
@@ -83,12 +82,9 @@ export async function surveyFrames(core: ExplorerCore, params: SurveyParams): Pr
       async (tree, source) => {
         restored = await timings.time("finish.selection", () => core.restoreSelection(tree, source, before));
       },
-      { timeBudgetMs, maxUiOps: SURVEY_MAX_UI_OPS, collapseAfterInterrupt: true, overlay, pause },
+      { timeBudgetMs, maxUiOps: SURVEY_MAX_UI_OPS, collapseAfterInterrupt: true, pause },
     )
-    .finally(() => {
-      overlay.remove();
-      pause.dispose();
-    });
+    .finally(() => pause.dispose());
   const { value, uiOps, elapsedMs } = ran;
   return {
     identity,

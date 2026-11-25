@@ -66,75 +66,87 @@ export async function prepareCapture(core: ExplorerCore, params: CaptureParams):
   if (core.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
   if (core.pendingCapture) await finishCapture(core, core.pendingCapture.token);
   let before: UserSelection = { kind: "none" };
+  let view: CanvasView | null = null;
+  let prepared = false;
   const timings = new Timings();
   const showOverlays = hideOverlays(core.doc);
-  const { value } = await core.run(async (tree, source) => {
-    const selecting = performance.now();
-    before = await core.userSelection(tree);
-    const canvas = source.canvasRect();
-    if (!canvas) throw new OpError("UI_NOT_READY", "the Figma canvas is not visible");
-    let crop: Rect = canvas;
-    let cropSource: "layer" | "canvas" = "canvas";
-    const zoomBefore = source.zoomLabel();
-    const view = await userView(source);
-    if (params.ref !== null) {
-      const row = await tree.find(params.ref);
-      if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${params.ref} is no longer in the layers panel`);
-      const previous = inspectionSignature(core.doc);
-      if (!(await source.select(row))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${params.ref}; guest sessions cannot select layers`);
-      // The panel's size tells how large the layer should look once zoomed, which checks the bounds below.
-      const size = inspectionRoot(core.doc) ? await core.waitForPanel(row, previous, source).then(() => layerSize(core.doc)).catch(() => null) : null;
-      timings.add("capture.select", performance.now() - selecting);
-      const zooming = performance.now();
-      // The mirror keeps the layer's old place until the zoom ends, about 0.5 s later, and then moves it in one
-      // step (Arc on 2026-10-01). A zoom close to the old one, or a pan alone, keeps about the expected size,
-      // so only a move shows that the place is new. When the layer is in place already, nothing moves.
-      const shownBefore = source.mirrorRect(params.ref);
-      source.pressKey("@", "Digit2", 50, true); // Shift+2: zoom to selection
-      await source.settle(() => (shownBefore ? moved(source.mirrorRect(params.ref!), shownBefore) : source.zoomLabel() !== zoomBefore));
-      const zoom = parseZoom(source.zoomLabel());
-      const expected = size && zoom ? { width: size.width * zoom, height: size.height * zoom } : null;
-      // Figma animates the zoom and updates the mirror as it goes, so wait for the bounds to settle.
-      let bounds = await stableRect(() => source.mirrorRect(params.ref!), expected);
-      // After the zoom the mirror can keep a layer away from where it is drawn until the selection changes
-      // (141 px for one frame of the canary file, 2026-10-12); selected anew, the layer is placed where it shows.
-      if (bounds) {
-        source.pressKey("Escape", "Escape", 27);
-        await source.settle(() => core.selectedCount() === 0);
-        if (await source.select(row)) {
-          await source.settle(() => source.mirrorRect(params.ref!) !== null);
-          bounds = source.mirrorRect(params.ref!) ?? bounds;
+  const { value } = await core.run(
+    async (tree, source) => {
+      const selecting = performance.now();
+      before = await core.userSelection(tree);
+      const canvas = source.canvasRect();
+      if (!canvas) throw new OpError("UI_NOT_READY", "the Figma canvas is not visible");
+      let crop: Rect = canvas;
+      let cropSource: "layer" | "canvas" = "canvas";
+      const zoomBefore = source.zoomLabel();
+      view = await userView(source);
+      if (params.ref !== null) {
+        const row = await tree.find(params.ref);
+        if (!row) throw new OpError("NODE_NOT_FOUND", `layer ${params.ref} is no longer in the layers panel`);
+        const previous = inspectionSignature(core.doc);
+        if (!(await source.select(row))) throw new OpError("UI_NOT_READY", `Figma did not select layer ${params.ref}; guest sessions cannot select layers`);
+        // The panel's size tells how large the layer should look once zoomed, which checks the bounds below.
+        const size = inspectionRoot(core.doc) ? await core.waitForPanel(row, previous, source).then(() => layerSize(core.doc)).catch(() => null) : null;
+        timings.add("capture.select", performance.now() - selecting);
+        const zooming = performance.now();
+        // The mirror keeps the layer's old place until the zoom ends, about 0.5 s later, and then moves it in one
+        // step (Arc on 2026-10-01). A zoom close to the old one, or a pan alone, keeps about the expected size,
+        // so only a move shows that the place is new. When the layer is in place already, nothing moves.
+        const shownBefore = source.mirrorRect(params.ref);
+        source.pressKey("@", "Digit2", 50, true); // Shift+2: zoom to selection
+        await source.settle(() => (shownBefore ? moved(source.mirrorRect(params.ref!), shownBefore) : source.zoomLabel() !== zoomBefore));
+        const zoom = parseZoom(source.zoomLabel());
+        const expected = size && zoom ? { width: size.width * zoom, height: size.height * zoom } : null;
+        // Figma animates the zoom and updates the mirror as it goes, so wait for the bounds to settle.
+        let bounds = await stableRect(() => source.mirrorRect(params.ref!), expected);
+        // After the zoom the mirror can keep a layer away from where it is drawn until the selection changes
+        // (141 px for one frame of the canary file, 2026-10-12); selected anew, the layer is placed where it shows.
+        if (bounds) {
+          source.pressKey("Escape", "Escape", 27);
+          await source.settle(() => core.selectedCount() === 0);
+          if (await source.select(row)) {
+            await source.settle(() => source.mirrorRect(params.ref!) !== null);
+            bounds = source.mirrorRect(params.ref!) ?? bounds;
+          }
         }
+        const fitted = bounds ? intersect(inflate(bounds, CAPTURE_MARGIN_PX), canvas) : expected ? intersect(centered(canvas, expected, CAPTURE_FALLBACK_MARGIN_PX), canvas) : null;
+        if (fitted) {
+          crop = fitted;
+          cropSource = "layer";
+        }
+        timings.add("capture.zoom", performance.now() - zooming);
+      } else {
+        source.pressKey("!", "Digit1", 49, true); // Shift+1: zoom to fit
+        await source.settle(() => source.zoomLabel() !== zoomBefore);
+        await sleep(ZOOM_ANIMATION_MS);
       }
-      const fitted = bounds ? intersect(inflate(bounds, CAPTURE_MARGIN_PX), canvas) : expected ? intersect(centered(canvas, expected, CAPTURE_FALLBACK_MARGIN_PX), canvas) : null;
-      if (fitted) {
-        crop = fitted;
-        cropSource = "layer";
-      }
-      timings.add("capture.zoom", performance.now() - zooming);
-    } else {
-      source.pressKey("!", "Digit1", 49, true); // Shift+1: zoom to fit
-      await source.settle(() => source.zoomLabel() !== zoomBefore);
-      await sleep(ZOOM_ANIMATION_MS);
-    }
-    const toast = performance.now();
-    source.pressKey("Escape", "Escape", 27);
-    await sleep(200);
-    // Toasts are hidden until the capture is finished; should Figma show one some other way, keep it out of the image.
-    await source.settle(() => !toastShowing(core.doc), TOAST_TIMEOUT_MS);
-    timings.add("capture.toast", performance.now() - toast);
-    return { crop, cropSource, canvas, zoom: source.zoomLabel(), view };
-  }).catch((error: unknown) => {
+      const toast = performance.now();
+      source.pressKey("Escape", "Escape", 27);
+      await sleep(200);
+      // Toasts are hidden until the capture is finished; should Figma show one some other way, keep it out of the image.
+      await source.settle(() => !toastShowing(core.doc), TOAST_TIMEOUT_MS);
+      timings.add("capture.toast", performance.now() - toast);
+      prepared = true;
+      return { crop, cropSource, canvas, zoom: source.zoomLabel(), view };
+    },
+    // Stopped part way: the user's selection comes back here, and their view below.
+    async (tree, source) => {
+      if (!prepared && core.lock.stopRequested) await core.restoreSelection(tree, source, before);
+    },
+  ).catch(async (error: unknown) => {
     showOverlays();
+    if (core.lock.stopRequested) await putViewBackNow(core, view);
     throw error;
   });
+  // The service worker takes the screenshot as soon as this returns, so the overlay leaves the picture first.
+  await core.lock.conceal();
   const token = crypto.randomUUID();
   const pending: PendingCapture = {
     token,
     before,
     view: value.view,
-    user: watchForUser(core.win),
-    timer: setTimeout(() => void finishCapture(core, token), PENDING_CAPTURE_TIMEOUT_MS),
+    user: watchForUser(core.win, core.lock),
+    timer: setTimeout(() => void core.holding(() => finishCapture(core, token)), PENDING_CAPTURE_TIMEOUT_MS),
     showOverlays,
   };
   core.pendingCapture = pending;
@@ -152,6 +164,7 @@ export async function finishCapture(core: ExplorerCore, token: string, keepView 
   clearTimeout(pending.timer);
   // The screenshot is taken by now.
   pending.showOverlays();
+  core.lock.reveal();
   try {
     // If the user clicked or typed while the capture ran, their new selection and view win.
     if (pending.user.interrupted()) return { userSelectionRestored: false, viewRestored: false, interrupted: true };
@@ -171,7 +184,7 @@ export async function finishCapture(core: ExplorerCore, token: string, keepView 
 
 /** Puts the user's view back after captures that kept the view zoomed, unless the user used Figma since. */
 export async function putViewBackNow(core: ExplorerCore, view: CanvasView | null): Promise<{ viewRestored: boolean }> {
-  const user = watchForUser(core.win);
+  const user = watchForUser(core.win, core.lock);
   try {
     return { viewRestored: await core.putViewBack(view, user) };
   } finally {

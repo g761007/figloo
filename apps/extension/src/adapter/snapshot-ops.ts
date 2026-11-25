@@ -5,8 +5,8 @@ import type { ExplorerCore } from "./explorer-core.js";
 import { exportSection, exportSettings, exportsLayer, unreadableExportRows } from "./export.js";
 import { boundsInRoot, chooseZoom } from "./geometry.js";
 import { boxOf, inspectionRoot, inspectionSignature, readInspection } from "./inspect.js";
-import { BACKGROUND_MESSAGE, MAX_NAME_LENGTH, OpError, parseZoom, watchForUser, type UserSelection } from "./operation.js";
-import { ReadingOverlay, estimateRemainingMs } from "./overlay.js";
+import { BACKGROUND_MESSAGE, MAX_NAME_LENGTH, OpError, STOPPED_MESSAGE, parseZoom, watchForUser, type UserSelection } from "./operation.js";
+import { estimateRemainingMs } from "./overlay.js";
 import { readInTurn, resumePoint } from "./resume.js";
 import { hiddenLayers, learnParents } from "./tree.js";
 import { BackgroundPause } from "./visibility.js";
@@ -32,11 +32,16 @@ export async function readSubtree(core: ExplorerCore, params: ReadSubtreeParams)
   const identity = core.checkExpected(params.expect);
   learnParents(core.index, params.known ?? []);
   if (core.doc.hidden) throw new OpError("TAB_IN_BACKGROUND", BACKGROUND_MESSAGE);
-  // The screenshot was taken before this op, so the overlay cannot end up in it.
-  const overlay = new ReadingOverlay(core.doc);
+  // The page stays locked from the screenshot on, which the service worker took before this op.
+  const overlay = core.lock;
   // Stop on the overlay changes nothing in Figma, so the view goes back then too; other input means the user took over.
   const user = watchForUser(core.win, overlay);
   const viewBack = () => core.putViewBack(params.view, user).finally(() => user.dispose());
+  // Stopped between the screenshot and this read: the view the screenshot zoomed goes back, and nothing is read.
+  if (overlay.stopRequested) {
+    await viewBack();
+    throw new OpError("USER_INTERRUPTED", STOPPED_MESSAGE);
+  }
   const timings = new Timings();
   await timings.time("read.inspectionPanel", () => core.showInspectionPanel()).catch(async (error: unknown) => {
     await viewBack();
@@ -50,7 +55,6 @@ export async function readSubtree(core: ExplorerCore, params: ReadSubtreeParams)
   let workEnded = 0;
   const ran = await core.run(
     async (tree, source) => {
-      overlay.show();
       const started = Date.now();
       before = await core.userSelection(tree);
       const root = await tree.find(params.ref);
@@ -164,12 +168,9 @@ export async function readSubtree(core: ExplorerCore, params: ReadSubtreeParams)
     async (tree, source) => {
       restored = await timings.time("finish.selection", () => core.restoreSelection(tree, source, before));
     },
-    { timeBudgetMs: params.timeBudgetMs, maxUiOps: SNAPSHOT_UI_OPS_PER_LAYER * params.maxLayers, collapseAfterInterrupt: true, overlay, pause },
+    { timeBudgetMs: params.timeBudgetMs, maxUiOps: SNAPSHOT_UI_OPS_PER_LAYER * params.maxLayers, collapseAfterInterrupt: true, pause },
   )
-    .finally(() => {
-      overlay.remove();
-      pause.dispose();
-    })
+    .finally(() => pause.dispose())
     .catch(async (error: unknown) => {
       await viewBack();
       throw error;
