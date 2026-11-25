@@ -2,7 +2,7 @@
 
 Where Figloo is going, by area and by release. Figloo is versioned 0.x: a minor version adds features, a patch fixes problems, and tools and results may still change between minor versions. [CHANGELOG.md](CHANGELOG.md) lists what each release changed. The detailed plan behind this roadmap, in Traditional Chinese, is [docs/plans/2026-10-06-productization-and-reliability.md](docs/plans/2026-10-06-productization-and-reliability.md).
 
-Current release: 0.8.0.
+Current release: 0.8.1.
 
 ## Principles
 
@@ -73,6 +73,11 @@ Next in this area, once real projects have used it: grouping a design's values b
 - The figloo-implement skill surveys first when work spans many frames, such as a new app, a new feature, or a redesign, and proposes which frames to snapshot before reading any in full.
 - Screenshots leave out other people's cursors, Figma's toolbar with the view-only banner, and comment pins, and a screenshot of a whole page leaves out the empty canvas around it.
 - The bridge protocol is 0.4.0.
+
+## 0.8.1 (released): Figma locked while Figloo works
+
+- Every tool that clicks, scrolls, or presses keys in Figma locks the page until it is done, across all the steps of a capture, an export, a snapshot, or thumbnails, with a card and Stop after half a second; screenshots never show it.
+- Keys no longer reach Figma during a read, whichever element has the focus.
 
 ## 0.9 and later: compatibility and distribution
 

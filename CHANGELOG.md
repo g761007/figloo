@@ -4,6 +4,10 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-25
+
+Figma is locked while any Figloo tool works in it, so a stray click, scroll, or key no longer breaks a call; Stop or Esc on the overlay cancels it and puts back what Figloo changed. The bridge protocol is still 0.4.0, so a 0.8.0 server works with the 0.8.1 extension and the other way around.
+
 ### Changed
 
 - Figma is locked whenever Figloo works in it, not only while `snapshot_layer` and `survey_frames` read: every tool that clicks, scrolls, or presses keys in Figma, and the steps of `capture`, `export_asset`, `snapshot_layer`, and `survey_thumbnails` from first to last. The page is locked behind a clear layer at once, and the card with Stop shows after half a second, so short calls do not flash it; for each screenshot it turns invisible and still keeps input from Figma. Stop or Esc ends the rest of the call and puts back what Figloo changed, and `survey_thumbnails` then still puts the view back.
