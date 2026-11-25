@@ -172,7 +172,7 @@ export function registerSnapshotTools(server: McpServer, deps: SnapshotDeps, too
         "One call reads for at most 3 minutes. When it runs out of time first, it returns complete: false with progress and no outline: call snapshot_layer again with the same contextId and ref, and it goes on where it stopped, until complete is true. " +
         "The Figma tab must be on screen to start. Meanwhile Figma shows an overlay with the progress and a Stop button, and the user can use other windows; " +
         "if the tab goes to the background, reading pauses and goes on when it is back, within the call's 3 minutes. " +
-        "To cancel, the user should press Stop or Esc on the overlay, which puts the layers panel back; a click elsewhere in Figma also stops it but keeps the user's new selection. " +
+        "The overlay keeps clicks, scrolling, and keys from Figma; to cancel, the user presses Stop or Esc on it, which puts the layers panel, the selection, and the view back. " +
         "The user's selection is put back, and so are their zoom and place on the canvas when Figma's screen reader mirror is on (viewRestored), unless the user used Figma meanwhile or the tab is in the background when reading ends.",
       inputSchema: {
         contextId: z.string(),

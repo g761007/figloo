@@ -176,10 +176,10 @@ export function registerSurveyTools(server: McpServer, deps: SurveyDeps, toolErr
       description:
         "Contact sheets of the frames of a survey from survey_frames, to see what the screens look like before choosing which to snapshot: 12 frames to an image, each under its #n from the survey's overview. " +
         "Use it when names say too little, for example for frames the overview marks as mostly auto-named, or to compare frames that look alike by name; pass frames to take only those, or omit it for every frame. " +
-        "Each frame is captured as capture does, about 2 s a frame, so the Figma tab must stay on screen and Figma's view moves from frame to frame meanwhile; tell the user before, and ask them not to use Figma until it ends. " +
+        "Each frame is captured as capture does, about 2 s a frame, so the Figma tab must stay on screen and Figma's view moves from frame to frame meanwhile; tell the user before. Figma shows an overlay that keeps clicks and keys from it until the call ends, and Stop or Esc on it ends the call early. " +
         "The user's selection is put back after each frame and their zoom and place on the canvas at the end. " +
         `One call works for at most ${SURVEY_TIME_BUDGET_MS / 60_000} minutes; frames it did not get to come back as remaining: pass them as frames to go on. ` +
-        "A frame that cannot be captured is listed in failed and the others go on; stoppedBy says what ended a call early, such as the user using Figma. " +
+        "A frame that cannot be captured is listed in failed and the others go on; stoppedBy says what ended a call early, such as the user pressing Stop. " +
         "The sheets are for recognizing screens and layouts; read exact values from a snapshot.",
       inputSchema: {
         contextId: z.string(),

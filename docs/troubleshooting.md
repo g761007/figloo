@@ -27,6 +27,7 @@ Tool errors carry a `retry` field: `yes` means the same call can work as it is, 
 
 Common problems:
 
+- Figma ignores clicks, scrolling, and keys for a moment: Figloo is working in the tab, so it locks the page until it is done, and after half a second a card says so. Press Stop or Esc on the card to cancel; Figloo puts back what it changed, and the tool returns `USER_INTERRUPTED`.
 - `get_status` says `DISCONNECTED`: make sure the extension is loaded and paired, then check the options page. It shows the last connection error, for example a refused token, an unreachable port, or a protocol mismatch with the versions of both sides. `figloo-mcp doctor` tells whether a session holds the port and whether an extension is connected to it.
 - The options page says `unpaired`: the token field is empty. Run the `pair` command again and paste the values.
 - A tab is `DEGRADED` with "guest session": you are not signed in to Figma in that browser profile, so layers cannot be selected.
@@ -37,7 +38,7 @@ Common problems:
 - `export_asset` returns `EXPORT_PENDING`: the browser is waiting to save the fallback download, usually behind a Save dialog. Confirm it, or turn off asking where to save each file.
 - `snapshot_layer` returns `complete: false`: the layer has more than one call can read in three minutes. Call it again with the same root until `complete` is true; `query_snapshot` answers `SNAPSHOT_INCOMPLETE` until then.
 - `survey_frames` returns `complete: false`: the page has more frames than one call can walk in three minutes. Call it again with the same contextId and refs until `complete` is true; `survey_thumbnails` answers `SURVEY_INCOMPLETE` until then.
-- `survey_thumbnails` returns frames in `remaining`: the call ran out of time, or `stoppedBy` says what ended it, such as the user using Figma. Call it again with those frames. Figma's view moves from frame to frame while it runs, with no overlay, since an overlay would show in the screenshots.
+- `survey_thumbnails` returns frames in `remaining`: the call ran out of time, or `stoppedBy` says what ended it, such as the user pressing Stop. Call it again with those frames. Figma's view moves from frame to frame while it runs; the overlay turns invisible for each screenshot, so it never shows in them.
 - After updating to 0.8.0, `get_status` reports `PROTOCOL_MISMATCH`: the extension and the MCP server must both be 0.8.0, since the bridge protocol is now 0.4.0. Reload the extension, and restart agent sessions started before the update: their servers still speak 0.3.0, and when one of them holds the port, the extension is refused and tries again a minute later.
 - `snapshot_layer` returns `SUBTREE_TOO_LARGE`: the layer holds more than 2,000 layers. Snapshot one of the children the message lists instead.
 - `snapshot_layer` fails after 60 seconds in Codex: raise `tool_timeout_sec`, see [Register the MCP server](installation.md#2-register-the-mcp-server-with-your-agent).

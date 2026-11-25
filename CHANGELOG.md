@@ -4,6 +4,14 @@ Notable changes to Figloo, newest first, for each version published as a [GitHub
 
 ## [Unreleased]
 
+### Changed
+
+- Figma is locked whenever Figloo works in it, not only while `snapshot_layer` and `survey_frames` read: every tool that clicks, scrolls, or presses keys in Figma, and the steps of `capture`, `export_asset`, `snapshot_layer`, and `survey_thumbnails` from first to last. The page is locked behind a clear layer at once, and the card with Stop shows after half a second, so short calls do not flash it; for each screenshot it turns invisible and still keeps input from Figma. Stop or Esc ends the rest of the call and puts back what Figloo changed, and `survey_thumbnails` then still puts the view back.
+
+### Fixed
+
+- Keys pressed while `snapshot_layer` or `survey_frames` read a page reached Figma: on their way to the overlay's Stop button they passed Figma's own listeners, so an Esc cleared the selection, and with Figma holding the focus they were not kept from it at all. Keys are now stopped at the window, wherever the focus is.
+
 ## [0.8.0] - 2026-11-24
 
 Agents can survey many frames before snapshotting any: `survey_frames` gives an overview of a page or of the sections the user picks, and `survey_thumbnails` shows the frames on numbered contact sheets. Screenshots no longer show other people's cursors or Figma's toolbar. The bridge protocol is 0.4.0, so update the extension and the MCP server together, and restart agent sessions started before the update.

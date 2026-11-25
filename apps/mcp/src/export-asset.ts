@@ -287,7 +287,7 @@ export function registerExportAssetsTool(server: McpServer, deps: ExportDeps, to
         "format and scale work as in export_asset, for every layer; without format each layer exports as the designer set it up. " +
         "Files keep Figma's names; when this call would write one path twice, the later file gets its layer's ref added, such as Vector-570-14192.svg. Existing files are only replaced with overwrite: true. " +
         `A call exports at most ${MAX_EXPORT_BATCH} layers and starts none after about ${BATCH_BUDGET_MS / 1000} seconds; the layers it did not get to come back in remaining, to pass as refs in the next call. ` +
-        "It stops early, with stoppedBy, when the Figma tab goes to the background, the user steps in, or the browser waits for a Save dialog; other failures, such as a layer Figma hands no file over for, are listed in failed and the rest still export. " +
+        "It stops early, with stoppedBy, when the Figma tab goes to the background, the user presses Stop or Esc on Figloo's overlay in Figma, or the browser waits for a Save dialog; other failures, such as a layer Figma hands no file over for, are listed in failed and the rest still export. " +
         "Returns where each file went, not the files themselves. The Figma tab must be visible.",
       inputSchema: {
         contextId: z.string(),

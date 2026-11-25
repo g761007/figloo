@@ -29,6 +29,7 @@
 
 常見問題：
 
+- Figma 暫時不回應點擊、捲動與按鍵：Figloo 正在這個分頁裡操作，會鎖住頁面直到完成，半秒後會出現一張卡片說明。要取消，請按卡片上的 Stop 或 Esc；Figloo 會還原它改動的東西，工具則回報 `USER_INTERRUPTED`。
 - `get_status` 顯示 `DISCONNECTED`：確認擴充功能已載入並完成配對，再查看選項頁面。它會顯示最後一次的連線錯誤，例如 token 被拒絕、連接埠無法連線，或 protocol 版本不符與兩邊的版本。`figloo-mcp doctor` 會說明是否有工作階段持有連接埠，以及是否有擴充功能連著。
 - 選項頁面顯示 `unpaired`：token 欄位是空的。請再執行一次 `pair` 指令，貼上印出的值。
 - 分頁顯示 `DEGRADED`，並提到「guest session」：這個瀏覽器設定檔沒有登入 Figma，所以無法選取圖層。
@@ -39,7 +40,7 @@
 - `export_asset` 回報 `EXPORT_PENDING`：瀏覽器正在等待儲存備援的下載，通常是停在另存新檔的對話框。請確認儲存，或關閉「每次下載前詢問儲存位置」。
 - `snapshot_layer` 回傳 `complete: false`：這個圖層超過一次呼叫在三分鐘內讀得完的量。請用同一個 root 再呼叫，直到 `complete` 為 true；在那之前，`query_snapshot` 會回報 `SNAPSHOT_INCOMPLETE`。
 - `survey_frames` 回傳 `complete: false`：這一頁的 frame 超過一次呼叫在三分鐘內走訪得完的量。請用同樣的 contextId 與 refs 再呼叫，直到 `complete` 為 true；在那之前，`survey_thumbnails` 會回報 `SURVEY_INCOMPLETE`。
-- `survey_thumbnails` 的 `remaining` 還有 frame：這次呼叫的時間用完了，或 `stoppedBy` 寫出了中止的原因，例如使用者動了 Figma。請把這些 frame 再傳一次。執行期間 Figma 的畫面會在 frame 之間移動，而且沒有遮罩，因為遮罩會被截進圖裡。
+- `survey_thumbnails` 的 `remaining` 還有 frame：這次呼叫的時間用完了，或 `stoppedBy` 寫出了中止的原因，例如使用者按了 Stop。請把這些 frame 再傳一次。執行期間 Figma 的畫面會在 frame 之間移動；每次截圖時遮罩會變成透明，所以不會被截進圖裡。
 - 更新到 0.8.0 後，`get_status` 回報 `PROTOCOL_MISMATCH`：bridge 協定改為 0.4.0，擴充功能與 MCP 伺服器都必須是 0.8.0。請重新載入擴充功能，並重新啟動更新前就開著的 agent 工作階段：它們的伺服器仍是 0.3.0，其中一個佔著連線埠時，擴充功能會被拒絕，一分鐘後才再試。
 - `snapshot_layer` 回報 `SUBTREE_TOO_LARGE`：這個圖層中有超過 2,000 個圖層。請改為對訊息中列出的某個子層建立快照。
 - 在 Codex 中，`snapshot_layer` 在 60 秒後失敗：請調高 `tool_timeout_sec`，見[在 agent 中註冊 MCP 伺服器](installation.zh-TW.md#2-在-agent-中註冊-mcp-伺服器)。

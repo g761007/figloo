@@ -48,7 +48,7 @@ export const ERRORS: Record<string, ErrorInfo> = {
     retry: "after_user",
     hint: "Ask the user to bring the Figma tab to the front (visible on screen, it may sit beside other windows), then retry. Reading pages, the selection, and already expanded layers still works from the background.",
   },
-  USER_INTERRUPTED: { category: "user_action", retry: "after_user", hint: "The user interacted with Figma during the operation. Check with the user before retrying." },
+  USER_INTERRUPTED: { category: "user_action", retry: "after_user", hint: "The user stopped the operation with Stop or Esc on Figloo's overlay in Figma, or used Figma during it. Check with the user before retrying." },
   UI_NOT_READY: { category: "figma_ui", retry: "no", hint: "Call get_status to see what the Figma tab can do right now." },
   BUDGET_EXCEEDED: { category: "figma_ui", retry: "yes", hint: "The operation ran out of its time or UI budget; narrow the request or retry." },
   EXPORT_BLOCKED: {
